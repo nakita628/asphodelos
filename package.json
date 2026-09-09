@@ -1,0 +1,26 @@
+{
+  "name": "asphodelos-monorepo",
+  "private": true,
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "check": "bun run fmt:check && bun run lint && bun run typecheck && bun test",
+    "fix": "bun run fmt && bun run lint:fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "lint": "cd packages/asphodelos && oxlint",
+    "lint:fix": "cd packages/asphodelos && oxlint --fix",
+    "typecheck": "cd packages/asphodelos && tsc --noEmit",
+    "test": "bun test",
+    "build": "cd packages/asphodelos && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxfmt": "^0.67.0",
+    "typescript": "^5.9.2"
+  },
+  "packageManager": "bun@1.4.2"
+}
