@@ -287,16 +287,16 @@ function importConfigModule(abs: string, reload: boolean) {
 }
 
 /**
- * Loads and validates `asphodelos.config.ts`, resolved against the current directory.
+ * Loads and validates a config file, resolved against the current directory.
  *
  * `reload` re-reads a config that has already been imported — what `--watch` needs after the file
  * changes, and nothing else should ask for, since every reload leaves another copy of the module
  * behind.
  */
-export function readConfig(reload = false) {
+export function readConfig(configPath?: string, reload = false) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const abs = resolve(process.cwd(), 'asphodelos.config.ts')
+    const abs = resolve(process.cwd(), configPath ?? 'asphodelos.config.ts')
     // Checked before importing so a missing file reads as "no config here" rather than as
     // whatever the module loader throws.
     const found = yield* fs

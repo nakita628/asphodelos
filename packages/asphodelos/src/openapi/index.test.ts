@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import fs from 'node:fs'
+import path from 'node:path'
 
 import { runGenerator, runGeneratorError } from '../testing/index.js'
 import { parseOpenAPI } from './index.js'
@@ -59,9 +60,11 @@ describe('parseOpenAPI', () => {
   })
 })
 
-const TSP_TEST_DIR = 'packages/asphodelos'
-const TSP_TEST_FILE = `${TSP_TEST_DIR}/tmp-spec.tsp`
-const TSP_TEST_SUBDIR = `${TSP_TEST_DIR}/tmp`
+// Anchored to this file rather than to the working directory: other suites in the same process
+// `process.chdir` into their own temp directories, and a relative path here would follow them.
+const TSP_TEST_DIR = path.resolve(import.meta.dir, '../..')
+const TSP_TEST_FILE = path.join(TSP_TEST_DIR, 'tmp-spec.tsp')
+const TSP_TEST_SUBDIR = path.join(TSP_TEST_DIR, 'tmp-spec')
 
 describe('parseOpenAPI TypeSpec', () => {
   beforeEach(() => {

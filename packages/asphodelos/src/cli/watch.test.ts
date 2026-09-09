@@ -2,10 +2,10 @@ import { afterAll, afterEach, describe, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
+import * as NodeServices from '@effect/platform-node/NodeServices'
 import { Console, Effect, Fiber } from 'effect'
 
-import { fileSystemLayer } from '../fsp/index.js'
-import { asphodelos, hasWatchFlag } from './index.js'
+import { asphodelos } from './index.js'
 
 /**
  * Its own file: every case here forks a watcher that has to be interrupted, which does not fit
@@ -16,6 +16,7 @@ import { asphodelos, hasWatchFlag } from './index.js'
  * a round that outlived the test would regenerate into whatever directory came next.
  */
 const PKG_ROOT = path.resolve(import.meta.dir, '../..')
+const ENTRY_URL = new URL('../index.ts', import.meta.url).href
 
 const workdirs: string[] = []
 let cwdBefore: string | undefined
@@ -59,9 +60,9 @@ function startWatch(argv: readonly string[] = ['--watch']) {
     },
   })
   const fiber = Effect.runFork(
-    asphodelos(argv).pipe(
+    asphodelos(argv, ENTRY_URL).pipe(
       Effect.provideService(Console.Console, recorder),
-      Effect.provide(fileSystemLayer),
+      Effect.provide(NodeServices.layer),
     ),
   )
   return { fiber, lines, output: () => lines.join('\n') }
@@ -122,16 +123,6 @@ afterAll(() => {
   for (const dir of workdirs) rmSync(dir, { recursive: true, force: true })
 })
 
-describe('hasWatchFlag', () => {
-  it('accepts both spellings, and only those', () => {
-    expect(hasWatchFlag(['--watch'])).toBe(true)
-    expect(hasWatchFlag(['-w'])).toBe(true)
-    expect(hasWatchFlag(['openapi.yaml', '-o', 'src/index.ts', '-w'])).toBe(true)
-    expect(hasWatchFlag(['openapi.yaml', '-o', 'src/index.ts'])).toBe(false)
-    expect(hasWatchFlag([])).toBe(false)
-  })
-})
-
 // Each case waits on real generation rounds — oxfmt and a full write — so the budget is a
 // starvation allowance, not an expectation.
 describe('asphodelos --watch', () => {
@@ -154,7 +145,7 @@ describe('asphodelos --watch', () => {
       await Effect.runPromise(Fiber.interrupt(watch.fiber))
     }
 
-    expect(watch.output()).toContain('👀 asphodelos --watch')
+    expect(watch.output()).toContain('👀 Watching')
   }, 60_000)
 
   it('picks up a config change, and follows the input it now points at', async () => {
@@ -222,7 +213,7 @@ export default defineConfig({ input: 'other.yaml', output: 'src/index.ts' })
     }
   }, 60_000)
 
-  it('watches in argv mode too, with no config file present', async () => {
+  it('refuses to watch in argv mode, because a one-shot has no second pass', async () => {
     const dir = mkdtempSync(path.join(PKG_ROOT, 'tmp-watch-argv-'))
     workdirs.push(dir)
     writeFileSync(path.join(dir, 'openapi.yaml'), SPEC(['ping']))
@@ -230,20 +221,9 @@ export default defineConfig({ input: 'other.yaml', output: 'src/index.ts' })
     process.chdir(dir)
 
     const watch = startWatch(['openapi.yaml', '-o', 'src/index.ts', '--watch'])
-    try {
-      const started = await until(() =>
-        watch.lines.some((line) => line.includes('Generated 1 module(s) (ping)')),
-      )
-      expect(started).toBe(true)
+    const exit = await Effect.runPromise(Fiber.await(watch.fiber))
 
-      const regenerated = await writeUntil(
-        path.join(dir, 'openapi.yaml'),
-        SPEC(['ping', 'pong']),
-        () => watch.lines.some((line) => line.includes('(ping, pong)')),
-      )
-      expect(regenerated).toBe(true)
-    } finally {
-      await Effect.runPromise(Fiber.interrupt(watch.fiber))
-    }
+    expect(exit._tag).toBe('Failure')
+    expect(watch.output()).toContain('--watch runs a config file')
   }, 60_000)
 })

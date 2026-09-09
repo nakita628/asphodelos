@@ -28,6 +28,12 @@ Asphodelos targets the [Bun](https://bun.sh/) runtime — the generated app guar
 bunx asphodelos path/to/input.{yaml,json,tsp} -o path/to/output.ts
 ```
 
+One-shot mode: one document in, one app out. It consults no config file, even when one is sitting
+in the working directory — `<input>` and `-o` always mean exactly what they say.
+
+`--help` lists every flag, `--version` reports the installed version, and
+`--completions <bash|zsh|fish|sh>` prints a shell completion script.
+
 ### Configuration File
 
 Create `asphodelos.config.ts`:
@@ -44,12 +50,19 @@ export default defineConfig({
 bunx asphodelos
 ```
 
-When `output` is omitted, Asphodelos writes the app entry to `src/index.ts` by default.
+Running `asphodelos` with no arguments runs `./asphodelos.config.ts`; `--config` (or `-c`) runs
+one from somewhere else. When `output` is omitted, Asphodelos writes the app entry to
+`src/index.ts` by default.
+
+```bash
+bunx asphodelos --config config/api.config.ts
+```
 
 ### Watch Mode
 
-`--watch` (or `-w`) regenerates on every change to the spec or to `asphodelos.config.ts`, and
-keeps running until interrupted.
+`--watch` (or `-w`) runs a config file and regenerates on every change to the documents it names
+or to the config itself, until interrupted. It is a config-file mode, so it cannot be combined
+with `<input>` / `--output` — a one-shot has no second pass for a change to trigger.
 
 ```bash
 bunx asphodelos --watch
