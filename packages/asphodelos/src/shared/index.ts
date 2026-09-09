@@ -99,7 +99,14 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
           name: 'mock',
           output: config.mock.output,
           split: false,
-          run: (output: string) => mock(openAPI, output, config.prefix, config.port),
+          // `prefix` and `port` come from the root config — they describe the server the mock
+          // stands in for, not the mock itself — and the rest from the `mock` block.
+          run: (output: string) =>
+            mock(openAPI, output, {
+              ...config.mock,
+              prefix: config.prefix,
+              port: config.port,
+            }),
         }
       : undefined,
     ...(

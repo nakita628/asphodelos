@@ -67,7 +67,7 @@ describe('mock', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asph-mock-'))
     dirs.push(dir)
     const output = path.join(dir, 'mock.ts')
-    const result = await runGenerator(mock(spec, output, '/api'))
+    const result = await runGenerator(mock(spec, output, { prefix: '/api' }))
     expect(result).toStrictEqual(`Generated mock server written to ${output}`)
     expect(await readFile(output, 'utf-8')).toBe(`import { Elysia } from 'elysia'
 import { faker } from '@faker-js/faker'
@@ -122,7 +122,7 @@ if (import.meta.main) {
     const dir = mkdtempSync(path.join(tmpdir(), 'asph-mock-'))
     dirs.push(dir)
     const output = path.join(dir, 'mock.ts')
-    await runGenerator(mock(spec, output, '/api'))
+    await runGenerator(mock(spec, output, { prefix: '/api' }))
     expect(await readFile(output, 'utf-8')).toBe(`import { Elysia } from 'elysia'
 import { faker } from '@faker-js/faker'
 

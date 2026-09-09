@@ -321,6 +321,37 @@ export default defineConfig({
 })
 ```
 
+The unhappy paths the spec promises are wired up too, so a client can exercise them:
+
+- an operation that is secured **and** declares a `401` answers `401` when the credential is absent (`http` / `oauth2` schemes look at `Authorization`; `apiKey` at its header, query or cookie). Only presence is checked — a mock has no user store.
+- a path parameter answers `404` for a sentinel value when the operation declares a `404`. The sentinel is the one the test generator sends, so generated tests and the mock agree on which value means "not there": `-1` for a number, the nil UUID for `format: uuid`, `__non_existent__` otherwise.
+
+Credentials are checked before existence, so an anonymous request never learns what is there.
+
+### Options
+
+| Option                  | Default    | Purpose                                                                                                                                                                                                |
+| ----------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `output`                | —          | File the mock server is written to. Required.                                                                                                                                                          |
+| `useExamples`           | `true`     | Serve the `example` / `examples` the spec declares instead of a faker value. `$ref` into `components.examples` is resolved; an `examples` entry that only carries `externalValue` falls back to faker. |
+| `locale`                | —          | Faker locale code — swaps the import to `@faker-js/faker/locale/<locale>` and nothing else.                                                                                                            |
+| `delay`                 | —          | Milliseconds every response waits (`0`–`60000`), `{ min, max }` to pick from a range, or `false`. Applied as middleware, so handlers are byte-identical without it.                                    |
+| `arrayMin` / `arrayMax` | `1` / `10` | Array length when the schema declares no `minItems` / `maxItems`.                                                                                                                                      |
+
+`prefix` and `port` come from the top-level config — they describe the server the mock stands in
+for, not the mock itself.
+
+```ts
+export default defineConfig({
+  input: 'openapi.yaml',
+  mock: {
+    output: 'src/mock.ts',
+    delay: { min: 50, max: 200 },
+    locale: 'ja',
+  },
+})
+```
+
 ## Full Config Reference
 
 > `split: true` — `output` is a **directory** (one file per entry + `index.ts` barrel; `test` is the exception — it takes no `output` and co-locates `*.test.ts` beside each controller).

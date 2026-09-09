@@ -39,6 +39,20 @@ const InputSchema = Schema.declare<`${string}.yaml` | `${string}.json` | `${stri
   { message: 'must be .yaml | .json | .tsp' },
 )
 
+/** Milliseconds, bounded so a mock cannot be configured to hang a request. */
+const DelayMsSchema = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(60_000),
+)
+
+/** How many items a generated array holds when the schema does not say. */
+const ArrayLengthSchema = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(1000),
+)
+
 /** A directory path normalizes to `<dir>/index.ts`, so single-file mode always names a file. */
 const FileOutputSchema = Schema.String.pipe(
   Schema.decodeTo(
@@ -154,7 +168,43 @@ const ConfigSchema = Schema.Struct({
       }),
     ]),
   ),
-  mock: Schema.optionalKey(Schema.Struct({ output: FileOutputSchema })),
+  mock: Schema.optionalKey(
+    Schema.Struct({
+      output: FileOutputSchema,
+      // Defaults to true in the generator: a document that bothered to write an example is
+      // saying what a realistic response looks like, and faker cannot improve on that.
+      useExamples: Schema.optionalKey(Schema.Boolean),
+      // Passed straight through to `@faker-js/faker/locale/<locale>`; the pattern is what keeps
+      // it from breaking out of the import specifier.
+      locale: Schema.optionalKey(
+        Schema.String.check(
+          Schema.isPattern(/^[A-Za-z_]{1,40}$/u, {
+            message: "must be a faker locale code such as 'ja', 'en' or 'zh_CN'",
+          }),
+        ),
+      ),
+      // A fixed number of milliseconds, a range to pick from, or `false` for no delay at all.
+      delay: Schema.optionalKey(
+        Schema.Union([
+          DelayMsSchema,
+          Schema.Literal(false),
+          Schema.Struct({ min: DelayMsSchema, max: DelayMsSchema }).check(
+            Schema.makeFilter(({ min, max }) =>
+              min <= max ? undefined : 'delay.min must be <= delay.max',
+            ),
+          ),
+        ]),
+      ),
+      arrayMin: Schema.optionalKey(ArrayLengthSchema),
+      arrayMax: Schema.optionalKey(ArrayLengthSchema),
+    }).check(
+      Schema.makeFilter(({ arrayMin, arrayMax }) =>
+        arrayMin === undefined || arrayMax === undefined || arrayMin <= arrayMax
+          ? undefined
+          : 'arrayMin must be <= arrayMax. Swap the values or remove one.',
+      ),
+    ),
+  ),
   swr: Schema.optionalKey(HooksSchema),
   'tanstack-query': Schema.optionalKey(HooksSchema),
   'preact-query': Schema.optionalKey(HooksSchema),
