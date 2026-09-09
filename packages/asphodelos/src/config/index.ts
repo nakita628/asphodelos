@@ -189,8 +189,61 @@ export function parseConfig(config: unknown) {
   )
 }
 
-/** Loads and validates `asphodelos.config.ts`, resolved against the current directory. */
-export function readConfig() {
+// A module specifier is imported once per process, so a watch pass that asked for the same
+// config file would get the copy from before the edit. The counter is what makes each reload a
+// specifier the loader has not seen — monotonic rather than a timestamp, because two edits inside
+// one millisecond would collide.
+let reloadCount = 0
+
+/**
+ * Imports the config module, bypassing the loader cache when asked.
+ *
+ * Node busts its cache with a `?reload=n` query on the specifier. Bun — the runtime this
+ * generator targets — resolves `file:///x.ts?reload=1` back to the module it already has, so the
+ * query buys nothing there. What both honour is a path they have not seen, so a reload copies the
+ * config next to itself and imports the copy.
+ *
+ * A sibling rather than a temp directory: the config's own imports are relative to where it sits,
+ * and a copy anywhere else would fail to resolve them. The copy is removed however the import
+ * ends, and its name carries the pid so two processes watching one project cannot collide.
+ */
+function importConfigModule(abs: string, reload: boolean) {
+  return Effect.gen(function* () {
+    const importModule = (specifier: string) =>
+      Effect.tryPromise({
+        try: (): Promise<unknown> => import(specifier),
+        catch: (error) =>
+          new ConfigError({ message: error instanceof Error ? error.message : String(error) }),
+      })
+    if (!reload) return yield* importModule(pathToFileURL(abs).href)
+
+    const fs = yield* FileSystem.FileSystem
+    const copy = resolve(
+      abs,
+      '..',
+      `.asphodelos.config.${String(process.pid)}.${String((reloadCount += 1))}.ts`,
+    )
+    yield* fs
+      .copyFile(abs, copy)
+      .pipe(
+        Effect.mapError(
+          (error) => new ConfigError({ message: `Config reload failed: ${error.message}` }),
+        ),
+      )
+    return yield* importModule(pathToFileURL(copy).href).pipe(
+      Effect.ensuring(fs.remove(copy, { force: true }).pipe(Effect.orElseSucceed(() => undefined))),
+    )
+  })
+}
+
+/**
+ * Loads and validates `asphodelos.config.ts`, resolved against the current directory.
+ *
+ * `reload` re-reads a config that has already been imported — what `--watch` needs after the file
+ * changes, and nothing else should ask for, since every reload leaves another copy of the module
+ * behind.
+ */
+export function readConfig(reload = false) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const abs = resolve(process.cwd(), 'asphodelos.config.ts')
@@ -202,11 +255,7 @@ export function readConfig() {
     if (!found) {
       return yield* new ConfigError({ message: `Config not found: ${abs}`, notFound: true })
     }
-    const mod: unknown = yield* Effect.tryPromise({
-      try: () => import(pathToFileURL(abs).href),
-      catch: (error) =>
-        new ConfigError({ message: error instanceof Error ? error.message : String(error) }),
-    })
+    const mod = yield* importConfigModule(abs, reload)
     // `'default' in mod` is what narrows `mod` for TypeScript, not a second runtime check — an
     // absent key already reads as `undefined` below. `export default undefined` leaves the key
     // present, which is why both halves are here.

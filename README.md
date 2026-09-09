@@ -46,6 +46,19 @@ bunx asphodelos
 
 When `output` is omitted, Asphodelos writes the app entry to `src/index.ts` by default.
 
+### Watch Mode
+
+`--watch` (or `-w`) regenerates on every change to the spec or to `asphodelos.config.ts`, and
+keeps running until interrupted.
+
+```bash
+bunx asphodelos --watch
+```
+
+A round that fails — an unparseable spec mid-edit, a config that does not validate — is reported
+and waited out rather than ending the command, so the next save is what recovers it. Editing the
+config's `input` moves the watcher to the directory it now names.
+
 ### Example
 
 input (`openapi.yaml`):
