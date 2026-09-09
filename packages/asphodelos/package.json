@@ -1,0 +1,55 @@
+{
+  "name": "asphodelos",
+  "version": "0.0.1",
+  "keywords": [
+    "elysia",
+    "openapi"
+  ],
+  "bin": {
+    "asphodelos": "dist/cli.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/config/index.ts",
+      "import": "./dist/index.mjs"
+    },
+    "./vite-plugin": {
+      "types": "./src/vite-plugin/index.ts",
+      "import": "./dist/vite-plugin/index.mjs"
+    }
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "tsdown",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "release": "bun build & bun publish"
+  },
+  "dependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
+    "@effect/platform-node": "4.0.0-rc.112",
+    "@typespec/compiler": "^1.11.0",
+    "@typespec/openapi3": "^1.11.0",
+    "effect": "4.0.0-rc.112",
+    "oxfmt": "^0.67.0",
+    "ts-morph": "^28.0.0"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.6.0",
+    "@sinclair/typebox": "^0.34.49",
+    "@types/bun": "latest",
+    "@typespec/http": "^1.11.0",
+    "@typespec/rest": "^0.81.0",
+    "@typespec/versioning": "^0.81.0",
+    "elysia": "^1.4.28",
+    "oxlint": "^1.82.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "tsdown": "^0.21.10"
+  }
+}
