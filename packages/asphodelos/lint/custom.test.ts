@@ -20,7 +20,8 @@ import plugin from './custom.js'
  * from the rule under test.
  */
 const PLUGIN = path.resolve(import.meta.dir, 'custom.js')
-const OXLINT = path.resolve(import.meta.dir, '../../../node_modules/.bin/oxlint')
+// The package's own bin, not the workspace root's: `oxlint` is a devDependency here.
+const OXLINT = path.resolve(import.meta.dir, '../node_modules/.bin/oxlint')
 
 const workdirs: string[] = []
 

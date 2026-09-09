@@ -19,8 +19,9 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # oxfmt and oxlint read oxfmt.config.ts / oxlint.config.ts at the repository root.
-      # `oxlint` needs a Node runtime that can execute TypeScript to load its config.
+      # `oxfmt` reads oxfmt.config.ts at the repository root; `oxlint` reads
+      # packages/asphodelos/oxlint.config.ts, and needs a Node runtime that can execute
+      # TypeScript to load it.
       - uses: actions/setup-node@v6
         with:
           node-version: '24'

@@ -97,6 +97,23 @@ function fakeServer() {
   }
 }
 
+/**
+ * Waits until nothing new has been logged for a beat.
+ *
+ * `configureServer` starts generation in the background and hands Vite nothing to await, so a
+ * case that returns as soon as its assertion holds leaves the rest of that run to log after the
+ * console has been restored — into whichever test file happens to be running next.
+ */
+async function settle(lines: readonly string[], quietMs = 300) {
+  let seen = -1
+  while (seen !== lines.length) {
+    seen = lines.length
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, quietMs)
+    })
+  }
+}
+
 /** Waits for the background generation to reach the disk. */
 async function waitFor(check: () => boolean, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs
@@ -137,6 +154,7 @@ describe('asphodelosVite', () => {
       asphodelosVite().configureServer(server)
       const generated = await waitFor(() => existsSync(path.join(dir, 'src/index.ts')))
       expect(generated).toBe(true)
+      await settle(recorder.lines)
     } finally {
       recorder.restore()
     }
@@ -161,6 +179,7 @@ export default defineConfig({ input: 'openapi.txt' })
     try {
       asphodelosVite().configureServer(fakeServer().server)
       await waitFor(() => recorder.lines.some((line) => line.includes('❌ config:')))
+      await settle(recorder.lines)
     } finally {
       recorder.restore()
     }
@@ -175,6 +194,7 @@ export default defineConfig({ input: 'openapi.txt' })
     try {
       asphodelosVite().configureServer(fakeServer().server)
       await waitFor(() => recorder.lines.some((line) => line.includes('❌ config:')))
+      await settle(recorder.lines)
     } finally {
       recorder.restore()
     }
@@ -198,6 +218,7 @@ export default defineConfig({
     try {
       asphodelosVite().configureServer(fakeServer().server)
       await waitFor(() => recorder.lines.some((line) => line.includes('❌ types')))
+      await settle(recorder.lines)
     } finally {
       recorder.restore()
     }
@@ -216,6 +237,7 @@ export default defineConfig({ input: 'missing.yaml', output: 'src/index.ts' })
     try {
       asphodelosVite().configureServer(fakeServer().server)
       await waitFor(() => recorder.lines.some((line) => line.includes('❌ parseOpenAPI')))
+      await settle(recorder.lines)
     } finally {
       recorder.restore()
     }
@@ -245,6 +267,7 @@ export default defineConfig({ input: 'missing.yaml', output: 'src/index.ts' })
       expect(passedThrough).toBeUndefined()
 
       await waitFor(() => existsSync(path.join(dir, 'src/index.ts')))
+      await settle(recorder.lines)
     } finally {
       recorder.restore()
     }
@@ -270,6 +293,7 @@ export default defineConfig({ input: 'missing.yaml', output: 'src/index.ts' })
       // The watcher is debounced by 200ms, so the rerun is not immediate.
       const reran = await waitFor(() => recorder.lines.length > before)
       expect(reran).toBe(true)
+      await settle(recorder.lines)
     } finally {
       recorder.restore()
     }

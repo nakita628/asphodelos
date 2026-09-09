@@ -11,9 +11,9 @@
     "fix": "bun run fmt && bun run lint:fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "lint": "cd packages/asphodelos && oxlint",
-    "lint:fix": "cd packages/asphodelos && oxlint --fix",
-    "typecheck": "cd packages/asphodelos && tsc --noEmit",
+    "lint": "cd packages/asphodelos && bun run lint",
+    "lint:fix": "cd packages/asphodelos && bun run lint:fix",
+    "typecheck": "cd packages/asphodelos && bun run typecheck",
     "test": "bun test",
     "build": "cd packages/asphodelos && bun run build"
   },
