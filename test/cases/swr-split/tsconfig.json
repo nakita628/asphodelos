@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+  },
+  "include": [
+    "../../__generated__/swr-split/*.ts",
+    "../../hosts/users-app.ts",
+    "../../hosts/users-client.ts"
+  ],
+  "exclude": ["../../__generated__/swr-split/app/**"]
+}

@@ -210,6 +210,9 @@ export default defineConfig({
 })
 ```
 
+The generated hooks are compiled against the real client libraries and, for SWR and TanStack
+Query, executed against a host app — see [`test/`](test/README.md).
+
 ### Infinite Query (`x-pagination`)
 
 Set `x-pagination: true` on a GET operation to generate infinite query hooks (`useSWRInfinite`, `useInfiniteQuery`, …).

@@ -1,0 +1,4 @@
+[test]
+# happydom.ts supplies the DOM the SWR hooks need; generate.ts refreshes __generated__ from
+# specs/ so a test never runs against output from a previous version of the generator.
+preload = ["./happydom.ts", "./scripts/pretest.ts"]

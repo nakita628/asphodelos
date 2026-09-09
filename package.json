@@ -3,18 +3,20 @@
   "private": true,
   "license": "MIT",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "test"
   ],
   "type": "module",
   "scripts": {
-    "check": "bun run fmt:check && bun run lint && bun run typecheck && bun test",
+    "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run test && bun run test:clients",
     "fix": "bun run fmt && bun run lint:fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "lint": "cd packages/asphodelos && bun run lint",
     "lint:fix": "cd packages/asphodelos && bun run lint:fix",
     "typecheck": "cd packages/asphodelos && bun run typecheck",
-    "test": "bun test",
+    "test:clients": "bun run build && cd test && bun run typecheck && bun test",
+    "test": "cd packages/asphodelos && bun test",
     "build": "cd packages/asphodelos && bun run build"
   },
   "devDependencies": {

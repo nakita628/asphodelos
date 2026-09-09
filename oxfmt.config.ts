@@ -19,5 +19,7 @@ export default defineConfig({
     // Throwaway work trees the runtime tests generate into. Their contents are the generator's
     // own output, formatted by its own oxfmt pass (src/format).
     '**/tmp-*/**',
+    // Generator output, regenerated on every run of the client suite.
+    'test/__generated__/**',
   ],
 })

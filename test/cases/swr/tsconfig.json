@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+  },
+  "include": [
+    "../../__generated__/swr/hooks.ts",
+    "../../hosts/users-app.ts",
+    "../../hosts/users-client.ts",
+    "../../runtime/swr.test.tsx",
+    "../../types/swr.ts",
+    "../../types/assert.ts"
+  ],
+  "exclude": ["../../__generated__/swr/app/**"]
+}

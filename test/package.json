@@ -1,0 +1,30 @@
+{
+  "name": "@asphodelos/test",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "bun run scripts/generate.ts",
+    "typecheck": "bun run scripts/typecheck.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@elysiajs/eden": "^1.4.1",
+    "@happy-dom/global-registrator": "^20.11.12",
+    "@tanstack/angular-query-experimental": "^5.102.8",
+    "@tanstack/react-query": "^5.102.8",
+    "@tanstack/solid-query": "^5.102.8",
+    "@tanstack/svelte-query": "^6.1.48",
+    "@tanstack/vue-query": "^5.102.8",
+    "@testing-library/react": "^16.3.3",
+    "@types/bun": "latest",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "asphodelos": "workspace:*",
+    "elysia": "^1.4.28",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "swr": "^2.5.1",
+    "typescript": "^5.9.3",
+    "vue": "^3.5.42"
+  }
+}

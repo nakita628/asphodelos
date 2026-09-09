@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": [
+    "../../__generated__/svelte-query/hooks.ts",
+    "../../hosts/users-app.ts",
+    "../../hosts/users-client.ts"
+  ],
+  "exclude": ["../../__generated__/svelte-query/app/**"]
+}
