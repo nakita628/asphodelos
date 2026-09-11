@@ -31,7 +31,7 @@ describe('swr generator', () => {
     }
   }
 
-  it('GET (simple, no pagination): emits keyGetter + useSWR with `<TError>` generic', async () => {
+  it('GET (simple, no pagination): emits keyGetter + useSWR + useSWRImmutable with `<TError>` generic', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -43,6 +43,7 @@ describe('swr generator', () => {
     })
     const expected = `import useSWR from 'swr'
 import type { SWRConfiguration } from 'swr'
+import useSWRImmutable from 'swr/immutable'
 import { client } from './lib'
 
 export function getItemsKey() {
@@ -63,6 +64,29 @@ export function useListItems<
   >,
 ) {
   return useSWR<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError
+  >(
+    listItemsQueryKey(),
+    async () => {
+      const { data, error } = await client.items.get(options)
+      if (error) throw error
+      return data
+    },
+    config,
+  )
+}
+
+export function useImmutableListItems<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
+  options?: Parameters<typeof client.items.get>[0],
+  config?: SWRConfiguration<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError
+  >,
+) {
+  return useSWRImmutable<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
     TError
   >(
@@ -100,6 +124,7 @@ export function useListItems<
     })
     const expected = `import useSWR from 'swr'
 import type { SWRConfiguration } from 'swr'
+import useSWRImmutable from 'swr/immutable'
 import { client } from './lib'
 
 export function getSearchKey() {
@@ -133,6 +158,29 @@ export function useSearch<
     config,
   )
 }
+
+export function useImmutableSearch<
+  TError = Exclude<Awaited<ReturnType<typeof client.search.get>>['error'], null>,
+>(
+  options: Parameters<typeof client.search.get>[0],
+  config?: SWRConfiguration<
+    Extract<Awaited<ReturnType<typeof client.search.get>>, { error: null }>['data'],
+    TError
+  >,
+) {
+  return useSWRImmutable<
+    Extract<Awaited<ReturnType<typeof client.search.get>>, { error: null }>['data'],
+    TError
+  >(
+    searchQueryKey(options),
+    async () => {
+      const { data, error } = await client.search.get(options)
+      if (error) throw error
+      return data
+    },
+    config,
+  )
+}
 `
     expect(code).toBe(expected)
   })
@@ -153,6 +201,7 @@ export function useSearch<
     })
     const expected = `import useSWR from 'swr'
 import type { SWRConfiguration } from 'swr'
+import useSWRImmutable from 'swr/immutable'
 import useSWRInfinite from 'swr/infinite'
 import type { SWRInfiniteConfiguration } from 'swr/infinite'
 import { client } from './lib'
@@ -175,6 +224,29 @@ export function useListItems<
   >,
 ) {
   return useSWR<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError
+  >(
+    listItemsQueryKey(),
+    async () => {
+      const { data, error } = await client.items.get(options)
+      if (error) throw error
+      return data
+    },
+    config,
+  )
+}
+
+export function useImmutableListItems<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
+  options?: Parameters<typeof client.items.get>[0],
+  config?: SWRConfiguration<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError
+  >,
+) {
+  return useSWRImmutable<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
     TError
   >(
@@ -243,6 +315,7 @@ export function useListItemsInfinite<
     })
     const expected = `import useSWR from 'swr'
 import type { SWRConfiguration } from 'swr'
+import useSWRImmutable from 'swr/immutable'
 import { client } from './lib'
 
 export function getItemsKey() {
@@ -264,6 +337,30 @@ export function useGetItem<
   >,
 ) {
   return useSWR<
+    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+    TError
+  >(
+    getItemQueryKey(params),
+    async () => {
+      const { data, error } = await client.items(params).get(options)
+      if (error) throw error
+      return data
+    },
+    config,
+  )
+}
+
+export function useImmutableGetItem<
+  TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
+>(
+  params: Parameters<typeof client.items>[0],
+  options?: Parameters<ReturnType<typeof client.items>['get']>[0],
+  config?: SWRConfiguration<
+    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+    TError
+  >,
+) {
+  return useSWRImmutable<
     Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
     TError
   >(
@@ -697,10 +794,13 @@ export function useListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useQuery<
@@ -726,10 +826,13 @@ export function useSuspenseListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseSuspenseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseSuspenseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useSuspenseQuery<
@@ -774,7 +877,12 @@ import {
   useSuspenseInfiniteQuery,
   infiniteQueryOptions,
 } from '@tanstack/react-query'
-import type { InfiniteData } from '@tanstack/react-query'
+import type {
+  UseInfiniteQueryOptions,
+  InfiniteData,
+  UseSuspenseInfiniteQueryOptions,
+} from '@tanstack/react-query'
+import type { QueryFunctionContext } from '@tanstack/react-query'
 import { client } from './lib'
 
 export function getItemsKey() {
@@ -804,10 +912,13 @@ export function useListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useQuery<
@@ -833,10 +944,13 @@ export function useSuspenseListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseSuspenseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseSuspenseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useSuspenseQuery<
@@ -903,7 +1017,14 @@ export function listItemsInfiniteQueryOptions<TPageParam>(
   })
 }
 
-export function useListItemsInfinite<TPageParam>(
+export function useListItemsInfinite<
+  TPageParam = unknown,
+  TData = InfiniteData<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TPageParam
+  >,
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
   options: Parameters<typeof client.items.get>[0] | undefined,
   pagination: {
     initialPageParam: TPageParam
@@ -915,11 +1036,48 @@ export function useListItemsInfinite<TPageParam>(
     ) => TPageParam | undefined | null
     buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
   },
+  queryOptions?: Omit<
+    UseInfiniteQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData,
+      ReturnType<typeof listItemsInfiniteQueryKey>,
+      TPageParam
+    >,
+    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+  >,
 ) {
-  return useInfiniteQuery(listItemsInfiniteQueryOptions(options, pagination))
+  return useInfiniteQuery({
+    ...queryOptions,
+    queryKey: listItemsInfiniteQueryKey(options),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
+      const overlay = pagination.buildInit(pageParam)
+      const { data, error } = await client.items.get({
+        ...options,
+        ...overlay,
+        query: { ...options?.query, ...overlay?.query },
+        headers: { ...options?.headers, ...overlay?.headers },
+        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
+      })
+      if (error) throw error
+      return data
+    },
+    initialPageParam: pagination.initialPageParam,
+    getNextPageParam: pagination.getNextPageParam,
+  })
 }
 
-export function useSuspenseListItemsInfinite<TPageParam>(
+export function useSuspenseListItemsInfinite<
+  TPageParam = unknown,
+  TData = InfiniteData<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TPageParam
+  >,
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
   options: Parameters<typeof client.items.get>[0] | undefined,
   pagination: {
     initialPageParam: TPageParam
@@ -931,8 +1089,38 @@ export function useSuspenseListItemsInfinite<TPageParam>(
     ) => TPageParam | undefined | null
     buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
   },
+  queryOptions?: Omit<
+    UseSuspenseInfiniteQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData,
+      ReturnType<typeof listItemsInfiniteQueryKey>,
+      TPageParam
+    >,
+    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+  >,
 ) {
-  return useSuspenseInfiniteQuery(listItemsInfiniteQueryOptions(options, pagination))
+  return useSuspenseInfiniteQuery({
+    ...queryOptions,
+    queryKey: listItemsInfiniteQueryKey(options),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
+      const overlay = pagination.buildInit(pageParam)
+      const { data, error } = await client.items.get({
+        ...options,
+        ...overlay,
+        query: { ...options?.query, ...overlay?.query },
+        headers: { ...options?.headers, ...overlay?.headers },
+        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
+      })
+      if (error) throw error
+      return data
+    },
+    initialPageParam: pagination.initialPageParam,
+    getNextPageParam: pagination.getNextPageParam,
+  })
 }
 `
     expect(code).toBe(expected)
@@ -985,10 +1173,13 @@ export function useGetItem<
 >(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: UseQueryOptions<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseQueryOptions<
+      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useQuery<
@@ -1017,10 +1208,13 @@ export function useSuspenseGetItem<
 >(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: UseSuspenseQueryOptions<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseSuspenseQueryOptions<
+      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useSuspenseQuery<
@@ -1084,10 +1278,13 @@ export function useListWidgets<
   TError = Exclude<Awaited<ReturnType<typeof client.v1.widgets.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.v1.widgets.get>[0],
-  queryOptions?: UseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useQuery<
@@ -1113,10 +1310,13 @@ export function useSuspenseListWidgets<
   TError = Exclude<Awaited<ReturnType<typeof client.v1.widgets.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.v1.widgets.get>[0],
-  queryOptions?: UseSuspenseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseSuspenseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useSuspenseQuery<
@@ -1140,7 +1340,7 @@ export function useSuspenseListWidgets<
     expect(code).toBe(expected)
   })
 
-  it('POST (body method): emits useMutation with `{ body, options? }` variables', async () => {
+  it('POST (body method): emits mutationOptions factory + useMutation spreading it, with `{ body, options? }` variables', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -1150,7 +1350,7 @@ export function useSuspenseListWidgets<
         },
       },
     })
-    const expected = `import { useMutation } from '@tanstack/react-query'
+    const expected = `import { useMutation, mutationOptions } from '@tanstack/react-query'
 import type { UseMutationOptions } from '@tanstack/react-query'
 import { client } from './lib'
 
@@ -1160,6 +1360,26 @@ export function getItemsKey() {
 
 export function createItemMutationKey() {
   return ['items', '/items', 'POST'] as const
+}
+
+export function createItemMutationOptions<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+>() {
+  return mutationOptions<
+    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+    TError,
+    {
+      body: Parameters<typeof client.items.post>[0]
+      options?: Parameters<typeof client.items.post>[1]
+    }
+  >({
+    mutationKey: createItemMutationKey(),
+    mutationFn: async ({ body, options }) => {
+      const { data, error } = await client.items.post(body, options)
+      if (error) throw error
+      return data
+    },
+  })
 }
 
 export function useCreateItem<
@@ -1181,21 +1401,13 @@ export function useCreateItem<
       body: Parameters<typeof client.items.post>[0]
       options?: Parameters<typeof client.items.post>[1]
     }
-  >({
-    ...mutationOptions,
-    mutationKey: createItemMutationKey(),
-    mutationFn: async ({ body, options }) => {
-      const { data, error } = await client.items.post(body, options)
-      if (error) throw error
-      return data
-    },
-  })
+  >({ ...mutationOptions, ...createItemMutationOptions<TError>() })
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('DELETE (body method): emits useMutation with `{ body; options? }` variables (eden delete takes body, options)', async () => {
+  it('DELETE (body method): emits mutationOptions factory + useMutation with `{ body; options? }` variables (eden delete takes body, options)', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -1205,7 +1417,7 @@ export function useCreateItem<
         },
       },
     })
-    const expected = `import { useMutation } from '@tanstack/react-query'
+    const expected = `import { useMutation, mutationOptions } from '@tanstack/react-query'
 import type { UseMutationOptions } from '@tanstack/react-query'
 import { client } from './lib'
 
@@ -1215,6 +1427,29 @@ export function getItemsKey() {
 
 export function deleteItemMutationKey(params: Parameters<typeof client.items>[0]) {
   return ['items', '/items/{id}', 'DELETE', params] as const
+}
+
+export function deleteItemMutationOptions<
+  TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>['error'], null>,
+>(params: Parameters<typeof client.items>[0]) {
+  return mutationOptions<
+    Extract<
+      Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
+      { error: null }
+    >['data'],
+    TError,
+    {
+      body: Parameters<ReturnType<typeof client.items>['delete']>[0]
+      options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
+    }
+  >({
+    mutationKey: deleteItemMutationKey(params),
+    mutationFn: async ({ body, options }) => {
+      const { data, error } = await client.items(params).delete(body, options)
+      if (error) throw error
+      return data
+    },
+  })
 }
 
 export function useDeleteItem<
@@ -1243,15 +1478,7 @@ export function useDeleteItem<
       body: Parameters<ReturnType<typeof client.items>['delete']>[0]
       options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
     }
-  >({
-    ...mutationOptions,
-    mutationKey: deleteItemMutationKey(params),
-    mutationFn: async ({ body, options }) => {
-      const { data, error } = await client.items(params).delete(body, options)
-      if (error) throw error
-      return data
-    },
-  })
+  >({ ...mutationOptions, ...deleteItemMutationOptions<TError>(params) })
 }
 `
     expect(code).toBe(expected)
@@ -1319,10 +1546,13 @@ export function useListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useQuery<
@@ -1348,10 +1578,13 @@ export function useSuspenseListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseSuspenseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseSuspenseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useSuspenseQuery<
@@ -1374,14 +1607,34 @@ export function useSuspenseListItems<
 `
     expect(perOp['listItems.ts']).toBe(expectedListItems)
 
-    // Mutation file imports ONLY useMutation/UseMutationOptions — no useQuery
+    // Mutation file imports ONLY the mutation hook, helper and option type — no useQuery
     // / queryOptions (selective per-file imports proves the import scoping).
-    const expectedCreateItem = `import { useMutation } from '@tanstack/react-query'
+    const expectedCreateItem = `import { useMutation, mutationOptions } from '@tanstack/react-query'
 import type { UseMutationOptions } from '@tanstack/react-query'
 import { client } from './lib'
 
 export function createItemMutationKey() {
   return ['items', '/items', 'POST'] as const
+}
+
+export function createItemMutationOptions<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+>() {
+  return mutationOptions<
+    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+    TError,
+    {
+      body: Parameters<typeof client.items.post>[0]
+      options?: Parameters<typeof client.items.post>[1]
+    }
+  >({
+    mutationKey: createItemMutationKey(),
+    mutationFn: async ({ body, options }) => {
+      const { data, error } = await client.items.post(body, options)
+      if (error) throw error
+      return data
+    },
+  })
 }
 
 export function useCreateItem<
@@ -1403,15 +1656,7 @@ export function useCreateItem<
       body: Parameters<typeof client.items.post>[0]
       options?: Parameters<typeof client.items.post>[1]
     }
-  >({
-    ...mutationOptions,
-    mutationKey: createItemMutationKey(),
-    mutationFn: async ({ body, options }) => {
-      const { data, error } = await client.items.post(body, options)
-      if (error) throw error
-      return data
-    },
-  })
+  >({ ...mutationOptions, ...createItemMutationOptions<TError>() })
 }
 `
     expect(perOp['createItem.ts']).toBe(expectedCreateItem)
@@ -1473,10 +1718,13 @@ export function useListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useQuery<
@@ -1502,10 +1750,13 @@ export function useSuspenseListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseSuspenseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    UseSuspenseQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useSuspenseQuery<
@@ -1527,6 +1778,60 @@ export function useSuspenseListItems<
 }
 `
       expect(code).toBe(expected)
+    } finally {
+      process.chdir(cwd)
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('preact-query generator', () => {
+  it('imports every hook, helper and type from @tanstack/preact-query, not the React package', async () => {
+    const cwd = process.cwd()
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-preact-'))
+    process.chdir(dir)
+    try {
+      await runGenerator(
+        makeQueryHooks(
+          {
+            openapi: '3.1.0',
+            info: { title: 'T', version: '0' },
+            paths: {
+              '/items': {
+                get: {
+                  operationId: 'listItems',
+                  'x-pagination': true,
+                  responses: { '200': { description: 'ok' } },
+                },
+                post: { operationId: 'createItem', responses: { '201': { description: 'ok' } } },
+              },
+            },
+          },
+          'src/preact.ts',
+          './lib',
+          HOOK_CONFIGS['preact-query'],
+          'client',
+        ),
+      )
+      const code = readFileSync(path.join(dir, 'src/preact.ts'), 'utf8')
+      const header = code.slice(0, code.indexOf("import { client } from './lib'"))
+      const expected = `import { useQuery, useSuspenseQuery, queryOptions } from '@tanstack/preact-query'
+import type { UseQueryOptions, UseSuspenseQueryOptions } from '@tanstack/preact-query'
+import {
+  useInfiniteQuery,
+  useSuspenseInfiniteQuery,
+  infiniteQueryOptions,
+} from '@tanstack/preact-query'
+import type {
+  UseInfiniteQueryOptions,
+  InfiniteData,
+  UseSuspenseInfiniteQueryOptions,
+} from '@tanstack/preact-query'
+import { useMutation, mutationOptions } from '@tanstack/preact-query'
+import type { UseMutationOptions } from '@tanstack/preact-query'
+import type { QueryFunctionContext } from '@tanstack/preact-query'
+`
+      expect(header).toBe(expected)
     } finally {
       process.chdir(cwd)
       rmSync(dir, { recursive: true, force: true })
@@ -1600,12 +1905,18 @@ export function useListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData,
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    ReturnType<typeof listItemsQueryKey>
+  queryOptions?: Omit<
+    Extract<
+      UseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        ReturnType<typeof listItemsQueryKey>
+      >,
+      { queryKey: unknown }
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useQuery({
@@ -1684,12 +1995,24 @@ export function useGetItem<
 >(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: UseQueryOptions<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError,
-    TData,
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    ReturnType<typeof getItemQueryKey>
+  queryOptions?: Omit<
+    Extract<
+      UseQueryOptions<
+        Extract<
+          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+          { error: null }
+        >['data'],
+        TError,
+        TData,
+        Extract<
+          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+          { error: null }
+        >['data'],
+        ReturnType<typeof getItemQueryKey>
+      >,
+      { queryKey: unknown }
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useQuery({
@@ -1708,7 +2031,7 @@ export function useGetItem<
     expect(code).toBe(expected)
   })
 
-  it('GET with x-pagination: also emits Infinite key getter + useInfiniteQuery hook', async () => {
+  it('GET with x-pagination: also emits Infinite key getter + useInfiniteQuery hook taking `pagination.buildInit`', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -1756,12 +2079,18 @@ export function useListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: UseQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData,
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    ReturnType<typeof listItemsQueryKey>
+  queryOptions?: Omit<
+    Extract<
+      UseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        ReturnType<typeof listItemsQueryKey>
+      >,
+      { queryKey: unknown }
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useQuery({
@@ -1792,20 +2121,26 @@ export function useListItemsInfinite<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options: Parameters<typeof client.items.get>[0] | undefined,
-  buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0],
-  queryOptions: UseInfiniteQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData,
-    ReturnType<typeof listItemsInfiniteQueryKey>,
-    TPageParam
+  pagination: { buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0] },
+  queryOptions: Omit<
+    Extract<
+      UseInfiniteQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof listItemsInfiniteQueryKey>,
+        TPageParam
+      >,
+      { queryKey: unknown }
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return useInfiniteQuery({
     ...queryOptions,
     queryKey: listItemsInfiniteQueryKey(options),
     queryFn: async ({ pageParam, signal }: QueryFunctionContext) => {
-      const overlay = buildInit(pageParam)
+      const overlay = pagination.buildInit(pageParam)
       const { data, error } = await client.items.get({
         ...options,
         ...overlay,
@@ -1822,7 +2157,7 @@ export function useListItemsInfinite<
     expect(code).toBe(expected)
   })
 
-  it('POST (body method): emits useMutation hook with `{ body, options? }` variables', async () => {
+  it('POST (body method): emits mutationOptions factory + useMutation hook with `{ body, options? }` variables', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -1832,7 +2167,7 @@ export function useListItemsInfinite<
         },
       },
     })
-    const expected = `import { useMutation } from '@tanstack/vue-query'
+    const expected = `import { useMutation, mutationOptions } from '@tanstack/vue-query'
 import type { UseMutationOptions } from '@tanstack/vue-query'
 import { client } from './lib'
 
@@ -1842,6 +2177,26 @@ export function getItemsKey() {
 
 export function createItemMutationKey() {
   return ['items', '/items', 'POST'] as const
+}
+
+export function createItemMutationOptions<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+>() {
+  return mutationOptions<
+    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+    TError,
+    {
+      body: Parameters<typeof client.items.post>[0]
+      options?: Parameters<typeof client.items.post>[1]
+    }
+  >({
+    mutationKey: createItemMutationKey(),
+    mutationFn: async ({ body, options }) => {
+      const { data, error } = await client.items.post(body, options)
+      if (error) throw error
+      return data
+    },
+  })
 }
 
 export function useCreateItem<
@@ -1856,21 +2211,7 @@ export function useCreateItem<
     }
   >,
 ) {
-  return useMutation({
-    ...mutationOptions,
-    mutationKey: createItemMutationKey(),
-    mutationFn: async ({
-      body,
-      options,
-    }: {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }) => {
-      const { data, error } = await client.items.post(body, options)
-      if (error) throw error
-      return data
-    },
-  })
+  return useMutation({ ...mutationOptions, ...createItemMutationOptions<TError>() })
 }
 `
     expect(code).toBe(expected)
@@ -1951,11 +2292,16 @@ export function createListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: () => UndefinedInitialDataOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData,
-    ReturnType<typeof listItemsQueryKey>
+  queryOptions?: () => Omit<
+    ReturnType<
+      UndefinedInitialDataOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof listItemsQueryKey>
+      >
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return createQuery(() => ({
@@ -2034,11 +2380,19 @@ export function createGetItem<
 >(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: () => UndefinedInitialDataOptions<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError,
-    TData,
-    ReturnType<typeof getItemQueryKey>
+  queryOptions?: () => Omit<
+    ReturnType<
+      UndefinedInitialDataOptions<
+        Extract<
+          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+          { error: null }
+        >['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemQueryKey>
+      >
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return createQuery(() => ({
@@ -2057,7 +2411,7 @@ export function createGetItem<
     expect(code).toBe(expected)
   })
 
-  it('GET with x-pagination: also emits Infinite key getter + createInfiniteQuery hook with accessor wrap', async () => {
+  it('GET with x-pagination: also emits Infinite key getter + infiniteQueryOptions factory + createInfiniteQuery hook (unwrapped accessor options)', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -2073,7 +2427,7 @@ export function createGetItem<
     })
     const expected = `import { createQuery, queryOptions } from '@tanstack/solid-query'
 import type { UndefinedInitialDataOptions } from '@tanstack/solid-query'
-import { createInfiniteQuery } from '@tanstack/solid-query'
+import { createInfiniteQuery, infiniteQueryOptions } from '@tanstack/solid-query'
 import type { UndefinedInitialDataInfiniteOptions, InfiniteData } from '@tanstack/solid-query'
 import type { QueryFunctionContext } from '@tanstack/solid-query'
 import { client } from './lib'
@@ -2105,11 +2459,16 @@ export function createListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: () => UndefinedInitialDataOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData,
-    ReturnType<typeof listItemsQueryKey>
+  queryOptions?: () => Omit<
+    ReturnType<
+      UndefinedInitialDataOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof listItemsQueryKey>
+      >
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return createQuery(() => ({
@@ -2131,41 +2490,32 @@ export function listItemsInfiniteQueryKey(options?: Parameters<typeof client.ite
   return ['items', '/items', 'infinite', keyArgs] as const
 }
 
-export function createListItemsInfinite<
-  TPageParam = unknown,
-  TData = InfiniteData<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TPageParam
-  >,
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
+export function listItemsInfiniteQueryOptions<TPageParam>(
   options: Parameters<typeof client.items.get>[0] | undefined,
-  buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0],
-  initialPageParam: TPageParam,
-  getNextPageParam: (
-    lastPage: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    allPages: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'][],
-    lastPageParam: TPageParam,
-    allPageParams: TPageParam[],
-  ) => TPageParam | undefined | null,
-  queryOptions?: () => Omit<
-    UndefinedInitialDataInfiniteOptions<
+  pagination: {
+    initialPageParam: TPageParam
+    getNextPageParam: (
+      lastPage: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      allPages: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'][],
+      lastPageParam: TPageParam,
+      allPageParams: TPageParam[],
+    ) => TPageParam | undefined | null
+    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+  },
+) {
+  return infiniteQueryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+    InfiniteData<
       Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData,
-      ReturnType<typeof listItemsInfiniteQueryKey>,
       TPageParam
     >,
-    'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
-  >,
-) {
-  return createInfiniteQuery(() => ({
-    ...queryOptions?.(),
-    initialPageParam,
-    getNextPageParam,
+    ReturnType<typeof listItemsInfiniteQueryKey>,
+    TPageParam
+  >({
     queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({ pageParam, signal }: QueryFunctionContext) => {
-      const overlay = buildInit(pageParam)
+    queryFn: async ({ pageParam, signal }) => {
+      const overlay = pagination.buildInit(pageParam)
       const { data, error } = await client.items.get({
         ...options,
         ...overlay,
@@ -2176,13 +2526,70 @@ export function createListItemsInfinite<
       if (error) throw error
       return data
     },
+    initialPageParam: pagination.initialPageParam,
+    getNextPageParam: pagination.getNextPageParam,
+  })
+}
+
+export function createListItemsInfinite<
+  TPageParam = unknown,
+  TData = InfiniteData<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TPageParam
+  >,
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
+  options: Parameters<typeof client.items.get>[0] | undefined,
+  pagination: {
+    initialPageParam: TPageParam
+    getNextPageParam: (
+      lastPage: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      allPages: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'][],
+      lastPageParam: TPageParam,
+      allPageParams: TPageParam[],
+    ) => TPageParam | undefined | null
+    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+  },
+  queryOptions?: () => Omit<
+    ReturnType<
+      UndefinedInitialDataInfiniteOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof listItemsInfiniteQueryKey>,
+        TPageParam
+      >
+    >,
+    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+  >,
+) {
+  return createInfiniteQuery(() => ({
+    ...queryOptions?.(),
+    queryKey: listItemsInfiniteQueryKey(options),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
+      const overlay = pagination.buildInit(pageParam)
+      const { data, error } = await client.items.get({
+        ...options,
+        ...overlay,
+        query: { ...options?.query, ...overlay?.query },
+        headers: { ...options?.headers, ...overlay?.headers },
+        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
+      })
+      if (error) throw error
+      return data
+    },
+    initialPageParam: pagination.initialPageParam,
+    getNextPageParam: pagination.getNextPageParam,
   }))
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('POST (body method): emits createMutation hook with accessor-typed mutationOptions and `{ body, options? }` variables', async () => {
+  it('POST (body method): emits mutationOptions factory + createMutation hook with unwrapped (ReturnType) mutationOptions and `{ body, options? }` variables', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -2192,7 +2599,7 @@ export function createListItemsInfinite<
         },
       },
     })
-    const expected = `import { createMutation } from '@tanstack/solid-query'
+    const expected = `import { createMutation, mutationOptions } from '@tanstack/solid-query'
 import type { CreateMutationOptions } from '@tanstack/solid-query'
 import { client } from './lib'
 
@@ -2204,33 +2611,41 @@ export function createItemMutationKey() {
   return ['items', '/items', 'POST'] as const
 }
 
-export function createCreateItem<
+export function createItemMutationOptions<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
->(
-  mutationOptions?: () => CreateMutationOptions<
+>() {
+  return mutationOptions<
     Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
     TError,
     {
       body: Parameters<typeof client.items.post>[0]
       options?: Parameters<typeof client.items.post>[1]
     }
-  >,
-) {
-  return createMutation(() => ({
-    ...mutationOptions?.(),
+  >({
     mutationKey: createItemMutationKey(),
-    mutationFn: async ({
-      body,
-      options,
-    }: {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }) => {
+    mutationFn: async ({ body, options }) => {
       const { data, error } = await client.items.post(body, options)
       if (error) throw error
       return data
     },
-  }))
+  })
+}
+
+export function createCreateItem<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+>(
+  mutationOptions?: () => ReturnType<
+    CreateMutationOptions<
+      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+      TError,
+      {
+        body: Parameters<typeof client.items.post>[0]
+        options?: Parameters<typeof client.items.post>[1]
+      }
+    >
+  >,
+) {
+  return createMutation(() => ({ ...mutationOptions?.(), ...createItemMutationOptions<TError>() }))
 }
 `
     expect(code).toBe(expected)
@@ -2311,10 +2726,13 @@ export function createListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: CreateQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    CreateQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return createQuery(() => ({
@@ -2393,10 +2811,13 @@ export function createGetItem<
 >(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: CreateQueryOptions<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    CreateQueryOptions<
+      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return createQuery(() => ({
@@ -2415,7 +2836,7 @@ export function createGetItem<
     expect(code).toBe(expected)
   })
 
-  it('GET with x-pagination: also emits Infinite key getter + createInfiniteQuery hook', async () => {
+  it('GET with x-pagination: also emits Infinite key getter + infiniteQueryOptions factory + createInfiniteQuery hook', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -2431,8 +2852,8 @@ export function createGetItem<
     })
     const expected = `import { createQuery, queryOptions } from '@tanstack/svelte-query'
 import type { CreateQueryOptions } from '@tanstack/svelte-query'
-import { createInfiniteQuery } from '@tanstack/svelte-query'
-import type { CreateInfiniteQueryOptions } from '@tanstack/svelte-query'
+import { createInfiniteQuery, infiniteQueryOptions } from '@tanstack/svelte-query'
+import type { CreateInfiniteQueryOptions, InfiniteData } from '@tanstack/svelte-query'
 import type { QueryFunctionContext } from '@tanstack/svelte-query'
 import { client } from './lib'
 
@@ -2463,10 +2884,13 @@ export function createListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: CreateQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    CreateQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return createQuery(() => ({
@@ -2488,38 +2912,32 @@ export function listItemsInfiniteQueryKey(options?: Parameters<typeof client.ite
   return ['items', '/items', 'infinite', keyArgs] as const
 }
 
-export function createListItemsInfinite<
-  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
-  TPageParam = unknown,
->(
+export function listItemsInfiniteQueryOptions<TPageParam>(
   options: Parameters<typeof client.items.get>[0] | undefined,
-  buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0],
-  initialPageParam: TPageParam,
-  getNextPageParam: (
-    lastPage: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    allPages: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'][],
-    lastPageParam: TPageParam,
-    allPageParams: TPageParam[],
-  ) => TPageParam | undefined | null,
-  queryOptions?: Omit<
-    CreateInfiniteQueryOptions<
+  pagination: {
+    initialPageParam: TPageParam
+    getNextPageParam: (
+      lastPage: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      allPages: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'][],
+      lastPageParam: TPageParam,
+      allPageParams: TPageParam[],
+    ) => TPageParam | undefined | null
+    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+  },
+) {
+  return infiniteQueryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+    InfiniteData<
       Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData,
-      ReturnType<typeof listItemsInfiniteQueryKey>,
       TPageParam
     >,
-    'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
-  >,
-) {
-  return createInfiniteQuery(() => ({
-    ...queryOptions,
-    initialPageParam,
-    getNextPageParam,
+    ReturnType<typeof listItemsInfiniteQueryKey>,
+    TPageParam
+  >({
     queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({ pageParam, signal }: QueryFunctionContext) => {
-      const overlay = buildInit(pageParam)
+    queryFn: async ({ pageParam, signal }) => {
+      const overlay = pagination.buildInit(pageParam)
       const { data, error } = await client.items.get({
         ...options,
         ...overlay,
@@ -2530,13 +2948,68 @@ export function createListItemsInfinite<
       if (error) throw error
       return data
     },
+    initialPageParam: pagination.initialPageParam,
+    getNextPageParam: pagination.getNextPageParam,
+  })
+}
+
+export function createListItemsInfinite<
+  TPageParam = unknown,
+  TData = InfiniteData<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TPageParam
+  >,
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
+  options: Parameters<typeof client.items.get>[0] | undefined,
+  pagination: {
+    initialPageParam: TPageParam
+    getNextPageParam: (
+      lastPage: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      allPages: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'][],
+      lastPageParam: TPageParam,
+      allPageParams: TPageParam[],
+    ) => TPageParam | undefined | null
+    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+  },
+  queryOptions?: Omit<
+    CreateInfiniteQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData,
+      ReturnType<typeof listItemsInfiniteQueryKey>,
+      TPageParam
+    >,
+    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+  >,
+) {
+  return createInfiniteQuery(() => ({
+    ...queryOptions,
+    queryKey: listItemsInfiniteQueryKey(options),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
+      const overlay = pagination.buildInit(pageParam)
+      const { data, error } = await client.items.get({
+        ...options,
+        ...overlay,
+        query: { ...options?.query, ...overlay?.query },
+        headers: { ...options?.headers, ...overlay?.headers },
+        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
+      })
+      if (error) throw error
+      return data
+    },
+    initialPageParam: pagination.initialPageParam,
+    getNextPageParam: pagination.getNextPageParam,
   }))
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('POST (body method): emits createMutation hook with `{ body, options? }` variables', async () => {
+  it('POST (body method): emits mutationOptions factory + createMutation hook with `{ body, options? }` variables', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -2546,7 +3019,7 @@ export function createListItemsInfinite<
         },
       },
     })
-    const expected = `import { createMutation } from '@tanstack/svelte-query'
+    const expected = `import { createMutation, mutationOptions } from '@tanstack/svelte-query'
 import type { CreateMutationOptions } from '@tanstack/svelte-query'
 import { client } from './lib'
 
@@ -2556,6 +3029,26 @@ export function getItemsKey() {
 
 export function createItemMutationKey() {
   return ['items', '/items', 'POST'] as const
+}
+
+export function createItemMutationOptions<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+>() {
+  return mutationOptions<
+    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+    TError,
+    {
+      body: Parameters<typeof client.items.post>[0]
+      options?: Parameters<typeof client.items.post>[1]
+    }
+  >({
+    mutationKey: createItemMutationKey(),
+    mutationFn: async ({ body, options }) => {
+      const { data, error } = await client.items.post(body, options)
+      if (error) throw error
+      return data
+    },
+  })
 }
 
 export function createCreateItem<
@@ -2570,21 +3063,7 @@ export function createCreateItem<
     }
   >,
 ) {
-  return createMutation(() => ({
-    ...mutationOptions,
-    mutationKey: createItemMutationKey(),
-    mutationFn: async ({
-      body,
-      options,
-    }: {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }) => {
-      const { data, error } = await client.items.post(body, options)
-      if (error) throw error
-      return data
-    },
-  }))
+  return createMutation(() => ({ ...mutationOptions, ...createItemMutationOptions<TError>() }))
 }
 `
     expect(code).toBe(expected)
@@ -2665,10 +3144,13 @@ export function injectListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: CreateQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    CreateQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return injectQuery(() => ({
@@ -2747,10 +3229,13 @@ export function injectGetItem<
 >(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: CreateQueryOptions<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    CreateQueryOptions<
+      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return injectQuery(() => ({
@@ -2769,7 +3254,7 @@ export function injectGetItem<
     expect(code).toBe(expected)
   })
 
-  it('GET with x-pagination: also emits Infinite key getter + injectInfiniteQuery hook', async () => {
+  it('GET with x-pagination: also emits Infinite key getter + infiniteQueryOptions factory + injectInfiniteQuery hook', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -2785,8 +3270,8 @@ export function injectGetItem<
     })
     const expected = `import { injectQuery, queryOptions } from '@tanstack/angular-query-experimental'
 import type { CreateQueryOptions } from '@tanstack/angular-query-experimental'
-import { injectInfiniteQuery } from '@tanstack/angular-query-experimental'
-import type { CreateInfiniteQueryOptions } from '@tanstack/angular-query-experimental'
+import { injectInfiniteQuery, infiniteQueryOptions } from '@tanstack/angular-query-experimental'
+import type { CreateInfiniteQueryOptions, InfiniteData } from '@tanstack/angular-query-experimental'
 import type { QueryFunctionContext } from '@tanstack/angular-query-experimental'
 import { client } from './lib'
 
@@ -2817,10 +3302,13 @@ export function injectListItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
   options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: CreateQueryOptions<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
+  queryOptions?: Omit<
+    CreateQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData
+    >,
+    'queryKey' | 'queryFn'
   >,
 ) {
   return injectQuery(() => ({
@@ -2842,38 +3330,32 @@ export function listItemsInfiniteQueryKey(options?: Parameters<typeof client.ite
   return ['items', '/items', 'infinite', keyArgs] as const
 }
 
-export function injectListItemsInfinite<
-  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
-  TPageParam = unknown,
->(
+export function listItemsInfiniteQueryOptions<TPageParam>(
   options: Parameters<typeof client.items.get>[0] | undefined,
-  buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0],
-  initialPageParam: TPageParam,
-  getNextPageParam: (
-    lastPage: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    allPages: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'][],
-    lastPageParam: TPageParam,
-    allPageParams: TPageParam[],
-  ) => TPageParam | undefined | null,
-  queryOptions?: Omit<
-    CreateInfiniteQueryOptions<
+  pagination: {
+    initialPageParam: TPageParam
+    getNextPageParam: (
+      lastPage: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      allPages: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'][],
+      lastPageParam: TPageParam,
+      allPageParams: TPageParam[],
+    ) => TPageParam | undefined | null
+    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+  },
+) {
+  return infiniteQueryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+    InfiniteData<
       Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData,
-      ReturnType<typeof listItemsInfiniteQueryKey>,
       TPageParam
     >,
-    'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
-  >,
-) {
-  return injectInfiniteQuery(() => ({
-    ...queryOptions,
-    initialPageParam,
-    getNextPageParam,
+    ReturnType<typeof listItemsInfiniteQueryKey>,
+    TPageParam
+  >({
     queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({ pageParam, signal }: QueryFunctionContext) => {
-      const overlay = buildInit(pageParam)
+    queryFn: async ({ pageParam, signal }) => {
+      const overlay = pagination.buildInit(pageParam)
       const { data, error } = await client.items.get({
         ...options,
         ...overlay,
@@ -2884,13 +3366,68 @@ export function injectListItemsInfinite<
       if (error) throw error
       return data
     },
+    initialPageParam: pagination.initialPageParam,
+    getNextPageParam: pagination.getNextPageParam,
+  })
+}
+
+export function injectListItemsInfinite<
+  TPageParam = unknown,
+  TData = InfiniteData<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TPageParam
+  >,
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
+  options: Parameters<typeof client.items.get>[0] | undefined,
+  pagination: {
+    initialPageParam: TPageParam
+    getNextPageParam: (
+      lastPage: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      allPages: Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'][],
+      lastPageParam: TPageParam,
+      allPageParams: TPageParam[],
+    ) => TPageParam | undefined | null
+    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+  },
+  queryOptions?: Omit<
+    CreateInfiniteQueryOptions<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError,
+      TData,
+      ReturnType<typeof listItemsInfiniteQueryKey>,
+      TPageParam
+    >,
+    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+  >,
+) {
+  return injectInfiniteQuery(() => ({
+    ...queryOptions,
+    queryKey: listItemsInfiniteQueryKey(options),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
+      const overlay = pagination.buildInit(pageParam)
+      const { data, error } = await client.items.get({
+        ...options,
+        ...overlay,
+        query: { ...options?.query, ...overlay?.query },
+        headers: { ...options?.headers, ...overlay?.headers },
+        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
+      })
+      if (error) throw error
+      return data
+    },
+    initialPageParam: pagination.initialPageParam,
+    getNextPageParam: pagination.getNextPageParam,
   }))
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('POST (body method): emits injectMutation hook with `{ body, options? }` variables', async () => {
+  it('POST (body method): emits mutationOptions factory + injectMutation hook with `{ body, options? }` variables', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -2900,7 +3437,7 @@ export function injectListItemsInfinite<
         },
       },
     })
-    const expected = `import { injectMutation } from '@tanstack/angular-query-experimental'
+    const expected = `import { injectMutation, mutationOptions } from '@tanstack/angular-query-experimental'
 import type { CreateMutationOptions } from '@tanstack/angular-query-experimental'
 import { client } from './lib'
 
@@ -2910,6 +3447,26 @@ export function getItemsKey() {
 
 export function createItemMutationKey() {
   return ['items', '/items', 'POST'] as const
+}
+
+export function createItemMutationOptions<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+>() {
+  return mutationOptions<
+    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+    TError,
+    {
+      body: Parameters<typeof client.items.post>[0]
+      options?: Parameters<typeof client.items.post>[1]
+    }
+  >({
+    mutationKey: createItemMutationKey(),
+    mutationFn: async ({ body, options }) => {
+      const { data, error } = await client.items.post(body, options)
+      if (error) throw error
+      return data
+    },
+  })
 }
 
 export function injectCreateItem<
@@ -2924,21 +3481,7 @@ export function injectCreateItem<
     }
   >,
 ) {
-  return injectMutation(() => ({
-    ...mutationOptions,
-    mutationKey: createItemMutationKey(),
-    mutationFn: async ({
-      body,
-      options,
-    }: {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }) => {
-      const { data, error } = await client.items.post(body, options)
-      if (error) throw error
-      return data
-    },
-  }))
+  return injectMutation(() => ({ ...mutationOptions, ...createItemMutationOptions<TError>() }))
 }
 `
     expect(code).toBe(expected)

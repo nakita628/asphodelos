@@ -8,6 +8,7 @@ import {
   getUserQueryKey,
   useCreateUser,
   useGetUser,
+  useImmutableListUsers,
   useListItems,
   useListUsers,
 } from '../__generated__/swr/hooks'
@@ -63,6 +64,41 @@ describe('generated useSWR hooks', () => {
       expect(result.current.error).toBeDefined()
     })
     expect(result.current.data).toBeUndefined()
+  })
+})
+
+describe('generated useSWRImmutable hooks', () => {
+  it('resolves with the parsed body, like the plain hook', async () => {
+    const { result } = renderHook(() => useImmutableListUsers(), { wrapper: makeWrapper() })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+    expect(result.current.data).toStrictEqual([
+      { id: '1', name: 'Alice' },
+      { id: '2', name: 'Bob' },
+    ])
+  })
+
+  it('a second mount is served from the cache without revalidating', async () => {
+    const cache = new Map()
+    const first = renderHook(() => useImmutableListUsers(), { wrapper: makeWrapper(cache) })
+    await waitFor(() => {
+      expect(first.result.current.data).toBeDefined()
+    })
+    const after = requestLog.length
+
+    // The plain hook revalidates on mount (deduping is off in this suite); the immutable one
+    // must not, or it is just useSWR under another name.
+    const second = renderHook(() => useImmutableListUsers(), { wrapper: makeWrapper(cache) })
+    expect(second.result.current.data).toStrictEqual(first.result.current.data)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(requestLog.length).toBe(after)
+
+    renderHook(() => useListUsers(), { wrapper: makeWrapper(cache) })
+    await waitFor(() => {
+      expect(requestLog.length).toBe(after + 1)
+    })
   })
 })
 

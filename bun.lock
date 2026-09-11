@@ -44,6 +44,7 @@
         "@elysiajs/eden": "^1.4.1",
         "@happy-dom/global-registrator": "^20.11.12",
         "@tanstack/angular-query-experimental": "^5.102.8",
+        "@tanstack/preact-query": "^5.102.8",
         "@tanstack/react-query": "^5.102.8",
         "@tanstack/solid-query": "^5.102.8",
         "@tanstack/svelte-query": "^6.1.48",
@@ -54,6 +55,7 @@
         "@types/react-dom": "^19.2.5",
         "asphodelos": "workspace:*",
         "elysia": "^1.4.28",
+        "preact": "^10.29.8",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
         "swr": "^2.5.1",
@@ -318,6 +320,8 @@
     "@tanstack/angular-query-experimental": ["@tanstack/angular-query-experimental@5.102.8", "", { "dependencies": { "@tanstack/query-core": "5.102.8" }, "optionalDependencies": { "@tanstack/query-devtools": "5.102.8" }, "peerDependencies": { "@angular/common": ">=16.0.0", "@angular/core": ">=16.0.0" } }, "sha512-ApGklLPiBI5CU1Ard+c1tIU1uglIyQ0Jki6E+JOYtUU0zfRY2l4GTyTuPW+BBr1B3+Ov5GZa0XaQXqKJjOy0nw=="],
 
     "@tanstack/match-sorter-utils": ["@tanstack/match-sorter-utils@8.19.4", "", { "dependencies": { "remove-accents": "0.5.0" } }, "sha512-Wo1iKt2b9OT7d+YGhvEPD3DXvPv2etTusIMhMUoG7fbhmxcXCtIjJDEygy91Y2JFlwGyjqiBPRozme7UD8hoqg=="],
+
+    "@tanstack/preact-query": ["@tanstack/preact-query@5.102.8", "", { "dependencies": { "@tanstack/query-core": "5.102.8" }, "peerDependencies": { "preact": "^10.0.0" } }, "sha512-JH6sNnuc34j76cBKMS6ilwXHLO1W6svKh8Egk6WgYi6hCdYiM5Svq6glOaWt5aYPf+evBiGuLHUZLcCO7ORX5Q=="],
 
     "@tanstack/query-core": ["@tanstack/query-core@5.102.8", "", {}, "sha512-ZNjkJ33CqvPNec/6lZBnHqLc3EVGPZ9ySLhYahU9TcuRFdmwXewuj0c4hwSWcGHqEUwcSrKeZ+oGcvPBqXcQcg=="],
 
@@ -592,6 +596,8 @@
     "picomatch": ["picomatch@4.0.7", "", {}, "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA=="],
 
     "postcss": ["postcss@8.5.28", "", { "dependencies": { "nanoid": "^3.3.18", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A=="],
+
+    "preact": ["preact@10.29.8", "", { "peerDependencies": { "preact-render-to-string": ">=5" }, "optionalPeers": ["preact-render-to-string"] }, "sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q=="],
 
     "prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
 

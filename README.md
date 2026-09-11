@@ -237,6 +237,40 @@ paths:
       x-pagination: true
 ```
 
+The flag cannot say where paging starts, how to read the next cursor, or which parameter carries
+it, so the TanStack-family hooks take those as a `pagination` argument. TanStack Query, Preact
+Query, Solid Query, Svelte Query and Angular Query all emit a `listItemsInfiniteQueryOptions`
+factory (built on `infiniteQueryOptions`) alongside hooks with the same signature:
+
+```ts
+const items = useListItemsInfinite(
+  undefined, // the request options, as for `useListItems`
+  {
+    initialPageParam: 0, // binds TPageParam — `data.pageParams` is `number[]`
+    getNextPageParam: (lastPage) => lastPage.nextPage,
+    buildInit: (pageParam) => ({ query: { page: String(pageParam) } }), // pageParam → request
+  },
+  { staleTime: 60_000 }, // optional extra options (Solid: a thunk returning them)
+)
+items.data?.pages // InfiniteData — one entry per fetched page
+```
+
+A hook's extra options are the library's own options type minus what the hook supplies itself —
+`queryKey` and `queryFn`, plus the page-param functions for infinite hooks — so
+`useListUsers(undefined, { enabled: false })` needs no key of its own.
+
+Vue Query types `initialPageParam` as `MaybeRefDeep<TPageParam>`, which a generic page param can
+never satisfy, so it has no factory: `pagination` carries only `buildInit`, and `initialPageParam`
+/ `getNextPageParam` go in the (required) third argument. SWR's `useListItemsInfinite` takes
+`buildInit(pageIndex, previousPage)` and stops when it returns `null`.
+
+### Mutation options and immutable SWR hooks
+
+Every TanStack-family mutation also gets a `createUserMutationOptions()` factory built on
+`mutationOptions` — reusable for `queryClient.setMutationDefaults` — which the `useCreateUser`
+hook spreads. Every SWR query also gets a `useImmutable<Operation>` hook on `useSWRImmutable`:
+same key and fetcher, fetched once and never revalidated.
+
 ## Test Generation
 
 Generate [`bun:test`](https://elysiajs.com/patterns/unit-test) tests straight from the spec. The app entry is emitted as `export const app = new Elysia(...)...` with `.listen()` guarded by `import.meta.main`, so tests **import the real assembled app** and call `app.handle(new Request(...))` against its actual routing — importing the app never starts a server. Each operation gets a happy-path test asserting the spec's success status (`expect(res.status).toBe(200)`), plus a `401` test when it is secured and a `404` test when the spec declares a `404`. Request bodies and parameters are mocked with [`@faker-js/faker`](https://fakerjs.dev/).
