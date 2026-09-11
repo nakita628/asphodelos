@@ -3,7 +3,10 @@
   "include": [
     "../../__generated__/svelte-query/hooks.ts",
     "../../hosts/users-app.ts",
-    "../../hosts/users-client.ts"
+    "../../hosts/users-client.ts",
+    "../../types/svelte-query.ts",
+    "../../types/infinite.ts",
+    "../../types/assert.ts"
   ],
   "exclude": ["../../__generated__/svelte-query/app/**"]
 }

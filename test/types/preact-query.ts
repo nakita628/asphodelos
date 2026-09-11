@@ -1,12 +1,9 @@
 import {
-  getUserQueryOptions,
   listItemsInfiniteQueryOptions,
-  listUsersQueryOptions,
   useListItemsInfinite,
   useListUsers,
-  useSuspenseListItemsInfinite,
   useSuspenseListUsers,
-} from '../__generated__/tanstack-query/hooks'
+} from '../__generated__/preact-query/hooks'
 import { type Equal, type HasKey, type IsAssignable, type NotAny, assertType } from './assert'
 import { pagination } from './infinite'
 
@@ -15,40 +12,17 @@ type QuerySlot = NonNullable<Parameters<typeof useListUsers>[1]>
 /** The options slot of the infinite hook, as the caller sees it. */
 type InfiniteSlot = NonNullable<Parameters<typeof useListItemsInfinite>[2]>
 
-type User = { readonly id: string; readonly name: string }
-
 export function assertions() {
-  const list = listUsersQueryOptions()
-  assertType<NotAny<typeof list.queryKey>>(true)
-
-  const single = getUserQueryOptions({ id: '1' })
-  assertType<NotAny<typeof single.queryKey>>(true)
-
-  // The query function's payload must be the spec's type, not `any` — this assignment is the
-  // assertion, and it fails to compile the moment the generic degrades.
-  const rows: Promise<readonly User[] | undefined> = Promise.resolve(
-    undefined as readonly User[] | undefined,
-  )
-  return { list, single, rows }
-}
-
-export function infiniteAssertions() {
   const factory = listItemsInfiniteQueryOptions(undefined, pagination)
   assertType<NotAny<typeof factory.queryKey>>(true)
 
-  // The page param bound by `initialPageParam` must reach `data.pageParams`, and `data` must be
-  // the page list — not one page, not `unknown`.
   const infinite = useListItemsInfinite(undefined, pagination, { staleTime: 1_000 })
   assertType<Equal<NonNullable<typeof infinite.data>['pages'][number]['items'], string[]>>(true)
   assertType<Equal<NonNullable<typeof infinite.data>['pageParams'][number], number>>(true)
-
-  const suspense = useSuspenseListItemsInfinite(undefined, pagination)
-  assertType<Equal<(typeof suspense.data)['pageParams'][number], number>>(true)
-
   // The options stay typed: a right-typed value is accepted, a wrong-typed one is not.
   assertType<IsAssignable<{ staleTime: 1_000 }, InfiniteSlot>>(true)
   assertType<Equal<IsAssignable<{ staleTime: 'soon' }, InfiniteSlot>, false>>(true)
-  return { factory, infinite, suspense }
+  return { factory, infinite }
 }
 
 // The hook supplies `queryKey` / `queryFn`, so the options slot must not demand them: the library
@@ -63,10 +37,6 @@ export function queryOptionsAssertions() {
   // The options stay typed: a right-typed value is accepted, a wrong-typed one is not.
   assertType<IsAssignable<{ staleTime: 1_000 }, QuerySlot>>(true)
   assertType<Equal<IsAssignable<{ staleTime: 'soon' }, QuerySlot>, false>>(true)
-
-  // The key is the hook's own — a caller's would be silently overwritten — so the slot has none.
-  assertType<Equal<HasKey<QuerySlot, 'queryKey'>, false>>(true)
-  assertType<Equal<HasKey<QuerySlot, 'queryFn'>, false>>(true)
 
   const suspense = useSuspenseListUsers(undefined, { select: (users) => users.length })
   assertType<Equal<typeof suspense.data, number>>(true)

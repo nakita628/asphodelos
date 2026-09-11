@@ -3,7 +3,10 @@
   "include": [
     "../../__generated__/solid-query/hooks.ts",
     "../../hosts/users-app.ts",
-    "../../hosts/users-client.ts"
+    "../../hosts/users-client.ts",
+    "../../types/solid-query.ts",
+    "../../types/infinite.ts",
+    "../../types/assert.ts"
   ],
   "exclude": ["../../__generated__/solid-query/app/**"]
 }
