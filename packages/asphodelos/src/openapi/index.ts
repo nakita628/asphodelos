@@ -152,7 +152,7 @@ type OAuthFlow = {
   readonly deviceAuthorization?: OAuthFlowDetail
 }
 
-export type OpenAPIPaths = {
+type OpenAPIPaths = {
   readonly [k: string]: PathItem
 }
 
@@ -166,9 +166,9 @@ export type Type =
   | 'object'
   | 'null'
 
-export type Format = FormatString | FormatNumber
+type Format = FormatString | FormatNumber
 
-export type FormatString =
+type FormatString =
   | 'email'
   | 'uuid'
   | 'uuidv4'
@@ -198,7 +198,7 @@ export type FormatString =
   | 'toUpperCase'
   | 'trim'
 
-export type FormatNumber =
+type FormatNumber =
   | 'int32'
   | 'int64'
   | 'bigint'
@@ -275,7 +275,7 @@ export type Reference = {
   readonly description?: string
 }
 
-export type Encoding = {
+type Encoding = {
   readonly contentType?: string
   readonly headers?: {
     readonly [k: string]: Header | Reference
@@ -546,6 +546,6 @@ export type Media = {
   readonly itemEncoding?: Encoding
 } & VendorExtensions
 
-export type Callbacks = {
+type Callbacks = {
   readonly [k: string]: PathItem
 }
