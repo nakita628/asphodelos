@@ -13,7 +13,9 @@ written and nothing more. This workspace closes that gap on three axes:
    generic that degrades to `any` still works at runtime, so no runtime test can see it.
 
 It also drives the **packaged** CLI from `dist`, so a packaging or `exports` regression fails
-here rather than in someone's project.
+here rather than in someone's project — and the packaged Vite plugin inside a real Vite dev server
+(`runtime/vite-plugin.test.ts`): it generates on start, regenerates on a document edit, and reloads
+an edited config.
 
 ## Layout
 
@@ -21,7 +23,7 @@ here rather than in someone's project.
 cases/<name>/     one asphodelos.config.ts + tsconfig.json per client library
 specs/            the OpenAPI documents the cases generate from
 hosts/            the Elysia app and Eden client the generated hooks talk to
-runtime/          tests that execute the generated hooks
+runtime/          tests that execute the generated hooks, and the Vite plugin in a dev server
 types/            compile-time assertions about the generics
 scripts/          generate.ts, typecheck.ts, pretest.ts
 __generated__/    output; gitignored, refreshed before every run
