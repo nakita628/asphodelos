@@ -4,6 +4,3 @@ coverage
 .DS_Store
 tmp-*
 test/__generated__
-# Copied in by the prepack script so the npm tarball carries them; the root files are the originals.
-packages/asphodelos/README.md
-packages/asphodelos/LICENSE
