@@ -12,35 +12,32 @@ export class OpenAPIError extends Data.TaggedError('OpenAPIError')<{
   readonly message: string
 }> {}
 
-/** What `SwaggerParser.bundle` accepts: a path, or an already-parsed document. */
-type BundleInput = Parameters<typeof SwaggerParser.bundle>[0]
-
-/** Compiles a TypeSpec entry point into the plain document `SwaggerParser` expects. */
-async function readTypeSpec(input: string): Promise<BundleInput> {
-  const program = await compile(NodeHost, path.resolve(input), { noEmit: true })
-  if (program.diagnostics.length > 0) {
-    throw new Error(
-      `TypeSpec compile failed:\n${program.diagnostics.map((d) => d.message).join('\n')}`,
-    )
-  }
-  const [record] = await getOpenAPI3(program)
-  const tsp = record && ('document' in record ? record.document : record.versions[0]?.document)
-  // Not a clone: the round-trip is what strips `undefined` and non-JSON values from the
-  // TypeSpec document, which is what SwaggerParser expects — structuredClone preserves both.
-  // oxlint-disable-next-line unicorn/prefer-structured-clone
-  return JSON.parse(JSON.stringify(tsp)) as BundleInput
-}
-
 /** Parses `input` into an OpenAPI document. */
 export function parseOpenAPI(input: string) {
   return Effect.tryPromise({
-    try: async () =>
-      (await SwaggerParser.bundle(
-        input.endsWith('.tsp') ? await readTypeSpec(input) : input,
-      )) as OpenAPI,
+    try: () => readOpenAPI(input),
     catch: (error) =>
       new OpenAPIError({ message: error instanceof Error ? error.message : String(error) }),
   })
+}
+
+async function readOpenAPI(input: string): Promise<OpenAPI> {
+  if (input.endsWith('.tsp')) {
+    const program = await compile(NodeHost, path.resolve(input), { noEmit: true })
+    if (program.diagnostics.length > 0) {
+      throw new Error(
+        `TypeSpec compile failed:\n${program.diagnostics.map((d) => d.message).join('\n')}`,
+      )
+    }
+    const [record] = await getOpenAPI3(program)
+    const document =
+      record && ('document' in record ? record.document : record.versions[0]?.document)
+    if (!document) throw new Error(`TypeSpec emitted no OpenAPI document: ${input}`)
+    // The emitter returns a self-contained document (every `$ref` is `#/...`), so there is
+    // nothing for `bundle()` to resolve here.
+    return document as OpenAPI
+  }
+  return (await SwaggerParser.bundle(input)) as OpenAPI
 }
 
 type BaseOpenAPI = Awaited<ReturnType<typeof SwaggerParser.bundle>>
