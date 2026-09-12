@@ -150,7 +150,7 @@ describe('mergeSource — edge cases', () => {
 
 describe('mergeSource — type aliases & interfaces', () => {
   // Type aliases used to fall through `statementKey` (returning null)
-  // and end up duplicated on every regen. The `type:Name` keyer fixed it.
+  // and end up duplicated on every regeneration. Keying them as `type:Name` fixed it.
   it('dedupes `type X = ...` shared by both files (existing wins)', () => {
     expect(mergeSource(`type App = { v: 1 }\n`, `type App = { v: 2 }\n`)).toBe(
       `\n\ntype App = { v: 1 }\n`,
@@ -339,7 +339,7 @@ describe('mergeSource — async / class methods / arrow', () => {
 
 describe('mergeSource — exhaustive idempotence', () => {
   // Running the merger on its own output should be a fixed point.
-  // Any drift between run N and run N+1 means a regen would diverge
+  // Any drift between run N and run N+1 means a regeneration would diverge
   // over time — the most insidious kind of bug because it'd show up
   // as "this file keeps growing" months down the line.
   it('is a fixed point when applied to its own output', () => {
@@ -410,7 +410,7 @@ export type App = typeof app
 })
 
 describe('mergeSource — side-effect statement (expr:*) contract', () => {
-  it('respects user deletion of a top-level console.log on regen', () => {
+  it('respects user deletion of a top-level console.log on regeneration', () => {
     const existing = `import { Elysia } from 'elysia'
 
 const app = new Elysia().listen(3000)
@@ -579,7 +579,7 @@ console.log(\`hello\`)
     )
   })
 
-  it('keeps unkeyed (null-key) statements like top-level if blocks verbatim from existing', () => {
+  it('keeps statements without a key (null key), like top-level if blocks, verbatim from existing', () => {
     const existing = `import { Elysia } from 'elysia'
 
 const app = new Elysia().listen(3000)

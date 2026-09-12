@@ -123,7 +123,7 @@ describe('commonOpts', () => {
           'x-if-message': 'zd',
           'x-then-message': 'ze',
           'x-else-message': 'zf',
-          // Combinators
+          // Composition
           'x-allOf-message': 'aa',
           'x-anyOf-message': 'ab',
           'x-oneOf-message': 'ac',

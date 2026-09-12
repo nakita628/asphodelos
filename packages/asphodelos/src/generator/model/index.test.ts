@@ -13,7 +13,7 @@ describe('modelFile', () => {
     )
   })
 
-  it('inlines per-op schemas inside the Model literal under their original keys', () => {
+  it('writes per-op schemas inline inside the Model literal under their original keys', () => {
     const out = modelFile('items', [
       {
         name: 'listItemsQuery',

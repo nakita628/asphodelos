@@ -511,7 +511,7 @@ if (import.meta.main) {
     }
   })
 
-  it('inlines schemas directly inside the Model object literal (no separate consts)', async () => {
+  it('writes schemas inline inside the Model object literal (no separate consts)', async () => {
     const cwd = process.cwd()
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-model-'))
     process.chdir(dir)

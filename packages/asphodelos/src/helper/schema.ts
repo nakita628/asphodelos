@@ -219,7 +219,7 @@ export function sccSchemas(
   const lowlink = new Map<string, number>()
   const onStack = new Set<string>()
   const stack: string[] = []
-  const sccs: { name: string; schema: Schema }[][] = []
+  const groups: { name: string; schema: Schema }[][] = []
   const counter = { value: 0 }
   const strongconnect = (v: string) => {
     index.set(v, counter.value)
@@ -245,13 +245,13 @@ export function sccSchemas(
         if (def) group.push(def)
         if (w === v) break
       }
-      sccs.push(group)
+      groups.push(group)
     }
   }
   for (const { name } of schemas) {
     if (!index.has(name)) strongconnect(name)
   }
-  return sccs
+  return groups
 }
 
 const REF_SUFFIX: { readonly [k: string]: string } = {

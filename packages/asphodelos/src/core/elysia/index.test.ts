@@ -51,7 +51,7 @@ const TAGLESS_OPENAPI = {
   },
 } as const
 
-describe('elysia — merges user edits into src/index.ts on regen', () => {
+describe('elysia — merges user edits into src/index.ts on regeneration', () => {
   const cwdBefore = process.cwd()
   let workdir: string
   let openapiPath: string
@@ -137,7 +137,7 @@ export type App = typeof app
     expect(run3).toBe(run1)
   })
 
-  it('survives five consecutive regen cycles without drift', async () => {
+  it('survives five consecutive regenerations without drift', async () => {
     const parsed = await runGenerator(parseOpenAPI(openapiPath))
     const srcDir = path.join(workdir, 'src')
     await mkdir(srcDir, { recursive: true })
@@ -186,8 +186,8 @@ export type App = typeof app
     await writeFile(appPath, trimmed, 'utf8')
 
     await runGenerator(elysia(parsed))
-    const afterRegen = await readFile(appPath, 'utf8')
-    expect(afterRegen.includes('console.log')).toBe(false)
-    expect(afterRegen.includes('if (import.meta.main)')).toBe(true)
+    const afterRegeneration = await readFile(appPath, 'utf8')
+    expect(afterRegeneration.includes('console.log')).toBe(false)
+    expect(afterRegeneration.includes('if (import.meta.main)')).toBe(true)
   })
 })

@@ -134,7 +134,7 @@ describe('typebox', () => {
 // equivalent Elysia `t.X` schema fires the ValueErrorType code that the
 // helper's `branches()` routes that extension to (or, for transform-based
 // extensions, that the equivalent transform Decode body throws).
-// Helpers are intentionally NOT abstracted: each test inlines its own
+// Helpers are intentionally NOT abstracted: each test writes out its own
 // `t.X(...)` so the runtime intent stays visible at the call site.
 // ─────────────────────────────────────────────────────────────────────
 

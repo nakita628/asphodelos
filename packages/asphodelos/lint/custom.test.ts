@@ -187,7 +187,7 @@ check('no-effect-fn', {
 })
 
 check('no-effect-flatmap', {
-  // Only the two sequencing combinators are banned; the rest stay available.
+  // Only the two sequencing operators are banned; the rest stay available.
   valid: [
     'export const a = Effect.map(effect, toValue)',
     'export const a = Effect.mapError(effect, toError)',

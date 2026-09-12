@@ -15,16 +15,16 @@ describe('resolveOperationId', () => {
     expect(resolveOperationId({ operationId: 'getThing' }, 'get', '/things')).toBe('getThing')
   })
 
-  it('synthesises an id when operationId is absent', () => {
+  it('synthesizes an id when operationId is absent', () => {
     expect(resolveOperationId({}, 'get', '/things')).toBe('getThings')
   })
 
-  it('synthesises an id when a YAML keyword parsed operationId to a non-string', () => {
+  it('synthesizes an id when a YAML keyword parsed operationId to a non-string', () => {
     expect(resolveOperationId({ operationId: true }, 'get', '/things')).toBe('getThings')
     expect(resolveOperationId({ operationId: 0 }, 'post', '/things')).toBe('postThings')
   })
 
-  it('synthesises an id when operationId is an empty string', () => {
+  it('synthesizes an id when operationId is an empty string', () => {
     expect(resolveOperationId({ operationId: '' }, 'get', '/things')).toBe('getThings')
   })
 })
@@ -203,7 +203,7 @@ describe('makeRoute', () => {
     }
   })
 
-  it('synthesises inline schema names as <operationId><Kind>', () => {
+  it('synthesizes inline schema names as <operationId><Kind>', () => {
     const operation: Operation = {
       operationId: 'getThing',
       parameters: [

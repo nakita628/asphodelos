@@ -13,7 +13,7 @@ import {
 } from './index.js'
 
 describe('capitalize', () => {
-  it('uppercases the first character', () => {
+  it('turns the first character to upper case', () => {
     expect(capitalize('todo')).toBe('Todo')
   })
 

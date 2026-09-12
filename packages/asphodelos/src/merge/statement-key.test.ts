@@ -47,13 +47,13 @@ describe('statementKey', () => {
     expect(a).not.toBe(b)
   })
 
-  it('keys if-statements by their condition text (stable across regen)', () => {
+  it('keys if-statements by their condition text (stable across regeneration)', () => {
     expect(statementKey(firstStatement('if (import.meta.main) { app.listen(3000) }'))).toBe(
       'if:import.meta.main',
     )
   })
 
-  it('returns null for for/return blocks (unkeyed)', () => {
+  it('returns null for for/return blocks (no key)', () => {
     expect(statementKey(firstStatement('for (const x of y) { f(x) }'))).toBe(null)
   })
 
@@ -65,7 +65,7 @@ describe('statementKey', () => {
     expect(statementKey(firstStatement('1 + 2'))).toBe(null)
   })
 
-  it('preserves PropertyAccessExpression callees (console.log) verbatim in the key', () => {
+  it('preserves a called PropertyAccessExpression (console.log) verbatim in the key', () => {
     expect(statementKey(firstStatement('console.log()'))).toBe('expr:console.log()')
   })
 

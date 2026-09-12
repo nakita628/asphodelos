@@ -42,8 +42,8 @@ export function schemasCode(
 ) {
   if (!schemas || Object.keys(schemas).length === 0) return ''
   const names = resolveUniqueNames(Object.keys(schemas))
-  const sccs = sccSchemas(Object.entries(schemas).map(([name, schema]) => ({ name, schema })))
-  return sccs
+  const groups = sccSchemas(Object.entries(schemas).map(([name, schema]) => ({ name, schema })))
+  return groups
     .map((group) => emitGroup(group, readonlyMode, exportTypes, exported, names))
     .filter((s) => s.length > 0)
     .join('\n\n')

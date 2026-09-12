@@ -116,7 +116,7 @@ if (import.meta.main) {
 `)
   })
 
-  it('inlines the mock for an object response when there is no component schema', async () => {
+  it('writes the mock inline for an object response when there is no component schema', async () => {
     const spec: OpenAPI = {
       openapi: '3.1.0',
       info: { title: 'T', version: '1' },

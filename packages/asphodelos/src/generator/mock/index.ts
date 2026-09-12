@@ -378,7 +378,7 @@ function delayMiddleware(delay: MockOptions['delay']) {
  * test) starts no server.
  *
  * A secured operation that declares a 401 checks for the credential first, and a path parameter
- * with a recognisable "missing" value answers 404 — so a client can drive the unhappy paths the
+ * with a recognizable "missing" value answers 404 — so a client can drive the unhappy paths the
  * document promises, not just the happy one.
  */
 export function makeMock(spec: OpenAPI, options: MockOptions = {}) {

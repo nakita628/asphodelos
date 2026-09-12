@@ -64,7 +64,7 @@ function messageOf(error: unknown) {
 /**
  * Loads and validates the config through Vite's own module loader.
  *
- * `ssrLoadModule` rather than the CLI's `readConfig`: Vite already transpiles TypeScript and
+ * `ssrLoadModule` rather than the CLI's `readConfig`: Vite already compiles TypeScript and
  * resolves the config's imports the way the rest of the project sees them, and invalidating the
  * module is how an edit is picked up. Every failure comes back as the sentence to print.
  */
@@ -277,7 +277,7 @@ function removeStaleOutput(output: string, keep: ReadonlySet<string>) {
 /**
  * Removes what the previous pass generated and this one no longer does, answering with what went.
  *
- * A config edit that repoints or drops an output, or a document that no longer has a section,
+ * A config edit that moves or drops an output, or a document that no longer has a section,
  * would otherwise leave the old file behind, still importing names that are gone. Deliberately
  * narrower than a recursive delete, because a path the config used to name may be shared with the
  * user:

@@ -19,9 +19,9 @@ function splitSchemaFiles(
   readonly?: boolean,
   exportTypes?: boolean,
 ) {
-  const sccs = sccSchemas(Object.entries(section).map(([name, schema]) => ({ name, schema })))
-  const nameToFile = new Map(sccs.flatMap((g) => g.map((s) => [s.name, fileNameOf(g)] as const)))
-  return sccs.map((group) => {
+  const groups = sccSchemas(Object.entries(section).map(([name, schema]) => ({ name, schema })))
+  const nameToFile = new Map(groups.flatMap((g) => g.map((s) => [s.name, fileNameOf(g)] as const)))
+  return groups.map((group) => {
     const fileName = fileNameOf(group)
     const subSection = Object.fromEntries(group.map((g) => [g.name, g.schema]))
     const body = schemasCode(subSection, readonly, exportTypes)

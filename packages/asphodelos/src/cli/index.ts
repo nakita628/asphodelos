@@ -173,7 +173,7 @@ function awaitChange(configPath: string, inputDirectory: string | undefined) {
  * not take the watcher down with it.
  *
  * Recursive rather than a loop because the directory to watch comes from the config, and the
- * config is re-read every round: an edit that repoints `input` elsewhere has to move the watcher
+ * config is re-read every round: an edit that points `input` somewhere else has to move the watcher
  * with it, which means new streams rather than new values.
  */
 function watchConfig(
