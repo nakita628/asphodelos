@@ -250,12 +250,6 @@ export default defineConfig({
 })
 ```
 
-TanStack-family mutations also get a `<operation>MutationOptions()` factory, and SWR queries a
-`useImmutable<Operation>` hook. A TanStack-family hook's options argument is the library's options
-type minus what the hook supplies itself: `queryKey` / `queryFn` for queries, `mutationKey` /
-`mutationFn` for mutations. The generated hooks are compiled and run against the real libraries in
-[`test/`](https://github.com/nakita628/asphodelos/blob/main/test/README.md).
-
 ### Infinite Query (`x-pagination`)
 
 Set `x-pagination: true` on a GET operation to generate infinite query hooks.
