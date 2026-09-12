@@ -303,6 +303,19 @@ export default defineConfig({
 })
 ```
 
+Like [Prism](https://stoplight.io/open-source/prism), a request can pick any response or named
+example the document declares with the `Prefer` header (or the `__code` / `__example` query):
+
+```bash
+curl -H 'Prefer: code=404' http://localhost:3000/orders/1          # the 404 response
+curl -H 'Prefer: example=pending' http://localhost:3000/orders/1   # a named example
+curl -H 'Prefer: code=404, example=gone' http://localhost:3000/orders/1
+curl 'http://localhost:3000/orders/1?__code=503'
+```
+
+A code falls back to its `4XX` range, then `default`. A code or example the operation does not
+declare answers `500` with an `application/problem+json` body saying what is missing.
+
 ## Full Config Reference
 
 With `split: true`, `output` is a directory (one file per entry + `index.ts` barrel); otherwise it
@@ -407,11 +420,12 @@ export default defineConfig({
 
   mock: {
     output: 'src/mock.ts',
-    useExamples: true, // serve the spec's examples instead of faker values
+    useExamples: true, // true: response examples | 'all': also schema/property examples | false
     locale: 'en', // @faker-js/faker/locale/<locale>
+    // seed: 42, // optional: same body per route on every request (snapshot-friendly)
     delay: false, // ms, { min, max }, or false
     arrayMin: 1, // array length when the schema sets no minItems / maxItems
-    arrayMax: 10,
+    arrayMax: 5,
   },
 
   swr: {

@@ -262,7 +262,7 @@ describe('makeTestFile', () => {
       },
     }
     expect(makeTestFile(spec)).toBe(
-      "import{describe,it,expect}from'bun:test'\nimport{faker}from'@faker-js/faker'\nimport{app}from'..'\n\ndescribe('Pat',()=>{describe('default',()=>{describe('GET /items/{code}',()=>{it('should return 200',async()=>{const code=faker.helpers.fromRegExp(\"^[a-z]{3}$\")\nconst res=await app.handle(new Request(`http://localhost/items/${code}`,{method:'GET'}))\nexpect(res.status).toBe(200)})\nit('should return 404 for non-existent resource',async()=>{const code=faker.helpers.fromRegExp(\"^[a-z]{3}$\")\nconst res=await app.handle(new Request(`http://localhost/items/${code}`,{method:'GET'}))\nexpect(res.status).toBe(404)})})\n})\n})\n",
+      "import{describe,it,expect}from'bun:test'\nimport{faker}from'@faker-js/faker'\nimport{app}from'..'\n\ndescribe('Pat',()=>{describe('default',()=>{describe('GET /items/{code}',()=>{it('should return 200',async()=>{const code=faker.helpers.fromRegExp(\"[a-z]{3}\")\nconst res=await app.handle(new Request(`http://localhost/items/${code}`,{method:'GET'}))\nexpect(res.status).toBe(200)})\nit('should return 404 for non-existent resource',async()=>{const code=faker.helpers.fromRegExp(\"[a-z]{3}\")\nconst res=await app.handle(new Request(`http://localhost/items/${code}`,{method:'GET'}))\nexpect(res.status).toBe(404)})})\n})\n})\n",
     )
   })
 

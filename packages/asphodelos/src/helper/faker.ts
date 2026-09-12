@@ -52,12 +52,26 @@ export function numericFakerExpr(schema: Schema, isInt: boolean) {
   return `faker.number.float({ min: ${lo}, max: ${hi}, fractionDigits: 2 })`
 }
 
+/**
+ * Rewrites a `pattern` into the string `faker.helpers.fromRegExp` samples.
+ *
+ * faker strips `^`/`$` only from a `RegExp` argument; given a string it copies them into the
+ * value (`^abc$`), which then fails the very pattern it was drawn from. The anchors are removed
+ * here instead, together with the no-op `\/` escape that faker would copy verbatim as well.
+ */
+export function fakerPattern(pattern: string) {
+  return pattern
+    .replace(/^\^+/u, '')
+    .replace(/(?<!\\)(?:\\\\)*\$+$/u, (anchor) => anchor.replaceAll('$', ''))
+    .replaceAll(/\\([\s\S])/gu, (match: string, escaped: string) => (escaped === '/' ? '/' : match))
+}
+
 // faker.string.alpha expression honoring minLength/maxLength. A pattern wins via
 // fromRegExp — the regex itself bounds the value, and expressing the length too
 // is the input spec's responsibility (single source of truth).
 export function stringFakerExpr(schema: Schema) {
   if (schema.pattern !== undefined) {
-    return `faker.helpers.fromRegExp(${JSON.stringify(schema.pattern)})`
+    return `faker.helpers.fromRegExp(${JSON.stringify(fakerPattern(schema.pattern))})`
   }
   const lower = schema.minLength ?? 5
   const max = schema.maxLength ?? Math.max(lower, 20)
@@ -65,10 +79,15 @@ export function stringFakerExpr(schema: Schema) {
   return `faker.string.alpha({ length: { min: ${min}, max: ${max} } })`
 }
 
-// length expression for `Array.from` honoring minItems/maxItems (default 1..5).
-export function arrayLengthExpr(schema: Schema) {
-  const min = schema.minItems ?? 1
-  const max = Math.max(schema.maxItems ?? Math.max(min, 5), min)
+// length expression for `Array.from` honoring minItems/maxItems. `arrayMin`/`arrayMax` (the mock
+// config) then `1`/`5` fill an unconstrained side, clamped against the spec side so a config
+// bound never inverts the range (`arrayMin: 5` with `maxItems: 3` → 3..3).
+export function arrayLengthExpr(
+  schema: Schema,
+  options: { readonly arrayMin?: number; readonly arrayMax?: number } = {},
+) {
+  const min = schema.minItems ?? Math.min(options.arrayMin ?? 1, schema.maxItems ?? Infinity)
+  const max = Math.max(schema.maxItems ?? options.arrayMax ?? 5, min)
   return `faker.number.int({ min: ${min}, max: ${max} })`
 }
 
@@ -147,7 +166,10 @@ export function nonExistentPathValue(
     return { kind: 'literal', value: '00000000-0000-0000-0000-000000000000' }
   }
   if (schema.pattern !== undefined) {
-    return { kind: 'expr', code: `faker.helpers.fromRegExp(${JSON.stringify(schema.pattern)})` }
+    return {
+      kind: 'expr',
+      code: `faker.helpers.fromRegExp(${JSON.stringify(fakerPattern(schema.pattern))})`,
+    }
   }
   return { kind: 'literal', value: nonExistentStringLiteral(schema) }
 }

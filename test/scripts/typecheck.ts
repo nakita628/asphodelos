@@ -3,6 +3,11 @@ import { spawn } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
+// Regenerates `__generated__` first, as the test preload does: the output is gitignored, so on a
+// clean checkout (CI) there is nothing to typecheck until it is generated, and anywhere else the
+// check would otherwise measure the last build instead of this one.
+import './pretest.ts'
+
 /**
  * Runs `tsc -p cases/<name>` for every case.
  *
