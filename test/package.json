@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "generate": "bun run scripts/generate.ts",
-    "typecheck": "bun run scripts/typecheck.ts",
+    "lint": "oxlint",
+    "typecheck": "bun run scripts/typecheck.ts && tsc -p .",
     "test": "bun test"
   },
   "devDependencies": {
@@ -22,6 +23,8 @@
     "@types/react-dom": "^19.2.5",
     "asphodelos": "workspace:*",
     "elysia": "^1.4.28",
+    "oxlint": "^1.82.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "preact": "^10.29.8",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

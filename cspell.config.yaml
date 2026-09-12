@@ -1,0 +1,41 @@
+# cspell checks every word in the repository — source, docs, configs and workflows alike. It is
+# the one linter here that reads the code as English, which is what catches a typo in an
+# identifier that TypeScript happily accepts because it is spelled consistently wrong.
+version: '0.2'
+language: en
+
+# Words specific to this project live in their own file so adding one is a one-line diff that
+# never touches this config. `addWords: true` lets editor "add to dictionary" append to it.
+dictionaryDefinitions:
+  - name: project-words
+    path: ./project-words.txt
+    addWords: true
+dictionaries:
+  - project-words
+  - typescript
+  - node
+  - npm
+  - softwareTerms
+  - fullstack
+
+# cspell splits camelCase and snake_case itself, so `cleanSplitOutputs` is checked as
+# clean / split / outputs and needs no entry.
+allowCompoundWords: false
+
+# Everything git ignores is skipped, so node_modules, dist, coverage, tmp-* work trees and
+# test/__generated__ fall out without being listed twice. The rest are checked-in files whose
+# contents are not prose: the lockfile is a hash dump and the icon is a binary.
+useGitignore: true
+ignorePaths:
+  - .git/**
+  - bun.lock
+  - project-words.txt
+  - assets/**
+
+# A misspelling inside a fenced code block is still a misspelling — the code blocks in the
+# README are what users copy — so code is not excluded. URLs, base64 blobs and commit digests
+# (the pinned action versions in .github/workflows) are the places where a "word" is not one.
+ignoreRegExpList:
+  - Urls
+  - Base64
+  - /\b[0-9a-f]{40}\b/

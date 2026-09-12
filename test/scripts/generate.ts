@@ -26,8 +26,12 @@ function generate(name: string) {
   return new Promise<{ name: string; ok: boolean; output: string }>((resolve) => {
     const child = spawn('bun', [cli], { cwd: path.join(testRoot, 'cases', name) })
     const chunks: Buffer[] = []
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk))
-    child.stderr.on('data', (chunk: Buffer) => chunks.push(chunk))
+    child.stdout.on('data', (chunk: Buffer) => {
+      chunks.push(chunk)
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      chunks.push(chunk)
+    })
     child.on('close', (status) => {
       resolve({ name, ok: status === 0, output: Buffer.concat(chunks).toString() })
     })

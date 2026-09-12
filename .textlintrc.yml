@@ -1,0 +1,39 @@
+# textlint checks the prose, where markdownlint checks the document structure and cspell the
+# individual words. The three do not overlap.
+#
+# The docs are English, so the Japanese presets (preset-ja-technical-writing and friends) are
+# deliberately absent: on English text every one of their rules is a false positive. What is
+# kept is language-agnostic, plus terminology — the rule that matters most in a repository
+# written by an agent, because it is what keeps "Javascript", "Typescript" and "NPM" from
+# drifting into the docs one commit at a time.
+rules:
+  # sapegin's term list: the canonical spelling of ~250 technical terms (JavaScript, TypeScript,
+  # npm, GitHub, JSON, macOS, ...). Code spans and fenced blocks are skipped by the rule, so
+  # `asphodelos` and `defineConfig()` are never rewritten.
+  terminology:
+    defaultTerms: true
+    # Project terms are added one at a time, each verified against a real run. `elysia`,
+    # `openapi` and `typebox` are lowercase package names as often as they are prose nouns, so
+    # a bare term for them would fight the package name on every line; "Open API" as two words
+    # is never a package name, which is what makes it safe to enforce.
+    terms:
+      - ['Open API', 'OpenAPI']
+    # Default entries this repository disagrees with, copied verbatim from the rule's
+    # terms.jsonc. "README" is the file's name, and "re-export" is how the TypeScript
+    # handbook and the `export ... from` docs spell it.
+    exclude:
+      - 'readme(s)?'
+      - 're[- ]export(s|ing|ed)?'
+
+  # An unbalanced quote, bracket or parenthesis is almost always a truncated edit — the
+  # cheapest guard against an agent leaving half a sentence behind.
+  '@textlint-rule/no-unmatched-pair': true
+
+  # A parked TODO in the docs is debt that belongs in an issue. This is the prose half of the
+  # `no-warning-comments` rule the oxlint config already enforces on source.
+  no-todo: true
+
+filters:
+  # `<!-- textlint-disable ... -->` comments are honoured, so a deliberate exception lives next
+  # to the sentence that needs it instead of switching the rule off globally here.
+  comments: true

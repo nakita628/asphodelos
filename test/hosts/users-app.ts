@@ -48,7 +48,7 @@ export const app = new Elysia()
     ({ params, status }) => {
       requestLog.push(`GET /users/${params.id}`)
       const found = seed.find((user) => user.id === params.id)
-      return found ? found : status(404, { message: 'not found' })
+      return found ?? status(404, { message: 'not found' })
     },
     {
       response: {

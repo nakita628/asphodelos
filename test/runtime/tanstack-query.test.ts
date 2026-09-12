@@ -8,8 +8,8 @@ import {
   listItemsInfiniteQueryOptions,
   listItemsQueryOptions,
   listUsersQueryOptions,
-} from '../__generated__/tanstack-query/hooks'
-import { requestLog } from '../hosts/users-app'
+} from '../__generated__/tanstack-query/hooks.js'
+import { requestLog } from '../hosts/users-app.js'
 
 /**
  * The generated TanStack Query helpers, driven against the host app.
@@ -38,7 +38,7 @@ afterEach(() => {
 describe('generated queryOptions', () => {
   it('resolves with the parsed body on 200', async () => {
     const queryClient = makeClient()
-    expect(await queryClient.fetchQuery(listUsersQueryOptions())).toStrictEqual([
+    expect(await queryClient.query(listUsersQueryOptions())).toStrictEqual([
       { id: '1', name: 'Alice' },
       { id: '2', name: 'Bob' },
     ])
@@ -46,7 +46,7 @@ describe('generated queryOptions', () => {
 
   it('threads a path parameter through to the request', async () => {
     const queryClient = makeClient()
-    expect(await queryClient.fetchQuery(getUserQueryOptions({ id: '2' }))).toStrictEqual({
+    expect(await queryClient.query(getUserQueryOptions({ id: '2' }))).toStrictEqual({
       id: '2',
       name: 'Bob',
     })
@@ -56,7 +56,7 @@ describe('generated queryOptions', () => {
   it('rejects on 404, and the error reaches the cache as an error', async () => {
     const queryClient = makeClient()
     const options = getUserQueryOptions({ id: '404' })
-    const captured = await queryClient.fetchQuery(options).then(
+    const captured = await queryClient.query(options).then(
       () => null,
       (error: unknown) => error,
     )
@@ -66,15 +66,15 @@ describe('generated queryOptions', () => {
   })
 })
 
-describe('query key behaviour, asserted through effects', () => {
+describe('query key behavior, asserted through effects', () => {
   it('invalidating the resource prefix reaches every query under it, and nothing else', async () => {
     const queryClient = makeClient()
     const list = listUsersQueryOptions()
     const single = getUserQueryOptions({ id: '1' })
     const items = listItemsQueryOptions({ query: { page: '0' } })
-    await queryClient.fetchQuery(list)
-    await queryClient.fetchQuery(single)
-    await queryClient.fetchQuery(items)
+    await queryClient.query(list)
+    await queryClient.query(single)
+    await queryClient.query(items)
 
     await queryClient.invalidateQueries({ queryKey: getUsersKey(), refetchType: 'none' })
 
@@ -87,8 +87,8 @@ describe('query key behaviour, asserted through effects', () => {
     const queryClient = makeClient()
     const first = getUserQueryOptions({ id: '1' })
     const second = getUserQueryOptions({ id: '2' })
-    await queryClient.fetchQuery(first)
-    await queryClient.fetchQuery(second)
+    await queryClient.query(first)
+    await queryClient.query(second)
 
     expect(queryClient.getQueryCache().getAll()).toHaveLength(2)
     // `getQueryData` cannot infer the payload from a key alone, so the read is typed here.
@@ -106,9 +106,9 @@ describe('query key behaviour, asserted through effects', () => {
   it('a second call with the same arguments is served from the cache, not the host', async () => {
     const queryClient = makeClient()
     const options = { ...listUsersQueryOptions(), staleTime: Number.POSITIVE_INFINITY }
-    await queryClient.fetchQuery(options)
+    await queryClient.query(options)
     const after = requestLog.length
-    await queryClient.fetchQuery(options)
+    await queryClient.query(options)
 
     expect(requestLog.length).toBe(after)
   })
@@ -123,7 +123,7 @@ describe('generated infiniteQueryOptions', () => {
 
   it('accumulates pages through getNextPageParam and buildInit', async () => {
     const queryClient = makeClient()
-    const data = await queryClient.fetchInfiniteQuery({
+    const data = await queryClient.infiniteQuery({
       ...listItemsInfiniteQueryOptions({ query: { page: '0' } }, pagination),
       pages: 3,
     })
@@ -138,8 +138,8 @@ describe('generated infiniteQueryOptions', () => {
 
   it('is cached separately from the plain query for the same endpoint', async () => {
     const queryClient = makeClient()
-    await queryClient.fetchQuery(listItemsQueryOptions({ query: { page: '0' } }))
-    await queryClient.fetchInfiniteQuery(
+    await queryClient.query(listItemsQueryOptions({ query: { page: '0' } }))
+    await queryClient.infiniteQuery(
       listItemsInfiniteQueryOptions({ query: { page: '0' } }, pagination),
     )
 

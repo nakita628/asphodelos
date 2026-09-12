@@ -1,6 +1,6 @@
-![img](https://raw.githubusercontent.com/nakita628/asphodelos/refs/heads/main/assets/icon/asphodelos.png)
-
 # Asphodelos
+
+![img](https://raw.githubusercontent.com/nakita628/asphodelos/refs/heads/main/assets/icon/asphodelos.png)
 
 **[Asphodelos](https://www.npmjs.com/package/asphodelos)** generates type-safe [Elysia](https://elysiajs.com/) code from [OpenAPI](https://www.openapis.org/) / [TypeSpec](https://typespec.io/) specifications.
 
@@ -49,7 +49,7 @@ bunx asphodelos
 
 `asphodelos --help`:
 
-```
+```text
 DESCRIPTION
   Generate Elysia code from OpenAPI or TypeSpec
 
@@ -126,7 +126,7 @@ paths:
 
 output:
 
-```
+```text
 src/
 ├── index.ts
 └── modules/
@@ -575,13 +575,17 @@ We welcome feedback and contributions!
 - Open an issue at [GitHub Issues](https://github.com/nakita628/asphodelos/issues)
 - Submit a pull request with your improvements
 
-Lint and tests run from the repo root:
+Lint and tests run from the repository root:
 
 ```bash
 bun run check          # format check, lint, type check, tests, then the client suite
+bun run fix            # autofix formatting, oxlint, markdownlint and textlint
+bun run lint           # oxlint, markdownlint, textlint, cspell, secretlint, actionlint
 bun run test           # unit tests
 bun run test:clients   # build, then compile and run the generated hooks under test/
 ```
+
+Coding agents: start with [AGENTS.md](AGENTS.md).
 
 ## License
 

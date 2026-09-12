@@ -2,9 +2,10 @@ import {
   createListItemsInfinite,
   createListUsers,
   listItemsInfiniteQueryOptions,
-} from '../__generated__/svelte-query/hooks'
-import { type Equal, type HasKey, type IsAssignable, type NotAny, assertType } from './assert'
-import { pagination } from './infinite'
+} from '../__generated__/svelte-query/hooks.js'
+import { assertType } from './assert.js'
+import type { Equal, IsAssignable, NotAny } from './assert.js'
+import { pagination } from './infinite.js'
 
 /** The options slot of the plain query hook, as the caller sees it. */
 type QuerySlot = NonNullable<Parameters<typeof createListUsers>[1]>
@@ -17,12 +18,12 @@ export function assertions() {
 
   // `data` is the page list. The regression this pins typed it as a single page, so
   // `data.pages` failed to compile even though it is what the query returns at runtime.
-  const infinite = createListItemsInfinite(undefined, pagination, { staleTime: 1_000 })
+  const infinite = createListItemsInfinite(undefined, pagination, { staleTime: 1000 })
   assertType<Equal<NonNullable<typeof infinite.data>['pages'][number]['items'], string[]>>(true)
   assertType<Equal<NonNullable<typeof infinite.data>['pageParams'][number], number>>(true)
 
   // The options stay typed: a right-typed value is accepted, a wrong-typed one is not.
-  assertType<IsAssignable<{ staleTime: 1_000 }, InfiniteSlot>>(true)
+  assertType<IsAssignable<{ staleTime: 1000 }, InfiniteSlot>>(true)
   assertType<Equal<IsAssignable<{ staleTime: 'soon' }, InfiniteSlot>, false>>(true)
   return { factory, infinite }
 }
@@ -37,7 +38,7 @@ export function queryOptionsAssertions() {
   assertType<Equal<typeof selected.data, number | undefined>>(true)
 
   // The options stay typed: a right-typed value is accepted, a wrong-typed one is not.
-  assertType<IsAssignable<{ staleTime: 1_000 }, QuerySlot>>(true)
+  assertType<IsAssignable<{ staleTime: 1000 }, QuerySlot>>(true)
   assertType<Equal<IsAssignable<{ staleTime: 'soon' }, QuerySlot>, false>>(true)
   return { disabled, selected }
 }

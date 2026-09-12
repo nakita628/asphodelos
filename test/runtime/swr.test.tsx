@@ -11,8 +11,8 @@ import {
   useImmutableListUsers,
   useListItems,
   useListUsers,
-} from '../__generated__/swr/hooks'
-import { requestLog } from '../hosts/users-app'
+} from '../__generated__/swr/hooks.js'
+import { requestLog } from '../hosts/users-app.js'
 
 /**
  * The generated SWR hooks, rendered against the host app.
@@ -92,7 +92,9 @@ describe('generated useSWRImmutable hooks', () => {
     // must not, or it is just useSWR under another name.
     const second = renderHook(() => useImmutableListUsers(), { wrapper: makeWrapper(cache) })
     expect(second.result.current.data).toStrictEqual(first.result.current.data)
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50)
+    })
     expect(requestLog.length).toBe(after)
 
     renderHook(() => useListUsers(), { wrapper: makeWrapper(cache) })
@@ -102,7 +104,7 @@ describe('generated useSWRImmutable hooks', () => {
   })
 })
 
-describe('SWR key behaviour', () => {
+describe('SWR key behavior', () => {
   it('a path-parameter difference serializes to a different cache key', () => {
     const first = getUserQueryKey({ id: '1' })
     const second = getUserQueryKey({ id: '2' })

@@ -7,7 +7,7 @@ written and nothing more. This workspace closes that gap on three axes:
    `tsc -p cases/<name>` with the actual `@tanstack/*` and `swr` type definitions installed. A
    hook whose generics are wrong compiles fine in isolation and fails here.
 2. **Does it run?** `runtime/` mounts the generated hooks against a hand-written host app and
-   asserts on real behaviour — what the query function resolves with, what a cache invalidation
+   asserts on real behavior — what the query function resolves with, what a cache invalidation
    reaches, whether a mutation fires before it is triggered.
 3. **Do the generics survive?** `types/` pins that a hook's type parameters reach the caller. A
    generic that degrades to `any` still works at runtime, so no runtime test can see it.
@@ -19,7 +19,7 @@ an edited config.
 
 ## Layout
 
-```
+```text
 cases/<name>/     one asphodelos.config.ts + tsconfig.json per client library
 specs/            the OpenAPI documents the cases generate from
 hosts/            the Elysia app and Eden client the generated hooks talk to

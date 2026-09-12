@@ -2,8 +2,9 @@ import {
   getUserQueryKey,
   listUsersQueryKey,
   useImmutableListUsers,
-} from '../__generated__/swr/hooks'
-import { assertType, type Equal, type NotAny } from './assert'
+} from '../__generated__/swr/hooks.js'
+import { assertType } from './assert.js'
+import type { Equal, NotAny } from './assert.js'
 
 export function assertions() {
   // A key builder that lost its parameter type would accept anything, which is exactly the

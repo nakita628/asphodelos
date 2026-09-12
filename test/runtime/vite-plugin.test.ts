@@ -5,7 +5,7 @@ import path from 'node:path'
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { asphodelosVite } from 'asphodelos/vite-plugin'
 import { createServer } from 'vite'
-import type { ViteDevServer } from 'vite'
+import type { HotPayload, ViteDevServer } from 'vite'
 
 /**
  * The packaged Vite plugin inside a real Vite dev server.
@@ -77,11 +77,10 @@ beforeAll(async () => {
     server: { middlewareMode: true, ws: false },
     plugins: [asphodelosVite()],
   })
-  const send = server.ws.send.bind(server.ws)
-  server.ws.send = ((payload: { type: string }) => {
-    reloads.push(payload.type)
-    send(payload)
-  }) as typeof server.ws.send
+  // The socket is disabled (`ws: false`), so recording what the plugin sends loses nothing.
+  server.ws.send = (payload: HotPayload | string) => {
+    reloads.push(typeof payload === 'string' ? payload : payload.type)
+  }
 }, 120_000)
 
 afterAll(async () => {
@@ -127,8 +126,10 @@ describe('asphodelosVite in a Vite dev server', () => {
     writeConfig('swr')
 
     expect(await waitFor(() => existsSync(path.join(projectDir, 'swr/index.ts')))).toBe(true)
-    expect(await waitFor(() => !existsSync(path.join(projectDir, 'hooks/listUsers.ts')))).toBe(true)
-    expect(logged).toContain(`🧹 removed ${path.join(projectDir, 'hooks/listUsers.ts')}`)
+    // The plugin logs a removal after it has happened, so the log line is the thing to wait for.
+    const removed = `🧹 removed ${path.join(projectDir, 'hooks/listUsers.ts')}`
+    expect(await waitFor(() => logged.includes(removed))).toBe(true)
+    expect(existsSync(path.join(projectDir, 'hooks/listUsers.ts'))).toBe(false)
     // The app entry holds the user's code, so a config edit never takes it away.
     expect(existsSync(path.join(projectDir, 'app/index.ts'))).toBe(true)
   }, 120_000)

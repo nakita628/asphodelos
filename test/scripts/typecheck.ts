@@ -6,6 +6,7 @@ import path from 'node:path'
 // Regenerates `__generated__` first, as the test preload does: the output is gitignored, so on a
 // clean checkout (CI) there is nothing to typecheck until it is generated, and anywhere else the
 // check would otherwise measure the last build instead of this one.
+// oxlint-disable-next-line import/no-unassigned-import -- running the preload's generation is the point of this import
 import './pretest.ts'
 
 /**
@@ -27,8 +28,12 @@ function typecheck(name: string) {
   return new Promise<{ name: string; ok: boolean; output: string }>((resolve) => {
     const child = spawn(tsc, ['-p', path.join(testRoot, 'cases', name)], { cwd: testRoot })
     const chunks: Buffer[] = []
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk))
-    child.stderr.on('data', (chunk: Buffer) => chunks.push(chunk))
+    child.stdout.on('data', (chunk: Buffer) => {
+      chunks.push(chunk)
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      chunks.push(chunk)
+    })
     child.on('close', (status) => {
       resolve({ name, ok: status === 0, output: Buffer.concat(chunks).toString() })
     })

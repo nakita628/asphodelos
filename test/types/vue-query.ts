@@ -1,6 +1,7 @@
-import { useListItemsInfinite, useListUsers } from '../__generated__/vue-query/hooks'
-import { type Equal, type HasKey, type IsAssignable, assertType } from './assert'
-import { pagination } from './infinite'
+import { useListItemsInfinite, useListUsers } from '../__generated__/vue-query/hooks.js'
+import { assertType } from './assert.js'
+import type { Equal, IsAssignable } from './assert.js'
+import { pagination } from './infinite.js'
 
 /** The options slot of the plain query hook, as the caller sees it. */
 type QuerySlot = NonNullable<Parameters<typeof useListUsers>[1]>
@@ -38,7 +39,7 @@ export function queryOptionsAssertions() {
   assertType<Equal<(typeof selected.data)['value'], number | undefined>>(true)
 
   // The options stay typed: a right-typed value is accepted, a wrong-typed one is not.
-  assertType<IsAssignable<{ staleTime: 1_000 }, QuerySlot>>(true)
+  assertType<IsAssignable<{ staleTime: 1000 }, QuerySlot>>(true)
   assertType<Equal<IsAssignable<{ staleTime: 'soon' }, QuerySlot>, false>>(true)
   return { disabled, selected }
 }

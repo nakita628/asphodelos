@@ -1,0 +1,13 @@
+{
+  // The whole client suite as one project: what `oxlint`'s type-aware rules resolve against, and
+  // what `bun run typecheck` compiles after the per-case projects. The per-case tsconfigs under
+  // cases/ stay the source of truth for the generated hooks — each compiles one library's output
+  // with that library's own types.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    // oxlint.config.ts reuses the package config by its `.ts` path.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["*.ts", "hosts", "runtime", "scripts", "types"]
+}
