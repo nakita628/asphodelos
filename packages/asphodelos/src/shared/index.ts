@@ -1,4 +1,6 @@
-import { posix } from 'node:path'
+import path, { posix } from 'node:path'
+
+import { Effect } from 'effect'
 
 import type { Config } from '../config/index.js'
 import {
@@ -21,6 +23,7 @@ import {
   test,
   types,
 } from '../core/index.js'
+import { readdir, unlink } from '../fsp/index.js'
 import type { OpenAPI } from '../openapi/index.js'
 
 function edenJob(
@@ -314,4 +317,79 @@ function perTypeComponentJobs(
         }
       : undefined,
   ]
+}
+
+/** The part of a job the functions below read: its name, where it writes, and in which mode. */
+type JobTarget = { readonly name: string; readonly output: string; readonly split: boolean }
+
+/**
+ * Generators that merge into what is already at their output rather than overwrite it.
+ *
+ * `elysia` and `test` read the file back and keep whatever the user wrote there (`mergeSource`),
+ * so what they write holds the user's code as much as the generator's. Nothing that deletes — the
+ * split clean below, the Vite plugin's stale-output cleanup — may touch one.
+ */
+const USER_CODE_JOBS: ReadonlySet<string> = new Set(['elysia', 'test'])
+
+export function isUserCodeJob(job: { readonly name: string }) {
+  return USER_CODE_JOBS.has(job.name)
+}
+
+/**
+ * Every absolute path a job writes under.
+ *
+ * The output itself, and for `elysia` the `modules/` directory it fills beside the app entry —
+ * one file per resource, which a caller that watches for changed output has to see as well.
+ */
+export function jobTargets(job: JobTarget): readonly string[] {
+  const output = path.resolve(process.cwd(), job.output)
+  return job.name === 'elysia' ? [output, path.join(path.dirname(output), 'modules')] : [output]
+}
+
+function cleanSplitDirectory(directory: string, keep: ReadonlySet<string>) {
+  return Effect.gen(function* () {
+    const names = yield* readdir(directory)
+    const stale = names
+      .filter((name) => name.endsWith('.ts'))
+      .map((name) => path.join(directory, name))
+      .filter((file) => !keep.has(file))
+    yield* Effect.all(stale.map(unlink), { concurrency: 'unbounded' })
+    return stale
+  })
+}
+
+/**
+ * Empties every split output directory before the generators refill them, answering with what
+ * was removed.
+ *
+ * A split generator writes one file per entry plus a barrel beside them, and knows only what it
+ * writes — so an entry that leaves the document leaves its file behind, orphaned and still
+ * importing names the document no longer defines. A split directory is therefore the generator's,
+ * not a place to keep anything by hand.
+ *
+ * Only the direct `.ts` children are removed, never a subdirectory, and never a file another job
+ * writes on its own: a single-file output that lives inside a split directory is left where it is
+ * rather than deleted and rewritten. A split job that merges into the user's code is never
+ * cleaned at all.
+ *
+ * This runs before any job writes, never per job as it goes: two jobs can be aimed at one
+ * directory, and a clean that lands after a sibling has filled it would take the fresh files with
+ * it.
+ */
+export function cleanSplitOutputs(jobs: readonly JobTarget[]) {
+  return Effect.gen(function* () {
+    const keep = new Set(
+      jobs.filter((job) => !job.split).map((job) => path.resolve(process.cwd(), job.output)),
+    )
+    const directories = new Set(
+      jobs
+        .filter((job) => job.split && !isUserCodeJob(job))
+        .map((job) => path.resolve(process.cwd(), job.output)),
+    )
+    const removed = yield* Effect.all(
+      [...directories].map((directory) => cleanSplitDirectory(directory, keep)),
+      { concurrency: 'unbounded' },
+    )
+    return removed.flat()
+  })
 }

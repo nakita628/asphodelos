@@ -81,7 +81,7 @@ const commandLine = {
  */
 function runConfigPass(configPath: string, reload: boolean) {
   return Effect.gen(function* () {
-    const [{ readConfig }, { parseOpenAPI }, { FormatOptions }, { makeJob }] =
+    const [{ readConfig }, { parseOpenAPI }, { FormatOptions }, { cleanSplitOutputs, makeJob }] =
       yield* Effect.promise(() =>
         Promise.all([
           import('../config/index.js'),
@@ -92,8 +92,12 @@ function runConfigPass(configPath: string, reload: boolean) {
       )
     const config = yield* readConfig(configPath, reload)
     const openAPI = yield* parseOpenAPI(config.input)
+    const jobs = makeJob(openAPI, config)
+    // The same clean the Vite plugin runs, so one config cannot leave two different directories
+    // behind depending on which entry point produced it.
+    yield* cleanSplitOutputs(jobs)
     const messages = yield* Effect.all(
-      makeJob(openAPI, config).map((job) => job.run(job.output)),
+      jobs.map((job) => job.run(job.output)),
       { concurrency: 'unbounded' },
     ).pipe(Effect.provideService(FormatOptions, config.format ?? {}))
     return { config, report: messages.filter((message) => message !== '').join('\n') }
