@@ -3,12 +3,8 @@
   "version": "0.0.1",
   "description": "Generate type-safe Elysia code — routes, TypeBox schemas, Eden wrappers, client hooks, tests and a mock server — from OpenAPI or TypeSpec",
   "keywords": [
-    "codegen",
-    "eden",
     "elysia",
-    "openapi",
-    "typebox",
-    "typespec"
+    "openapi"
   ],
   "homepage": "https://github.com/nakita628/asphodelos#readme",
   "bugs": {
