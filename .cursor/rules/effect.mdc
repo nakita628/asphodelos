@@ -1,0 +1,67 @@
+---
+description: How Effect programs are written in the package, as enforced by the custom oxlint plugin
+globs: packages/asphodelos/src/**/*.ts
+alwaysApply: false
+---
+
+# Effect
+
+The package is written on Effect v4 (`4.0.0-rc.112`, pinned exactly). The shapes below are
+enforced by `packages/asphodelos/lint/custom.js`; each rule's message says what to write instead.
+
+## One shape for an Effect program
+
+```ts
+export function readThing(input: string) {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const text = yield* fs.readFileString(input)
+    if (text === '') return yield* new GenerateError({ message: `${input} is empty` })
+    return text
+  })
+}
+```
+
+- An Effect program is the **return value of a named `function`**, written as
+  `return Effect.gen(function* () { ... })` — optionally followed by `.pipe(...)` for scoping or
+  recovery (`custom/effect-gen-return`). Never a const-bound arrow, never an inline argument.
+  When a helper needs a nested program, extract it into its own function.
+- No `Effect.fn` / `Effect.fnUntraced` (`custom/no-effect-fn`).
+- No `Effect.flatMap` / `Effect.andThen` (`custom/no-effect-flatmap`): write straight-line
+  `yield*` steps with early-return guards. `Effect.map` in a pipe is fine.
+- **Run an Effect only at a boundary** (`custom/no-effect-run`): the Vite plugin's hooks and
+  `src/testing` are the only places `Effect.runPromise` and friends may appear. Everywhere else
+  an Effect is returned, so its requirements stay visible to the caller.
+- `Effect.promise` only wraps a dynamic `import()` of a sibling module
+  (`custom/effect-promise-import`). Anything that can reject goes through `Effect.tryPromise`
+  with a `catch` that maps to a typed error.
+
+## Errors
+
+- Failures are tagged errors: `GenerateError` (`src/error`), `FormatError` (`src/format`),
+  `OpenAPIError` (`src/openapi`) as `Data.TaggedError`, and `ConfigError` (`src/config`) as
+  `Schema.TaggedError` because it comes out of a schema decode. Filesystem failures stay the
+  platform's `PlatformError`.
+- Every error carries a `message` written for the person who ran the command: what is wrong and,
+  where possible, what to do. The CLI renders it as-is.
+- Absorb only the failure you mean: `Effect.catchIf` / `catchTag` on the specific reason (see
+  `isNotFound` in `src/fsp`), not a blanket `orElse`, unless the question is genuinely advisory
+  (the Vite plugin's `statOrNull`).
+- A job that fails must not cancel its siblings where a partial result is useful: wrap each in
+  `Effect.result` and report per job, as the Vite plugin does.
+
+## Services
+
+- The filesystem is `FileSystem.FileSystem`, provided once at a boundary: `NodeServices.layer`
+  in the CLI entry, `fileSystemLayer` (`src/fsp`) in the Vite plugin and the test helpers.
+- oxfmt options travel as the `FormatOptions` service (`src/format`), provided per run from the
+  config's `format` block.
+- Writes go through `src/fsp` `writeFile`, which skips identical bytes. That skip is contract: the
+  Vite plugin watches its own output, and a rewrite would feed a change event back into it.
+
+## Configuration schemas
+
+- Config validation is `effect/Schema` in `src/config`. A new option is a schema field with the
+  default expressed as `Schema.withDecodingDefault`, and an error message that names the field.
+- Keep `defineConfig`'s input type (`ConfigSchema.Encoded`) accurate: it is what users get
+  completion and errors from while they type.

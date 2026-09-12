@@ -1,0 +1,53 @@
+---
+description: Markdown and prose rules enforced by markdownlint, textlint and cspell
+globs: **/*.md
+alwaysApply: false
+---
+
+# Documentation
+
+Three linters split the work and never overlap: **markdownlint** owns the document structure,
+**textlint** the prose, **cspell** the individual words. All three run in `bun run lint`;
+`bun run fix` autofixes markdownlint and textlint.
+
+`README.md` at the root is the user documentation: install, CLI reference, Vite plugin, every
+generator, the full config reference and the vendor extensions. It is the file to update when
+behavior changes.
+
+## Structure (markdownlint)
+
+- Every default rule is on. A rule that does not fit is turned off in
+  `.markdownlint-cli2.jsonc` with the reason beside it — never left silently unset.
+- The first line is the top-level heading.
+- Ordered lists count `1.` `2.` `3.`.
+- Duplicate headings are allowed only under different parents (`MD024` is `siblings_only`).
+- **Every fenced block declares a language, from the closed list**: `ts`, `tsx`, `js`, `json`,
+  `jsonc`, `yaml`, `yml`, `bash`, `sh`, `text`, `diff`, `md`. Terminal output and directory
+  trees are `text`. `typescript` is not in the list on purpose — one spelling per language.
+- Line length is unchecked (a table row cannot wrap), but prose is still wrapped by oxfmt.
+
+## Prose (textlint)
+
+- The docs are English. The Japanese presets are deliberately absent, so do not add Japanese
+  prose to a `.md` file.
+- `terminology` enforces the canonical spelling of ~250 technical terms: **JavaScript**,
+  **TypeScript**, **npm**, **GitHub**, **JSON**, **OpenAPI** (never "Open API"), "repository"
+  (not "repo"). Code spans and fenced blocks are skipped.
+- `README` and `re-export` are excluded from the term list on purpose.
+- Quotes, brackets and parentheses must balance (`no-unmatched-pair`).
+- No `TODO` in the docs.
+- A deliberate exception is a `<!-- textlint-disable rule-name -->` comment next to the
+  sentence that needs it, never a change to `.textlintrc.yml`.
+
+## Spelling (cspell)
+
+- cspell reads **every** tracked file — source, tests, configs, workflows — not just the docs,
+  in **US English** (`behavior`, `normalize`, `recognized`).
+- A genuine project term (a package, tool or API name that recurs) is a one-line addition to
+  `project-words.txt`, kept sorted. Never add a typo there, and never add `ignoreWords` or
+  `ignorePaths` to `cspell.config.yaml` to silence a word.
+- Deliberate non-words in test data (another language, a misspelling under test) are declared
+  in that file only: `// cspell:ignore Схема hellooo`, with a comment saying why.
+- Prefer real words over cryptic abbreviations in names (`asphodelos-module-registration-`,
+  not a clipped form of it).
+- camelCase and snake_case are split automatically, and everything git ignores is skipped.

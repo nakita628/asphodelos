@@ -1,0 +1,77 @@
+---
+description: src layering, dependency direction, per-directory responsibilities and the public API
+globs: packages/asphodelos/src/**/*.ts
+alwaysApply: false
+---
+
+# Layering
+
+Dependencies run **one way**. The order is enforced by the `no-restricted-imports` overrides in
+`packages/asphodelos/oxlint.config.ts`, each carrying a message that says what the directory may
+import. The comment above `overrides` is the map:
+
+```text
+layer 0  config  error  format  fsp  merge  utils  openapi   (leaves: nothing internal)
+layer 1  guard -> openapi              emit -> format, fsp
+layer 2  generator <-> helper -> utils, guard, openapi, emit
+layer 3  core -> everything below it
+layer 4  shared -> config, core, format, fsp, openapi
+layer 5  cli, vite-plugin -> config, core, format, openapi, shared
+testing  -> fsp   (test-only helpers; nothing in dist imports it)
+```
+
+Wanting to reach an upper layer means the design is wrong — pass the value in as an argument, or
+move the shared code down a layer. A new edge is a change to that map and its override first,
+and to the code second.
+
+## Responsibilities
+
+| Directory | Owns | Never does |
+| --- | --- | --- |
+| `config/` | the config schema, `defineConfig`, `parseConfig`, `readConfig`, `ConfigError` | import anything internal |
+| `openapi/` | the OpenAPI model types, `parseOpenAPI` (OpenAPI and TypeSpec input), vendor extensions | generate code |
+| `format/` | oxfmt through the `FormatOptions` service, `FormatError` | touch the filesystem |
+| `fsp/` | the filesystem helpers every writer uses; `writeFile` skips identical bytes | decide what to write |
+| `merge/` | `mergeSource`: regenerated code merged into what the user already wrote | know about OpenAPI |
+| `error/`, `utils/`, `guard/` | `GenerateError`; string and identifier helpers; type guards | depend on a generator |
+| `emit/` | format, then write one file | build code |
+| `generator/` | code builders per artifact (app, controller, model, service, typebox, faker, mock, test, components): pure string in, string out | touch the filesystem or run an Effect |
+| `helper/` | composition shared by generators and core (schemas, queries, eden, parameters) | shape the CLI or the config |
+| `core/` | one Effect program per output (`elysia`, `components/*`, `eden`, `types`, `hooks`, `test`, `mock`): read the document, build with `generator`/`helper`, `emit` | parse the config |
+| `shared/` | `makeJob` (config → list of jobs), `cleanSplitOutputs`, `isUserCodeJob`, `jobTargets` | generate code itself |
+| `cli/` | the `asphodelos` command on `effect/unstable/cli`, `--watch` | generator logic |
+| `vite-plugin/` | `asphodelosVite()`: regenerate on change, reload the browser | generator logic |
+| `testing/` | `runGenerator` / `runGeneratorError` for tests | ship in `dist` |
+
+## Two entry points, one pipeline
+
+The CLI and the Vite plugin both go config → `parseOpenAPI` → `makeJob` → `cleanSplitOutputs`
+→ each `job.run(job.output)`. Anything that changes what gets generated belongs in `shared` or
+below, so the two can never disagree. A behavior that exists in only one of them (the plugin's
+reload and cleanup, the CLI's `--watch`) says why in its own comment.
+
+## Output that holds the user's code
+
+`elysia` (the app entry and `modules/<resource>/{index,service,model}.ts`) and `test` read the
+existing file back and merge into it (`src/merge`). `isUserCodeJob` in `shared` names them.
+
+- Never delete, empty or blindly overwrite their output — not in a cleanup, not in a split
+  clean, not on a config change.
+- A change to what they emit must keep `mergeSource` able to carry the user's edits across; add
+  a merge test when the emitted structure changes.
+
+Every other output is the generator's and is rewritten wholesale. A split directory belongs to
+its generator: `cleanSplitOutputs` removes its direct `.ts` children before each run.
+
+## Public API
+
+What users can import is exactly the `exports` map of `packages/asphodelos/package.json`:
+
+- `asphodelos` → `src/config/index.ts` (`defineConfig` and the config types)
+- `asphodelos/vite-plugin` → `src/vite-plugin/index.ts` (`asphodelosVite`)
+- the `asphodelos` bin → `src/index.ts` → `src/cli`
+
+`tsdown.config.ts` has one entry per subpath; adding a subpath means adding both. The config
+schema, the CLI flags and the Vite plugin's behavior are public too: changing them updates the
+README (`Full Config Reference`, `CLI Reference`, `Vite Plugin`) in the same change. Do not
+introduce a breaking change on your own initiative — say what it would take and ask.

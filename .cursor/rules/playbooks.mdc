@@ -1,0 +1,88 @@
+---
+description: Step-by-step playbooks for the recurring tasks here — adding a config option or generator feature, fixing a generator bug, porting a feature from hono-takibi, supporting a vendor extension, clearing a lint failure, adding a lint rule, bumping effect, and releasing. Read this when starting any of those.
+alwaysApply: false
+---
+
+# Playbooks
+
+Every playbook ends the same way: `bun run fix`, then `bun run check`, all green, then commit.
+
+## Add a config option or generator feature
+
+1. Write the failing test first, in the file of the layer that owns the behavior
+   (`src/core/<generator>/index.test.ts` for output, `src/config/index.test.ts` for validation).
+2. Add the field to `ConfigSchema` in `src/config/index.ts`, with its default as
+   `Schema.withDecodingDefault` and a check whose message names the field.
+3. Thread it through `makeJob` in `src/shared/index.ts`, so the CLI and the Vite plugin both
+   get it. Never special-case one entry point.
+4. Implement it in `core/` (the Effect program) and `generator/` / `helper/` (the pure code
+   builders), respecting the layering.
+5. If the output is a client hook, add or update a case under `test/cases/` and assert it in
+   `test/runtime/` or `test/types/`.
+6. Document it in the README: the section of that generator and `Full Config Reference`.
+
+## Fix a generator bug
+
+1. Reproduce it as a failing test at the smallest document that shows it. Prefer asserting the
+   behavior of the generated code (`src/core/runtime.test.ts` mounts the real Elysia app) over
+   string matching.
+2. Find the layer that owns the mistake — parsing (`openapi/`), a code builder (`generator/`),
+   composition (`helper/`), or the program (`core/`) — and fix it there, not downstream.
+3. Check whether sibling generators or the other client libraries have the same mistake.
+4. If the fix changes generated output, run `bun run test:clients` and read what changed.
+
+## Port a feature from hono-takibi
+
+1. Read the hono-takibi implementation and its tests end to end before writing anything.
+2. List what differs here: Elysia instead of Hono, `elysia` / `test` output that merges into the
+   user's code, bun instead of pnpm / vitest, this repository's lint rules. Adapt; do not copy
+   a behavior that would delete or overwrite user code.
+3. Port the tests first, translated to `bun:test`, and make sure the new ones fail against the
+   current code before the implementation lands.
+4. Say in the commit body what was taken as-is and what was changed and why.
+
+## Support a vendor extension (`x-*`)
+
+1. Add it to the model in `src/openapi/vendor-ext.ts`.
+2. Emit it from the TypeBox builder (`src/generator/typebox/`), keeping the keyword on the
+   emitted schema so it round-trips.
+3. Prove it against a real request in `src/core/runtime.test.ts`: the status and, for message
+   extensions, the exact text. If Elysia cannot honor it, test that it survives on the schema and
+   document it as round-trip only.
+4. Add it to the README `Vendor Extensions` tables.
+
+## Clear a lint failure
+
+1. Run the failing command and read the rule name in the message.
+2. Try `bun run fix` first — formatting, import order, markdownlint and textlint are autofixable.
+3. Otherwise **change the code, not the rule.** The rules encode the design: `no-let` means one
+   const expression; no assertion means narrow with a guard; a `no-restricted-imports` message
+   means the dependency direction is wrong; `prefer-each` means `it.each`.
+4. Only if the rule genuinely cannot hold, add
+   `// oxlint-disable-next-line rule-name -- reason` on that line, and say in the report that
+   you added a suppression and why.
+5. An unknown word is one line in `project-words.txt` if it is a real project term, a file-local
+   `cspell:ignore` if it is test data, and a rename if it is an abbreviation or a typo.
+
+## Add a lint rule
+
+1. Check `oxlint --rules` for its category; correctness / suspicious / perf are already on.
+2. Add it to `packages/asphodelos/oxlint.config.ts` in its section, with the reason.
+3. Run `bun run lint`, fix every finding in the code, and confirm both workspaces pass.
+4. For a `custom/` rule, follow the plugin section of the CI and configuration rule.
+
+## Bump effect
+
+1. Change `effect` and `@effect/platform-node` in `packages/asphodelos/package.json` together,
+   then `bun install`.
+2. `bun run typecheck`. The rc moves the Schema and CLI APIs, so expect errors in `config/` and
+   `cli/` first.
+3. `bun run check`. Read every behavior difference rather than adjusting an assertion to match.
+4. Report which upstream changes forced code changes; that is what the commit body explains.
+
+## Release (only when asked)
+
+1. Confirm `main` is green.
+2. Bump `version` in `packages/asphodelos/package.json` only, in its own commit.
+3. `bun run build`, then publish from `packages/asphodelos`.
+4. Never reuse or roll back a published version; to fix a release, bump again.

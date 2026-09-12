@@ -1,0 +1,107 @@
+---
+description: Repository map, commands, invariants and the definition of done (always applied)
+alwaysApply: true
+---
+
+# asphodelos — how this repository is run
+
+Generates type-safe [Elysia](https://elysiajs.com/) code — routes, TypeBox schemas, Eden
+wrappers, client hooks, tests and a mock server — from OpenAPI or TypeSpec. Published to npm as
+`asphodelos`, with a CLI and a Vite plugin. Built on Effect v4, formatted by oxfmt, linted by
+oxlint, run and tested with Bun. It is the Elysia sibling of `nakita628/hono-takibi`; features
+are often ported from there, adapted to what differs here.
+
+This repository is operated **through agent conversation alone**. Nothing here assumes a human
+will fix it up afterwards. The config files are the source of truth: when an instruction
+contradicts one, quote the config and ask before changing it.
+
+Everything committed is written in **English** — code, comments, TSDoc, Markdown, commit
+messages, workflow comments. textlint and cspell assume it. Test data may be in any language.
+
+## Layout
+
+```text
+packages/asphodelos/          the published package (the only npm artifact)
+  src/                        implementation; see the architecture rule for the layering
+  lint/custom.js              oxlint JS plugin holding this repo's structural conventions
+  oxlint.config.ts            source of truth for lint (the comments are the design)
+  tsdown.config.ts            build: one entry per `exports` subpath
+test/                         client suite: compiles and runs the generated hooks, and the
+                              packaged CLI and Vite plugin from dist
+  cases/<name>/               one asphodelos.config.ts + tsconfig.json per client library
+  oxlint.config.ts            reuses the package's rules; do not copy rules into it
+scripts/actionlint.ts         downloads a pinned actionlint, verifies its checksum, runs it
+oxfmt.config.ts               source of truth for formatting (printWidth 100, single quotes, no semicolons)
+.github/workflows/test.yaml   CI: the same commands as below, in the same order
+```
+
+## Commands
+
+Run these from the repository root.
+
+| Goal | Command |
+| --- | --- |
+| Install dependencies | `bun install --frozen-lockfile` |
+| Everything CI checks, in CI's order | `bun run check` |
+| Autofix formatting, oxlint, markdownlint and textlint | `bun run fix` |
+| All linters (oxlint on both workspaces, markdownlint, textlint, cspell, secretlint, actionlint) | `bun run lint` |
+| Type check the package | `bun run typecheck` |
+| Unit tests | `bun run test` |
+| Build `dist` | `bun run build` |
+| Client suite (builds first) | `bun run test:clients` |
+| One test file | `cd packages/asphodelos && bun test src/<path>.test.ts` |
+
+- `test:clients` runs the packaged CLI and Vite plugin from `dist`, so it always builds first.
+  Never run `cd test && bun test` against a stale build.
+- oxlint loads its TypeScript config through Node, which needs a Node that runs `.ts` natively
+  (CI uses Node 24).
+
+## Definition of done
+
+Before reporting a task finished, **`bun run check` must be green**. One failure means not done.
+If you only ran part of it, say which part.
+
+- A behavior change ships with a test that fails before it and passes after.
+- A change to the config, the CLI, the Vite plugin or the generated output updates `README.md`
+  in the same change (it is the user documentation and the config reference).
+- Report results as they are. Never call a task complete while hiding a failing command, and
+  never make a check pass by weakening it.
+
+## Invariants
+
+- **Never relax a linter to get a change through.** Do not set a rule to `'off'`, do not lower
+  `categories`, do not drop `denyWarnings`, do not add an `ignorePaths` / `ignorePatterns`
+  entry to hide a finding. If a rule genuinely does not fit, say so and ask.
+- **Suppressions live next to the code, naming the rule and the reason:**
+  `// oxlint-disable-next-line rule-name -- reason`. Never disable a whole file.
+  `reportUnusedDisableDirectives: 'deny'` is on, so a suppression that stopped firing must go.
+- **No `TODO` / `FIXME`.** `no-warning-comments` rejects them in source, textlint's `no-todo`
+  in docs. Parked work belongs in the report.
+- **Failures are typed Effect errors, never throws**: `GenerateError`, `FormatError`,
+  `OpenAPIError`, `ConfigError`, `PlatformError`. See the Effect rule.
+- **Never hand-edit generated files:** `bun.lock` (let `bun install` write it), `dist/`,
+  `test/__generated__/`, `tmp-*` work trees.
+- **`elysia` and `test` output holds the user's code.** Those generators merge into what is on
+  disk (`src/merge`). Nothing may delete or blindly overwrite that output.
+- **`effect` and `@effect/platform-node` are pinned exactly** (`4.0.0-rc.112`, an rc whose API
+  still moves). They move together, in one change.
+- **Never bump `version` in `packages/asphodelos/package.json` or publish** unless the task is
+  a release that was asked for.
+
+## Working order
+
+1. Read the rules in force for the files you are about to touch (`rules` and `overrides` in
+   `packages/asphodelos/oxlint.config.ts`, and the matching `.cursor/rules/*.mdc`).
+2. Implement it the way the surrounding code is written. Do not introduce a second idiom.
+3. `bun run fix`, then `bun run check`.
+4. Commit and push (see Git policy).
+5. In the final report state what changed, which commands verified it, and anything left out.
+
+## Git policy
+
+- The owner has authorized committing **directly to `main`** and pushing once `bun run check` is
+  green. Never force-push and never rewrite pushed history.
+- One logical change per commit. The subject is an imperative sentence in the shape of the
+  existing history (`Generate the client cases before typechecking them`), with no `feat:` /
+  `fix:` prefix; the body explains why.
+- Do not commit generated output, secrets or local tooling files.

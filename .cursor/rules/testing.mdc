@@ -1,0 +1,68 @@
+---
+description: Test conventions for bun:test, the package suite and the client suite under test/
+globs: **/*.test.ts,**/*.test.tsx,test/**
+alwaysApply: false
+---
+
+# Tests
+
+Tests run on **`bun:test`** and live next to what they cover (`src/core/mock/index.test.ts`).
+The package suite is `bun run test`; the client suite under `test/` is `bun run test:clients`.
+
+## Shape
+
+- Import from `bun:test`: `import { describe, expect, it } from 'bun:test'`. The oxlint `jest`
+  plugin reads it.
+- `it`, never `test` (`jest/consistent-test-it`). Titles describe the behavior in a sentence.
+- A table is **`it.each` / `describe.each`**, never a loop around `it` (`jest/prefer-each`):
+  - rows of values: `it.each([['a', 1], ['b', 2]] as const)('%s maps to %p', (name, n) => …)`;
+  - rows of objects: `it.each([...cases])('$key does …', (testCase) => …)`. Spread a `readonly`
+    table: bun's typing wants a mutable array for object rows;
+  - a row that is itself an array is spread into arguments — wrap it: `inputs.map((i) => [i] as const)`;
+  - a computed title is a precomputed `title` field, used as `'$title'`. Avoid `%#`, which bun
+    formats inconsistently.
+- `toStrictEqual` over `toEqual`; an equality matcher over `toBe(true)` on a comparison.
+- `expect` only inside a test, never conditionally (`jest/no-conditional-expect`). For "this
+  value, or anything when none is pinned" use `toStrictEqual(value ?? expect.any(String))`.
+- `it.only`, `it.skip`, `xit`, `fit` and commented-out tests fail lint.
+- A test that spawns a process (the CLI binary, `oxlint`) passes an explicit timeout as the
+  third argument, as `src/index.test.ts` and `src/cli/watch.test.ts` do: a loaded machine takes
+  longer than bun's 5s default.
+
+## What tests may do that `src` may not
+
+`*.test.ts` is exempt from the structural rules and the cast rules: `let`, `any`, type
+assertions, arrow functions at module scope, empty stub callbacks, `console`, cross-layer
+imports and awaiting inside a loop are all fine when they spell the fixture out most clearly.
+Everything else in the TypeScript rule still applies.
+
+## Working with the filesystem
+
+- Generators resolve paths against `process.cwd()`. A test that writes files creates its own
+  directory (`mkdtempSync`), `process.chdir`s into it, and restores the previous cwd in
+  `afterEach` / `finally`. Name the prefix after the case in words (`asphodelos-per-kind-`).
+- Remove temporary directories in `afterAll`. Work trees under the package use a `tmp-` prefix,
+  which `.gitignore`, oxfmt and oxlint all skip.
+- Run a generator Effect with `runGenerator` / `runGeneratorError` from `src/testing`.
+- Background work (the Vite plugin) is awaited by polling for its observable result, never by a
+  fixed sleep alone; wait until it has finished before the test ends, or its writes land in the
+  next test's directory.
+
+## Coverage of behavior
+
+- A bug fix ships with a test that fails before it and passes after. When you add a guard, prove
+  the test catches its absence (remove the guard, watch it fail, restore it).
+- Assert through the observable result — files on disk, the generated source, a real request
+  against the generated Elysia app (`src/core/runtime.test.ts`) — rather than internals.
+
+## The client suite (`test/`)
+
+- `cases/<name>/asphodelos.config.ts` + `tsconfig.json` per client library; `scripts/generate.ts`
+  runs the **packaged** CLI over every case before each run, so `dist` must be current.
+- `__generated__/` is output: gitignored, refreshed every run, never edited or committed.
+- `runtime/` executes the generated hooks against `hosts/`; `types/` pins generics at compile
+  time; `runtime/vite-plugin.test.ts` runs the packaged plugin inside a real Vite dev server.
+- happy-dom is preloaded for React; a test that needs Node's timers (Vite) unregisters it for its
+  duration and registers it again after.
+- `bun run typecheck` in `test/` compiles every case project and then the suite itself
+  (`test/tsconfig.json`).

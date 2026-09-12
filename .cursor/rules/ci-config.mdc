@@ -1,0 +1,77 @@
+---
+description: Workflows, dependency pinning, and editing the lint, format and build configuration
+globs: .github/**,**/package.json,**/oxlint.config.ts,oxfmt.config.ts,**/tsconfig*.json,packages/asphodelos/tsdown.config.ts,packages/asphodelos/lint/**,scripts/**,cspell.config.yaml,project-words.txt,.textlintrc.yml,.markdownlint-cli2.jsonc,.secretlintrc.json
+alwaysApply: false
+---
+
+# CI and configuration
+
+## The workflow
+
+- `.github/workflows/test.yaml` runs the root scripts in the same order as `bun run check`:
+  install → `fmt:check` → `lint` → `typecheck` → package tests → `test:clients`. A new check is
+  added to the root `package.json` scripts **and** to this workflow, so local and CI cannot
+  disagree about what "clean" means.
+- **Actions are pinned to a commit digest with the tag kept as a comment**:
+  `uses: actions/checkout@fbc6f399… # v5.1.0`. A floating tag is a mutable dependency with
+  access to the job — never introduce one. Resolve a tag with
+  `git ls-remote https://github.com/<owner>/<repo> 'refs/tags/<tag>^{}'`.
+- `permissions` stays minimal (`contents: read`); checkout uses `persist-credentials: false`.
+- Bun comes from `packageManager` in the root `package.json` (`bun-version-file`); change that
+  field to move Bun, not the workflow.
+- actionlint runs through `scripts/actionlint.ts`, which downloads a pinned release and verifies
+  its checksum. Bumping it means changing `VERSION` and **every entry of `CHECKSUMS`** together,
+  from that release's `*_checksums.txt`.
+
+## Editing the lint configuration
+
+`packages/asphodelos/oxlint.config.ts` is the standard this repository holds itself to, and its
+comments explain every choice. `test/oxlint.config.ts` imports it rather than copying it.
+
+- Adding a rule: place it in the section it belongs to and, if the reason is not obvious from
+  its name, write the reason above it. Then run `bun run lint` and fix what it reports in the
+  code — the rule is not finished until the repository passes it.
+- A rule that does not fit this codebase is **left out of the list**, with a comment where it
+  would have gone saying why (as `new-cap` is). It is never set to `'off'` in `rules`.
+- `'off'` appears only in `overrides`, scoped to the files it describes, with the reason.
+- `categories` (correctness / suspicious / perf) are errors, so rules in those categories are not
+  restated in `rules`. Only pedantic / style / restriction / nursery rules are listed.
+- `plugins` replaces oxlint's defaults, so the defaults are restated there — do not drop one
+  while adding another.
+- A new `src/` directory gets its `no-restricted-imports` override and a line in the layer map.
+
+## The oxlint plugin
+
+`packages/asphodelos/lint/custom.js` holds the conventions a glob cannot express (the Effect
+program shape, function declarations, `no-let`, predicate and type naming). It is an oxlint JS
+plugin: untyped ESTree in, a default export out. When adding a rule there:
+
+- Report a message that tells the author what to write instead, in the voice of the existing
+  rules — a sentence, not a rule name.
+- Exempt `*.test.ts` when the rule describes the shape of `src` rather than a real hazard.
+- Add it to the header comment in `custom.js`, to `rules` in `oxlint.config.ts`, and to
+  `lint/custom.test.ts` (the registered-rules list and accept / reject cases).
+
+## Formatting and the other linters
+
+- Formatting options live **only** in the root `oxfmt.config.ts`. The same style is duplicated
+  as `defaultConfig` in `src/format/index.ts`, because generated code is formatted at runtime;
+  change both together.
+- `cspell.config.yaml`, `.textlintrc.yml` and `.markdownlint-cli2.jsonc` explain themselves in
+  comments; the docs rule says how to live with them.
+
+## Dependencies
+
+- `bun.lock` is written by `bun install`. Never edit it by hand, and never delete it to "fix" an
+  install. CI installs with `--frozen-lockfile`.
+- `effect` and `@effect/platform-node` are pinned exactly and move together.
+- The package's runtime `dependencies` are what every user installs. Adding one is a design
+  decision — ask first. Tooling goes in `devDependencies` of the workspace that uses it.
+- The repository-wide linters are root `devDependencies`, pinned exactly.
+
+## Releasing
+
+Publishing is by hand and only when asked: bump `version` in `packages/asphodelos/package.json`
+in its own commit, `bun run check`, then build and publish from `packages/asphodelos`. Never
+reuse a published version. `files: ["dist"]` — what a consumer needs must be reachable from the
+build output.

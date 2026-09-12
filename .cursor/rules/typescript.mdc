@@ -1,0 +1,75 @@
+---
+description: TypeScript conventions implied by the oxlint configuration
+globs: **/*.ts,**/*.tsx
+alwaysApply: false
+---
+
+# TypeScript conventions
+
+The source of truth is `packages/asphodelos/oxlint.config.ts` (the `test/` workspace reuses it).
+What follows is what cannot be worked around. `*.test.ts` relaxes some of it — see the testing
+rule. Effect-specific shapes are in the Effect rule.
+
+## Functions and declarations
+
+- A module-level function is a **`function` declaration**. `const f = () => {}` is reported by
+  `custom/function-declaration` and `func-style` (an annotated const keeps its contextual type
+  and is allowed). Closures inside a function may be arrows.
+- **No `let`** (`custom/no-let`; only a `for` statement head is exempt). Write one `const`
+  expression — a ternary over the deciding condition, or an extracted function. State that must
+  change over time lives in a `const` object whose property changes (`const reloads = { count: 0 }`).
+- A pure boolean predicate reads as a question: **`is*` / `has*` / `can*`**
+  (`custom/predicate-is-name`).
+- A `type` alias is **PascalCase** (`custom/type-pascal-case`).
+- Initialize at the declaration (`init-declarations`). No reassigning or writing through a
+  parameter (`no-param-reassign` with `props: true`), no `++` (`no-plusplus`; use `+= 1`).
+
+## Types
+
+- **`type X = {...}` only — no `interface`** (`consistent-type-definitions: 'type'`).
+- **No `any`**, **no `!` non-null assertion**, **no type assertions at all**
+  (`consistent-type-assertions` with `assertionStyle: 'never'`). Narrow with a guard from
+  `src/guard` or a local `is*` function. The one sanctioned cast is in `src/openapi/index.ts`.
+- Every `unsafe-*` rule is an error. Take `unknown` and bring it down through a guard.
+- Type imports use `import type` (`consistent-type-imports`), in their own statement.
+- `noUncheckedIndexedAccess: true` — an indexed access includes `undefined`. Handle it with a
+  guard or `??`, not an assertion.
+- `@ts-ignore` is banned; `@ts-expect-error` needs a description.
+
+## Imports and exports
+
+- **A relative specifier always carries its `.js` extension** (`import/extensions: always`),
+  also in `test/`. The package resolves NodeNext-style at runtime and `tsc` does not check it.
+- **No default exports**, except in `*.config.ts` files, where the tool requires one.
+- Respect the layering in the architecture rule; `no-restricted-imports` reports a wrong edge.
+- ESM only: no `require`, no CommonJS. Node built-ins use the `node:` prefix.
+
+## Errors and async
+
+- Do not throw in `src`. Fail through the Effect error channel (see the Effect rule).
+- If a throw is unavoidable (a test fixture, generated code), throw an `Error` with a message.
+- A catch binding is named **`error`** (`unicorn/catch-error-name`).
+- Promises: `await`, never `.then()` chains (`promise/prefer-await-to-then`); no floating
+  promises. A deliberate fire-and-forget is `void promise`.
+
+## Details
+
+- `console` is banned in `src`, except `console.warn` from a generator that meets a construct it
+  cannot translate, and the Vite plugin, whose terminal output is its interface. The CLI prints
+  through Effect's `Console`.
+- Regular expressions carry the `u` flag (`require-unicode-regexp`), in literals and in
+  `new RegExp(source, 'u')`. Under `u` a needless escape (`` \` ``, `\-` outside a class) is a
+  syntax error, so escape only what must be.
+- Template literals over concatenation. A `${...}` inside a single-quoted string is rejected.
+- No leading-underscore identifiers, except `_enum` and Effect's `_tag`.
+- Filenames are kebab-case, or camelCase when the module is named after the OpenAPI key it
+  generates (`components/pathItems.ts`).
+- Do not hand-format. oxfmt (`bun run fmt`) owns layout and import order.
+
+## TSDoc
+
+- Doc comments are TSDoc. **The type lives in the signature, never in the comment.**
+- No `@param` / `@returns` boilerplate. The house style is prose over a self-describing
+  signature that says *why*, not what the code already shows.
+- Any tag you do write carries a description (`require-param-description`,
+  `require-returns-description`).
