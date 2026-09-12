@@ -1,6 +1,6 @@
 ---
 description: Workflows, dependency pinning, and editing the lint, format and build configuration
-globs: .github/**,**/package.json,**/oxlint.config.ts,oxfmt.config.ts,**/tsconfig*.json,packages/asphodelos/tsdown.config.ts,packages/asphodelos/lint/**,scripts/**,cspell.config.yaml,project-words.txt,.textlintrc.yml,.markdownlint-cli2.jsonc,.secretlintrc.json
+globs: .github/**,**/package.json,**/oxlint.config.ts,oxfmt.config.ts,**/tsconfig*.json,packages/asphodelos/tsdown.config.ts,packages/asphodelos/lint/**,scripts/**,cspell.config.yaml,project-words.txt,.textlintrc.yml,.markdownlint-cli2.jsonc,.secretlintrc.json,renovate.json
 alwaysApply: false
 ---
 
@@ -81,9 +81,24 @@ plugin: untyped ESTree in, a default export out. When adding a rule there:
   move together. A dependency that pulls in another `@effect/*` package with a caret range gets
   that package pinned too: users install with npm, not with bun.lock, and two copies of `effect`
   break the CLI. `bun run test:pack` fails when more than one `effect` is installed.
+- The `@typespec/*` packages move together, to one TypeSpec release: TypeSpec publishes them
+  together (compiler, http, openapi and openapi3 on 1.x, rest and versioning on 0.x) and each
+  declares the others as peers at its own release. `scripts/typespec.ts` (part of `bun run lint`)
+  fails when bun.lock mixes releases. To move them, set every `@typespec/*` range in
+  `packages/asphodelos/package.json` to the new release and run the `bun update` command the
+  check prints: bun keeps an auto-installed peer (`@typespec/openapi`) at its old version.
 - The package's runtime `dependencies` are what every user installs. Adding one is a design
   decision — ask first. Tooling goes in `devDependencies` of the workspace that uses it.
 - The repository-wide linters are root `devDependencies`, pinned exactly.
+- Renovate (`renovate.json`, the same settings as hekireki and hono-takibi) opens update PRs on
+  Saturdays, after a release has been out for 7 days (1 day for a security fix). Once Test
+  passes it merges pins, lockfile maintenance and minor / patch updates of packages past 0.x by
+  itself — never an action digest, and a group only when every update in it qualifies. The
+  `typespec` and `effect` groups keep the two sets above in one PR each. A security update
+  bypasses its group and bumps only the advisory's package, so a `typespec` one fails the check
+  above: finish it by aligning the rest of the release on the same branch.
+- Renovate cannot bump the actionlint and zizmor downloads (`VERSION` plus checksums in
+  `scripts/`); they are updated by hand as described under The workflows.
 
 ## The published package
 

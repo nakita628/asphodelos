@@ -32,8 +32,10 @@ test/                         client suite: compiles and runs the generated hook
   oxlint.config.ts            reuses the package's rules; do not copy rules into it
 scripts/actionlint.ts         downloads a pinned actionlint, verifies its checksum, runs it
 scripts/pack-smoke.ts         installs the packed tarball with npm into an empty project and uses it
+scripts/typespec.ts           fails when the @typespec/* packages in bun.lock are not one TypeSpec release
 scripts/zizmor.ts             downloads a pinned zizmor (workflow security audit), verifies it, runs it
 oxfmt.config.ts               source of truth for formatting (printWidth 100, single quotes, no semicolons)
+renovate.json                 dependency updates (Saturdays, Asia/Tokyo); see the CI rule's Dependencies
 .github/workflows/test.yaml   CI (Test): the same commands as below, in the same order
 .github/workflows/release.yaml  after Test on main: tag, npm publish, GitHub release
 ```
@@ -47,7 +49,7 @@ Run these from the repository root.
 | Install dependencies | `bun install --frozen-lockfile` |
 | Everything CI checks, in CI's order | `bun run check` |
 | Autofix formatting, oxlint, markdownlint and textlint | `bun run fix` |
-| Linters (oxlint on the package, markdownlint, textlint, cspell, secretlint, actionlint, zizmor) | `bun run lint` |
+| Linters (oxlint on the package, markdownlint, textlint, cspell, secretlint, the TypeSpec release check, actionlint, zizmor) | `bun run lint` |
 | Type check the package | `bun run typecheck` |
 | Unit tests | `bun run test` |
 | Build `dist` | `bun run build` |

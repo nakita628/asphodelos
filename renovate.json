@@ -1,0 +1,52 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":separateMultipleMajorReleases",
+    "security:openssf-scorecard"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["* * * * 6"],
+  "dependencyDashboardAutoclose": true,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": "1 day"
+  },
+  "platformAutomerge": false,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["* * * * 6"]
+  },
+  "packageRules": [
+    {
+      "matchDatasources": ["npm", "github-actions"],
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "TypeSpec releases every @typespec/* package together (compiler, http, openapi and openapi3 on 1.x, rest and versioning on 0.x) and each declares the others as peers at its own release, so they move in one PR. A compiler major arrives next to 0.x minors, so the group is not split into a major and a minor PR. Security updates bypass groups; scripts/typespec.ts fails the half-bumped set they leave.",
+      "matchPackageNames": ["@typespec/**"],
+      "groupName": "typespec",
+      "separateMajorMinor": false
+    },
+    {
+      "description": "effect, @effect/platform-node and @effect/platform-node-shared are pinned to one rc and move together: a second copy of effect breaks the CLI, which bun run test:pack checks.",
+      "matchPackageNames": ["effect", "@effect/**"],
+      "groupName": "effect"
+    },
+    {
+      "matchUpdateTypes": ["pin", "pinDigest"],
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": false
+    }
+  ]
+}

@@ -43,8 +43,9 @@ jobs:
         run: bun run fmt:check
 
       # oxlint over the package, then markdownlint, textlint, cspell and secretlint over the docs
-      # and configs, and actionlint and zizmor over the workflows. The client suite is linted in
-      # its own step below, once the code it imports has been generated.
+      # and configs, the check that the @typespec/* packages in bun.lock are one TypeSpec release,
+      # and actionlint and zizmor over the workflows. The client suite is linted in its own step
+      # below, once the code it imports has been generated.
       - name: Lint
         run: bun run lint
 

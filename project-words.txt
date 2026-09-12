@@ -25,6 +25,7 @@ Mersenne
 Metavar
 msvc
 nakita
+openssf
 petstore
 pipefail
 prefault
