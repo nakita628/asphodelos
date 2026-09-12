@@ -1,6 +1,5 @@
 import type { TypeboxCtx } from '../generator/typebox/index.js'
 import { isReference, isSecurityArray } from '../guard/index.js'
-import { pathEntries } from '../openapi/index.js'
 import type {
   Components,
   OpenAPI,
@@ -234,7 +233,7 @@ export function operationsByResource(api: OpenAPI) {
     bucket.push(item)
     grouped.set(resource, bucket)
   }
-  for (const [path, pathItem] of pathEntries(api)) {
+  for (const [path, pathItem] of Object.entries(api.paths)) {
     if (!pathItem) continue
     for (const [resource, route] of walk(path, resourceName(path), pathItem, api, canonical)) {
       collect(resource, route)

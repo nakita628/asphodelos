@@ -6,7 +6,6 @@ import { emit } from '../../emit/index.js'
 import { isMediaWithSchema, isSchemaArray, isStringRef } from '../../guard/index.js'
 import { HTTP_METHODS } from '../../helper/index.js'
 import { collectSchemaRefs } from '../../helper/schema.js'
-import { pathEntries } from '../../openapi/index.js'
 import type {
   Media,
   OpenAPI,
@@ -228,7 +227,7 @@ function nestRoute(keys: readonly string[], method: string, opTs: string) {
 function makeRoutes(openAPI: OpenAPI, prefix?: string) {
   const out: string[] = []
   const prefixKeys: readonly string[] = prefix && prefix !== '/' ? pathToKeys(prefix) : []
-  for (const [pathStr, pathItem] of pathEntries(openAPI)) {
+  for (const [pathStr, pathItem] of Object.entries(openAPI.paths)) {
     if (!pathItem) continue
     const keys = [...prefixKeys, ...pathToKeys(pathStr)]
     for (const method of HTTP_METHODS) {
@@ -279,7 +278,7 @@ function collectRefs(openAPI: OpenAPI) {
     }
     if (resp.content) walkContentMap(resp.content)
   }
-  for (const [, pathItem] of pathEntries(openAPI)) {
+  for (const [, pathItem] of Object.entries(openAPI.paths)) {
     if (!pathItem) continue
     for (const method of HTTP_METHODS) {
       const op = pathItem[method]

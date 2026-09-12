@@ -1,7 +1,6 @@
 import { isMediaWithSchema, isRecord, isReference } from '../../guard/index.js'
 import { nonExistentPathValue } from '../../helper/faker.js'
 import { HTTP_METHODS, resolveOperation } from '../../helper/index.js'
-import { pathEntries } from '../../openapi/index.js'
 import type { Components, OpenAPI, Operation, Responses, Schema } from '../../openapi/index.js'
 import { collectSchemaRefs, makeMockFunctions, schemaToFaker } from '../faker/index.js'
 import type { FakerOptions } from '../faker/index.js'
@@ -398,7 +397,7 @@ export function makeMock(spec: OpenAPI, options: MockOptions = {}) {
     ...(useExamples === 'all' ? { useExamples: true } : {}),
   }
   const components = spec.components
-  const routes = pathEntries(spec).flatMap(([path, pathItem]) => {
+  const routes = Object.entries(spec.paths).flatMap(([path, pathItem]) => {
     if (!pathItem) return [] as const
     return HTTP_METHODS.flatMap((method) => {
       const operation = pathItem[method]

@@ -4,7 +4,6 @@ import { Effect } from 'effect'
 
 import { emit } from '../emit/index.js'
 import { GenerateError } from '../error/index.js'
-import { pathEntries } from '../openapi/index.js'
 import type { OpenAPI, Operation } from '../openapi/index.js'
 import { capitalize, pascalCase, resourcePrefix, toSafeIdentifier } from '../utils/index.js'
 import { edenChain } from './eden.js'
@@ -826,7 +825,7 @@ export function makeQueryHooks(
       deps: OpDeps
       fetchType?: string
     }[] = []
-    for (const [pathStr, pathItem] of pathEntries(openAPI)) {
+    for (const [pathStr, pathItem] of Object.entries(openAPI.paths)) {
       if (!pathItem) continue
       for (const method of HTTP_METHODS) {
         const rawOperation = pathItem[method]

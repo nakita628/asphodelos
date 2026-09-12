@@ -4,7 +4,6 @@ import { Effect } from 'effect'
 
 import { emit } from '../../emit/index.js'
 import { edenChain, HTTP_METHODS, resolveOperationId } from '../../helper/index.js'
-import { pathEntries } from '../../openapi/index.js'
 import type { OpenAPI, Operation } from '../../openapi/index.js'
 import { toSafeIdentifier } from '../../utils/index.js'
 
@@ -54,7 +53,7 @@ export function eden(
   return Effect.gen(function* () {
     const prefix = basePath && basePath !== '/' ? basePath : ''
     const operations: string[] = []
-    for (const [pathStr, pathItem] of pathEntries(openAPI)) {
+    for (const [pathStr, pathItem] of Object.entries(openAPI.paths)) {
       if (!pathItem) continue
       for (const method of HTTP_METHODS) {
         const operation = pathItem[method]

@@ -40,9 +40,7 @@ async function readOpenAPI(input: string): Promise<OpenAPI> {
   return (await SwaggerParser.bundle(input)) as OpenAPI
 }
 
-type BaseOpenAPI = Awaited<ReturnType<typeof SwaggerParser.bundle>>
-
-export type OpenAPI = BaseOpenAPI & {
+export type OpenAPI = {
   readonly openapi?: string
   readonly $self?: string
   readonly info?: {
@@ -64,6 +62,7 @@ export type OpenAPI = BaseOpenAPI & {
   }
   readonly jsonSchemaDialect?: string
   readonly servers?: readonly Server[]
+  readonly paths: OpenAPIPaths
   readonly webhooks?: {
     readonly [k: string]: PathItem
   }
@@ -78,8 +77,6 @@ export type OpenAPI = BaseOpenAPI & {
     readonly kind?: string
   }[]
   readonly externalDocs?: ExternalDocs
-} & {
-  paths: OpenAPIPaths
 }
 
 export type Components = {
@@ -144,20 +141,26 @@ export type Components = {
   }
 }
 
-type OAuthFlow = {
-  readonly implicit?: {
-    readonly authorizationUrl: string
-    readonly deviceAuthorizationUrl: string
-    readonly tokenUrl: string
-    readonly refreshUrl: string
-    readonly scopes: {
-      readonly [k: string]: string
-    }
+type OAuthFlowDetail = {
+  readonly authorizationUrl?: string
+  readonly deviceAuthorizationUrl?: string
+  readonly tokenUrl?: string
+  readonly refreshUrl?: string
+  readonly scopes: {
+    readonly [k: string]: string
   }
 }
 
+type OAuthFlow = {
+  readonly implicit?: OAuthFlowDetail
+  readonly password?: OAuthFlowDetail
+  readonly clientCredentials?: OAuthFlowDetail
+  readonly authorizationCode?: OAuthFlowDetail
+  readonly deviceAuthorization?: OAuthFlowDetail
+}
+
 export type OpenAPIPaths = {
-  readonly [P in keyof NonNullable<BaseOpenAPI['paths']>]: PathItem
+  readonly [k: string]: PathItem
 }
 
 export type Type =
@@ -228,7 +231,7 @@ export type Ref =
 type Server = {
   readonly url: string
   readonly description?: string
-  readonly name: string
+  readonly name?: string
   readonly variables?: {
     readonly [k: string]: {
       readonly enum?: readonly string[]
@@ -312,7 +315,7 @@ export type PathItem = {
     readonly [k: string]: Operation
   }
   readonly servers?: readonly Server[]
-  readonly parameters?: readonly Parameter[] | readonly Reference[]
+  readonly parameters?: readonly (Parameter | Reference)[]
 }
 
 export type Operation = {
@@ -330,11 +333,7 @@ export type Operation = {
     readonly [k: string]: Responses
   }
   readonly callbacks?: {
-    readonly [k: string]: {
-      readonly $ref?: string
-      readonly summary?: string
-      readonly description?: string
-    }
+    readonly [k: string]: Callbacks | Reference
   }
   readonly deprecated?: boolean
   readonly security?: readonly { readonly [scheme: string]: readonly string[] }[]
@@ -556,14 +555,4 @@ export type Media = {
 
 export type Callbacks = {
   readonly [k: string]: PathItem
-}
-
-/**
- * `Object.entries(openAPI.paths)` on its own yields `any` values: swagger-parser types the
- * document as a union of the OpenAPI 2 / 3.0 / 3.1 shapes, and inference over that union drops
- * the value type. Going through the annotation below is what keeps every caller on `PathItem`.
- */
-export function pathEntries(openAPI: OpenAPI): readonly (readonly [string, PathItem])[] {
-  const paths: { readonly [k: string]: PathItem } = openAPI.paths
-  return Object.entries(paths)
 }

@@ -1254,7 +1254,7 @@ describe('vendor messages on parameters', () => {
         },
       ]),
     ),
-  } as unknown as OpenAPI)
+  })
 
   it.each([...CASES])('$location: returns the message verbatim', async (testCase) => {
     const app = await (await built()).mount('params')

@@ -7,7 +7,6 @@ import {
   resolveOperationId,
   resourceName,
 } from '../../helper/index.js'
-import { pathEntries } from '../../openapi/index.js'
 import type { OpenAPI, Schema } from '../../openapi/index.js'
 import { toSafeIdentifier } from '../../utils/index.js'
 import { collectSchemaRefs, makeMockFunctions, schemaToFaker } from '../faker/index.js'
@@ -63,7 +62,7 @@ function extractSecurity(
 
 export function extractTestCases(spec: OpenAPI) {
   const components = spec.components
-  return pathEntries(spec).flatMap(([path, pathItem]) => {
+  return Object.entries(spec.paths).flatMap(([path, pathItem]) => {
     if (!pathItem) return [] as const
     return HTTP_METHODS.flatMap((method) => {
       const operation = pathItem[method]
