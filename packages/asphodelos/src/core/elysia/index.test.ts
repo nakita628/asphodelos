@@ -54,11 +54,11 @@ const TAGLESS_OPENAPI = {
 describe('elysia — merges user edits into src/index.ts on regeneration', () => {
   const cwdBefore = process.cwd()
   let workdir: string
-  let openapiPath: string
+  let openapiPath: `${string}.json`
 
   beforeAll(async () => {
     const sanityDir = mkdtempSync(path.join(tmpdir(), 'asphodelos-sanity-'))
-    const sanityPath = path.join(sanityDir, 'openapi.json')
+    const sanityPath = path.join(sanityDir, 'openapi.json') as `${string}.json`
     writeFileSync(sanityPath, JSON.stringify(TAGLESS_OPENAPI))
     await runGenerator(parseOpenAPI(sanityPath))
     rmSync(sanityDir, { recursive: true, force: true })
@@ -67,7 +67,7 @@ describe('elysia — merges user edits into src/index.ts on regeneration', () =>
   beforeEach(() => {
     workdir = mkdtempSync(path.join(tmpdir(), 'asphodelos-app-merge-'))
     process.chdir(workdir)
-    openapiPath = path.join(workdir, 'openapi.json')
+    openapiPath = path.join(workdir, 'openapi.json') as `${string}.json`
     writeFileSync(openapiPath, JSON.stringify(TAGLESS_OPENAPI))
   })
 

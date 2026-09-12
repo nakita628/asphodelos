@@ -12,8 +12,7 @@ export class OpenAPIError extends Data.TaggedError('OpenAPIError')<{
   readonly message: string
 }> {}
 
-/** Parses `input` into an OpenAPI document. */
-export function parseOpenAPI(input: string) {
+export function parseOpenAPI(input: `${string}.tsp` | `${string}.yaml` | `${string}.json`) {
   return Effect.tryPromise({
     try: async () => {
       if (!input.endsWith('.tsp')) return (await SwaggerParser.bundle(input)) as OpenAPI
@@ -27,8 +26,6 @@ export function parseOpenAPI(input: string) {
       const document =
         record && ('document' in record ? record.document : record.versions[0]?.document)
       if (!document) throw new Error(`TypeSpec emitted no OpenAPI document: ${input}`)
-      // The emitter returns a self-contained document (every `$ref` is `#/...`), so there is
-      // nothing for `bundle()` to resolve here.
       return document as OpenAPI
     },
     catch: (error) =>

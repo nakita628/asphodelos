@@ -401,7 +401,7 @@ const ALL_COMPONENTS_OPENAPI = {
 describe('elysia (tagless OpenAPI)', () => {
   const cwdBefore = process.cwd()
   const workdir = mkdtempSync(path.join(tmpdir(), 'asphodelos-tagless-'))
-  const taglessPath = path.join(workdir, 'openapi.json')
+  const taglessPath = path.join(workdir, 'openapi.json') as `${string}.json`
 
   beforeAll(() => {
     process.chdir(workdir)
@@ -445,7 +445,7 @@ if (import.meta.main) {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-per-kind-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       await run(parsed)
@@ -470,7 +470,7 @@ if (import.meta.main) {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-cross-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       await run(parsed)
@@ -492,7 +492,7 @@ if (import.meta.main) {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-module-registration-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       await run(parsed)
@@ -516,7 +516,7 @@ if (import.meta.main) {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-model-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       await run(parsed)
@@ -552,7 +552,7 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-no-openapi-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       await run(parsed)
@@ -587,7 +587,7 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-ro-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       await run(parsed, { readonly: true })
@@ -614,7 +614,7 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-split-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       const { schemas: schemasComponent } = await import('./index.js')
@@ -642,7 +642,7 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-all-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(ALL_COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       await run(parsed)
@@ -696,7 +696,7 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-all-split-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(ALL_COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       const c = parsed.components
@@ -751,7 +751,7 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-out-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       await runGenerator(elysia(parsed, { output: 'src/server/index.ts' }))
@@ -783,7 +783,7 @@ if (import.meta.main) {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-no-components-'))
     process.chdir(dir)
     try {
-      const apiPath = path.join(dir, 'openapi.json')
+      const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(TAGLESS_OPENAPI))
       const parsed = await runGenerator(parseOpenAPI(apiPath))
       await run(parsed)

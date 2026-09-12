@@ -49,12 +49,12 @@ describe('parseOpenAPI', () => {
             },
           },
         },
-      } as unknown as string),
+      } as unknown as `${string}.json`),
     )
   })
 
-  it.concurrent('should return err for a completely invalid input', async () => {
-    const result = await runGeneratorError(parseOpenAPI('not yaml nor json'))
+  it.concurrent('should return err for a document that cannot be read', async () => {
+    const result = await runGeneratorError(parseOpenAPI('missing.json'))
     expect(result._tag).toBe('OpenAPIError')
     expect(result.message.length).toBeGreaterThan(0)
   })
@@ -63,7 +63,7 @@ describe('parseOpenAPI', () => {
 // Anchored to this file rather than to the working directory: other suites in the same process
 // `process.chdir` into their own temp directories, and a relative path here would follow them.
 const TSP_TEST_DIR = path.resolve(import.meta.dir, '../..')
-const TSP_TEST_FILE = path.join(TSP_TEST_DIR, 'tmp-spec.tsp')
+const TSP_TEST_FILE = path.join(TSP_TEST_DIR, 'tmp-spec.tsp') as `${string}.tsp`
 const TSP_TEST_SUBDIR = path.join(TSP_TEST_DIR, 'tmp-spec')
 
 describe('parseOpenAPI TypeSpec', () => {
