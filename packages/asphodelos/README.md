@@ -582,8 +582,6 @@ bun run test:clients   # build, then compile and run the generated hooks under t
 bun run test:pack      # build, pack, and install the tarball with npm into an empty project
 ```
 
-Coding agents: the rules live in [`.cursor/rules/`](https://github.com/nakita628/asphodelos/tree/main/.cursor/rules).
-
 ## License
 
 Distributed under the MIT License. See [LICENSE](https://github.com/nakita628/asphodelos?tab=MIT-1-ov-file) for more information.
