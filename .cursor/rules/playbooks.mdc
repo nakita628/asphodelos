@@ -69,7 +69,8 @@ Every playbook ends the same way: `bun run fix`, then `bun run check`, all green
 
 1. Check `oxlint --rules` for its category; correctness / suspicious / perf are already on.
 2. Add it to `packages/asphodelos/oxlint.config.ts` in its section, with the reason.
-3. Run `bun run lint`, fix every finding in the code, and confirm both workspaces pass.
+3. Run `bun run lint` and `bun run test:clients` (which lints `test/`), and fix every finding in
+   the code.
 4. For a `custom/` rule, follow the plugin section of the CI and configuration rule.
 
 ## Bump effect

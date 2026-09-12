@@ -47,16 +47,20 @@ Run these from the repository root.
 | Install dependencies | `bun install --frozen-lockfile` |
 | Everything CI checks, in CI's order | `bun run check` |
 | Autofix formatting, oxlint, markdownlint and textlint | `bun run fix` |
-| All linters (oxlint on both workspaces, markdownlint, textlint, cspell, secretlint, actionlint) | `bun run lint` |
+| Linters (oxlint on the package, markdownlint, textlint, cspell, secretlint, actionlint, zizmor) | `bun run lint` |
 | Type check the package | `bun run typecheck` |
 | Unit tests | `bun run test` |
 | Build `dist` | `bun run build` |
-| Client suite (builds first) | `bun run test:clients` |
+| Client suite: build, generate, typecheck, lint and run `test/` | `bun run test:clients` |
 | npm tarball smoke test (builds first, needs network) | `bun run test:pack` |
 | One test file | `bun -F asphodelos test src/<path>.test.ts` |
 
 - `test:clients` runs the packaged CLI and Vite plugin from `dist`, so it always builds first.
   Never run `cd test && bun test` against a stale build.
+- The `test/` workspace is linted inside `test:clients`, not `lint`: its type-aware rules read
+  `test/__generated__`, which is gitignored and exists only after the generation step. A lint
+  that ran before it would pass on a working copy that still has old output and fail on a fresh
+  checkout.
 - oxlint loads its TypeScript config through Node, which needs a Node that runs `.ts` natively
   (CI uses Node 24).
 

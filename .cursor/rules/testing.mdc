@@ -64,10 +64,11 @@ Everything else in the TypeScript rule still applies.
   time; `runtime/vite-plugin.test.ts` runs the packaged plugin inside a real Vite dev server.
 - happy-dom is preloaded for React; a test that needs Node's timers (Vite) unregisters it for its
   duration and registers it again after.
-- `bun run typecheck` in `test/` compiles every case project and then the suite itself
-  (`test/tsconfig.json`). `asphodelos` resolves to its source there through the
-  `@asphodelos/source` condition, so typecheck and lint need no build; the runtime still loads
-  `dist`, which is why `test:clients` builds first.
+- `bun -F @asphodelos/test typecheck` regenerates `__generated__` (through the packaged CLI, so
+  after a build), compiles every case project, then the suite itself (`test/tsconfig.json`).
+  `asphodelos` resolves to its source there through the `@asphodelos/source` condition, but the
+  generated hooks the suite imports exist only after that generation step — which is why the
+  suite's type-aware lint runs inside `test:clients`, after typecheck, and not in `bun run lint`.
 - `bun run test:pack` (`scripts/pack-smoke.ts`) is the only check that installs the package the
   way users do, with npm and no lockfile. Run it after any change to `package.json`,
   `tsdown.config.ts`, the dependencies, or the entry points.

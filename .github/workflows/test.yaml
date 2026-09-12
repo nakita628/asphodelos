@@ -42,8 +42,9 @@ jobs:
       - name: Format
         run: bun run fmt:check
 
-      # oxlint over both workspaces, then markdownlint, textlint, cspell and secretlint over the
-      # docs and configs, and actionlint and zizmor over the workflows.
+      # oxlint over the package, then markdownlint, textlint, cspell and secretlint over the docs
+      # and configs, and actionlint and zizmor over the workflows. The client suite is linted in
+      # its own step below, once the code it imports has been generated.
       - name: Lint
         run: bun run lint
 
@@ -53,9 +54,9 @@ jobs:
       - name: Test
         run: bun -F asphodelos test --coverage
 
-      # The client suite compiles and runs the generated hooks against the real @tanstack/* and
-      # swr packages, so it needs the package built: each case's config imports `asphodelos` by
-      # name and the generator is invoked through `dist`.
+      # The client suite compiles, lints and runs the generated hooks against the real
+      # @tanstack/* and swr packages, so it needs the package built: each case's config imports
+      # `asphodelos` by name and the generator is invoked through `dist`.
       - name: Client suite
         run: bun run test:clients
 

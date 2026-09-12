@@ -11,12 +11,12 @@
   "scripts": {
     "build": "bun -F asphodelos build",
     "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run test && bun run test:clients && bun run test:pack",
-    "fix": "bun run fmt && bun -F asphodelos lint --fix && bun -F @asphodelos/test lint --fix && markdownlint-cli2 --fix && textlint --fix --ignore-path .gitignore '**/*.md'",
+    "fix": "bun run fmt && bun -F asphodelos lint --fix && markdownlint-cli2 --fix && textlint --fix --ignore-path .gitignore '**/*.md'",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "lint": "bun -F asphodelos lint && bun -F @asphodelos/test lint && markdownlint-cli2 && textlint --ignore-path .gitignore '**/*.md' && cspell --no-progress --dot '**' && secretlint '**/*' && bun scripts/actionlint.ts -color && bun scripts/zizmor.ts .github/workflows",
+    "lint": "bun -F asphodelos lint && markdownlint-cli2 && textlint --ignore-path .gitignore '**/*.md' && cspell --no-progress --dot '**' && secretlint '**/*' && bun scripts/actionlint.ts -color && bun scripts/zizmor.ts .github/workflows",
     "test": "bun -F asphodelos test",
-    "test:clients": "bun run build && bun -F @asphodelos/test typecheck && bun -F @asphodelos/test test",
+    "test:clients": "bun run build && bun -F @asphodelos/test typecheck && bun -F @asphodelos/test lint && bun -F @asphodelos/test test",
     "test:pack": "bun run build && bun scripts/pack-smoke.ts",
     "typecheck": "bun -F asphodelos typecheck"
   },

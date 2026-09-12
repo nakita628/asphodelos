@@ -12,6 +12,11 @@ alwaysApply: false
   install → `fmt:check` → `lint` → `typecheck` → package tests → `test:clients` → `test:pack`.
   A new check is added to the root `package.json` scripts **and** to this workflow, so local and
   CI cannot disagree about what "clean" means.
+- **Verify a change to the scripts, the workflows or the build in a fresh clone**, the way CI
+  starts: `git clone . <tmp> && cd <tmp> && bun install --frozen-lockfile`, then the workflow's
+  steps in order. The working copy carries gitignored output (`dist`, `test/__generated__`) that
+  a checkout does not have, so a step ordered before the one that creates it passes locally and
+  fails in CI.
 - **Actions are pinned to a commit digest with the tag kept as a comment**:
   `uses: actions/checkout@fbc6f399… # v5.1.0`. A floating tag is a mutable dependency with
   access to the job — never introduce one. Resolve a tag with
