@@ -1385,13 +1385,16 @@ export function createItemMutationOptions<
 export function useCreateItem<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
 >(
-  mutationOptions?: UseMutationOptions<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
+  mutationOptions?: Omit<
+    UseMutationOptions<
+      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+      TError,
+      {
+        body: Parameters<typeof client.items.post>[0]
+        options?: Parameters<typeof client.items.post>[1]
+      }
+    >,
+    'mutationKey' | 'mutationFn'
   >,
 ) {
   return useMutation<
@@ -1456,16 +1459,19 @@ export function useDeleteItem<
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>['error'], null>,
 >(
   params: Parameters<typeof client.items>[0],
-  mutationOptions?: UseMutationOptions<
-    Extract<
-      Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
-      { error: null }
-    >['data'],
-    TError,
-    {
-      body: Parameters<ReturnType<typeof client.items>['delete']>[0]
-      options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
-    }
+  mutationOptions?: Omit<
+    UseMutationOptions<
+      Extract<
+        Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
+        { error: null }
+      >['data'],
+      TError,
+      {
+        body: Parameters<ReturnType<typeof client.items>['delete']>[0]
+        options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
+      }
+    >,
+    'mutationKey' | 'mutationFn'
   >,
 ) {
   return useMutation<
@@ -1640,13 +1646,16 @@ export function createItemMutationOptions<
 export function useCreateItem<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
 >(
-  mutationOptions?: UseMutationOptions<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
+  mutationOptions?: Omit<
+    UseMutationOptions<
+      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+      TError,
+      {
+        body: Parameters<typeof client.items.post>[0]
+        options?: Parameters<typeof client.items.post>[1]
+      }
+    >,
+    'mutationKey' | 'mutationFn'
   >,
 ) {
   return useMutation<
@@ -2202,13 +2211,19 @@ export function createItemMutationOptions<
 export function useCreateItem<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
 >(
-  mutationOptions?: UseMutationOptions<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
+  mutationOptions?: Omit<
+    Extract<
+      UseMutationOptions<
+        Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+        TError,
+        {
+          body: Parameters<typeof client.items.post>[0]
+          options?: Parameters<typeof client.items.post>[1]
+        }
+      >,
+      { mutationKey?: unknown }
+    >,
+    'mutationKey' | 'mutationFn'
   >,
 ) {
   return useMutation({ ...mutationOptions, ...createItemMutationOptions<TError>() })
@@ -2634,15 +2649,18 @@ export function createItemMutationOptions<
 export function createCreateItem<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
 >(
-  mutationOptions?: () => ReturnType<
-    CreateMutationOptions<
-      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-      TError,
-      {
-        body: Parameters<typeof client.items.post>[0]
-        options?: Parameters<typeof client.items.post>[1]
-      }
-    >
+  mutationOptions?: () => Omit<
+    ReturnType<
+      CreateMutationOptions<
+        Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+        TError,
+        {
+          body: Parameters<typeof client.items.post>[0]
+          options?: Parameters<typeof client.items.post>[1]
+        }
+      >
+    >,
+    'mutationKey' | 'mutationFn'
   >,
 ) {
   return createMutation(() => ({ ...mutationOptions?.(), ...createItemMutationOptions<TError>() }))
@@ -3054,13 +3072,16 @@ export function createItemMutationOptions<
 export function createCreateItem<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
 >(
-  mutationOptions?: CreateMutationOptions<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
+  mutationOptions?: Omit<
+    CreateMutationOptions<
+      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+      TError,
+      {
+        body: Parameters<typeof client.items.post>[0]
+        options?: Parameters<typeof client.items.post>[1]
+      }
+    >,
+    'mutationKey' | 'mutationFn'
   >,
 ) {
   return createMutation(() => ({ ...mutationOptions, ...createItemMutationOptions<TError>() }))
@@ -3472,13 +3493,16 @@ export function createItemMutationOptions<
 export function injectCreateItem<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
 >(
-  mutationOptions?: CreateMutationOptions<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
+  mutationOptions?: Omit<
+    CreateMutationOptions<
+      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+      TError,
+      {
+        body: Parameters<typeof client.items.post>[0]
+        options?: Parameters<typeof client.items.post>[1]
+      }
+    >,
+    'mutationKey' | 'mutationFn'
   >,
 ) {
   return injectMutation(() => ({ ...mutationOptions, ...createItemMutationOptions<TError>() }))

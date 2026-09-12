@@ -5,13 +5,15 @@ import {
   listItemsInfiniteQueryOptions,
 } from '../__generated__/solid-query/hooks.js'
 import { assertType } from './assert.js'
-import type { Equal, IsAssignable, NotAny } from './assert.js'
+import type { Equal, HasKey, IsAssignable, NotAny } from './assert.js'
 import { pagination } from './infinite.js'
 
 /** The options slot of the plain query hook, as the caller sees it. */
 type QuerySlot = ReturnType<NonNullable<Parameters<typeof createListUsers>[1]>>
 /** The options slot of the infinite hook, as the caller sees it. */
 type InfiniteSlot = ReturnType<NonNullable<Parameters<typeof createListItemsInfinite>[2]>>
+/** The options slot of the mutation hook, as the caller sees it. */
+type MutationSlot = ReturnType<NonNullable<Parameters<typeof createCreateUser>[0]>>
 
 export function assertions() {
   const factory = listItemsInfiniteQueryOptions(undefined, pagination)
@@ -28,6 +30,10 @@ export function assertions() {
       assertType<Equal<typeof user.id, string>>(true)
     },
   }))
+  // The hook spreads its own `mutationKey` / `mutationFn` after the caller's options, so a
+  // caller's would be silently overwritten: the options slot must not offer them.
+  assertType<Equal<HasKey<MutationSlot, 'mutationKey'>, false>>(true)
+  assertType<Equal<HasKey<MutationSlot, 'mutationFn'>, false>>(true)
   // The options stay typed: a right-typed value is accepted, a wrong-typed one is not.
   assertType<IsAssignable<{ staleTime: 1000 }, InfiniteSlot>>(true)
   assertType<Equal<IsAssignable<{ staleTime: 'soon' }, InfiniteSlot>, false>>(true)

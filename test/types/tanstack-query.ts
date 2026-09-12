@@ -2,6 +2,7 @@ import {
   getUserQueryOptions,
   listItemsInfiniteQueryOptions,
   listUsersQueryOptions,
+  useCreateUser,
   useListItemsInfinite,
   useListUsers,
   useSuspenseListItemsInfinite,
@@ -15,6 +16,8 @@ import { pagination } from './infinite.js'
 type QuerySlot = NonNullable<Parameters<typeof useListUsers>[1]>
 /** The options slot of the infinite hook, as the caller sees it. */
 type InfiniteSlot = NonNullable<Parameters<typeof useListItemsInfinite>[2]>
+/** The options slot of the mutation hook, as the caller sees it. */
+type MutationSlot = NonNullable<Parameters<typeof useCreateUser>[0]>
 
 type User = { readonly id: string; readonly name: string }
 
@@ -72,4 +75,17 @@ export function queryOptionsAssertions() {
   const suspense = useSuspenseListUsers(undefined, { select: (users) => users.length })
   assertType<Equal<typeof suspense.data, number>>(true)
   return { disabled, selected, suspense }
+}
+
+// The hook spreads its own `mutationKey` / `mutationFn` after the caller's options, so a caller's
+// would be silently overwritten: the options slot must not offer them.
+export function mutationOptionsAssertions() {
+  const mutation = useCreateUser({
+    onSuccess: (user) => {
+      assertType<Equal<typeof user.id, string>>(true)
+    },
+  })
+  assertType<Equal<HasKey<MutationSlot, 'mutationKey'>, false>>(true)
+  assertType<Equal<HasKey<MutationSlot, 'mutationFn'>, false>>(true)
+  return { mutation }
 }

@@ -57,13 +57,24 @@ function optionsObjectType(config: QueryHookConfig, optionsType: string) {
 const QUERY_OMIT_KEYS = `'queryKey' | 'queryFn'`
 // Infinite hooks also supply both page-param functions, from `pagination`.
 const INFINITE_OMIT_KEYS = `'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'`
+// The mutation hook spreads its factory after the caller's options, so a caller's key or request
+// would be silently overwritten: the slot must not accept what the hook discards.
+const MUTATION_OMIT_KEYS = `'mutationKey' | 'mutationFn'`
 
-// Vue's options types are `MaybeRef<{...}>` (`Ref | ComputedRef | object`), and a plain `Omit` over
-// that union keeps only the keys all three share — none. The hook spreads the value, which only
-// works on the plain object anyway, so `Extract` keeps that member (the only one with `queryKey`).
-function omitInjectedKeys(config: QueryHookConfig, optionsType: string, keys: string) {
+// Vue's options types are `MaybeRef<{...}>` (`Ref | ComputedRef | object`, and for mutations also a
+// getter), and a plain `Omit` over that union keeps only the keys all of them share — none. The
+// hook spreads the value, which only works on the plain object anyway, so `Extract` keeps that
+// member: the query object is the only one with a `queryKey`. Nothing in the mutation object is
+// required, so its marker is optional — a ref or a getter shares no property with it, and
+// TypeScript's weak-type check then leaves them out.
+function omitInjectedKeys(
+  config: QueryHookConfig,
+  optionsType: string,
+  keys: string,
+  marker = '{ queryKey: unknown }',
+) {
   const objectType = config.maybeRefOptions
-    ? `Extract<${optionsType}, { queryKey: unknown }>`
+    ? `Extract<${optionsType}, ${marker}>`
     : optionsObjectType(config, optionsType)
   return `Omit<${objectType}, ${keys}>`
 }
@@ -91,9 +102,14 @@ function makeMutationOptionsParam(
   errorT: string,
   variablesType: string,
 ) {
-  const optType = `${config.mutationOptionsType}<${dataT}, ${errorT}, ${variablesType}>`
+  const optType = omitInjectedKeys(
+    config,
+    `${config.mutationOptionsType}<${dataT}, ${errorT}, ${variablesType}>`,
+    MUTATION_OMIT_KEYS,
+    '{ mutationKey?: unknown }',
+  )
   return config.thunkOptionsCall
-    ? `mutationOptions?: () => ${optionsObjectType(config, optType)}`
+    ? `mutationOptions?: () => ${optType}`
     : `mutationOptions?: ${optType}`
 }
 

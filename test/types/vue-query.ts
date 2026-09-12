@@ -1,12 +1,20 @@
-import { useListItemsInfinite, useListUsers } from '../__generated__/vue-query/hooks.js'
+import type { Ref } from 'vue'
+
+import {
+  useCreateUser,
+  useListItemsInfinite,
+  useListUsers,
+} from '../__generated__/vue-query/hooks.js'
 import { assertType } from './assert.js'
-import type { Equal, IsAssignable } from './assert.js'
+import type { Equal, HasKey, IsAssignable } from './assert.js'
 import { pagination } from './infinite.js'
 
 /** The options slot of the plain query hook, as the caller sees it. */
 type QuerySlot = NonNullable<Parameters<typeof useListUsers>[1]>
 /** The options slot of the infinite hook, as the caller sees it. */
 type InfiniteSlot = Parameters<typeof useListItemsInfinite>[2]
+/** The options slot of the mutation hook, as the caller sees it. */
+type MutationSlot = NonNullable<Parameters<typeof useCreateUser>[0]>
 
 export function assertions() {
   // Vue takes the page-param functions through `queryOptions` (its `MaybeRefDeep<TPageParam>`
@@ -42,4 +50,24 @@ export function queryOptionsAssertions() {
   assertType<IsAssignable<{ staleTime: 1000 }, QuerySlot>>(true)
   assertType<Equal<IsAssignable<{ staleTime: 'soon' }, QuerySlot>, false>>(true)
   return { disabled, selected }
+}
+
+// The hook spreads its own `mutationKey` / `mutationFn` after the caller's options, so a caller's
+// would be silently overwritten: the options slot must not offer them.
+export function mutationOptionsAssertions() {
+  const mutation = useCreateUser({
+    onSuccess: (user) => {
+      assertType<Equal<typeof user.id, string>>(true)
+    },
+  })
+  assertType<Equal<HasKey<MutationSlot, 'mutationKey'>, false>>(true)
+  assertType<Equal<HasKey<MutationSlot, 'mutationFn'>, false>>(true)
+  assertType<Equal<IsAssignable<{ mutationKey: readonly ['users'] }, MutationSlot>, false>>(true)
+
+  // Vue's own type also takes a ref or a getter, but the hook spreads the value, which empties
+  // both: only the plain object may reach it.
+  type Options = { onSuccess: () => void }
+  assertType<Equal<IsAssignable<Ref<Options>, MutationSlot>, false>>(true)
+  assertType<Equal<IsAssignable<() => Options, MutationSlot>, false>>(true)
+  return { mutation }
 }

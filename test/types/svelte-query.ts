@@ -1,16 +1,19 @@
 import {
+  createCreateUser,
   createListItemsInfinite,
   createListUsers,
   listItemsInfiniteQueryOptions,
 } from '../__generated__/svelte-query/hooks.js'
 import { assertType } from './assert.js'
-import type { Equal, IsAssignable, NotAny } from './assert.js'
+import type { Equal, HasKey, IsAssignable, NotAny } from './assert.js'
 import { pagination } from './infinite.js'
 
 /** The options slot of the plain query hook, as the caller sees it. */
 type QuerySlot = NonNullable<Parameters<typeof createListUsers>[1]>
 /** The options slot of the infinite hook, as the caller sees it. */
 type InfiniteSlot = NonNullable<Parameters<typeof createListItemsInfinite>[2]>
+/** The options slot of the mutation hook, as the caller sees it. */
+type MutationSlot = NonNullable<Parameters<typeof createCreateUser>[0]>
 
 export function assertions() {
   const factory = listItemsInfiniteQueryOptions(undefined, pagination)
@@ -41,4 +44,17 @@ export function queryOptionsAssertions() {
   assertType<IsAssignable<{ staleTime: 1000 }, QuerySlot>>(true)
   assertType<Equal<IsAssignable<{ staleTime: 'soon' }, QuerySlot>, false>>(true)
   return { disabled, selected }
+}
+
+// The hook spreads its own `mutationKey` / `mutationFn` after the caller's options, so a caller's
+// would be silently overwritten: the options slot must not offer them.
+export function mutationOptionsAssertions() {
+  const mutation = createCreateUser({
+    onSuccess: (user) => {
+      assertType<Equal<typeof user.id, string>>(true)
+    },
+  })
+  assertType<Equal<HasKey<MutationSlot, 'mutationKey'>, false>>(true)
+  assertType<Equal<HasKey<MutationSlot, 'mutationFn'>, false>>(true)
+  return { mutation }
 }
