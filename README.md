@@ -193,6 +193,17 @@ export default defineConfig({
 })
 ```
 
+- **What it watches**: `asphodelos.config.ts`, and every `.yaml` / `.json` / `.tsp` in the
+  directory of `input` — a `$ref` or a TypeSpec import can reach a sibling file.
+- **When it regenerates**: a config save always regenerates. A document save regenerates only when
+  the documents' contents changed, or a generated file has gone missing; a save with nothing new in
+  it is skipped.
+- **When the browser reloads**: only when a generated file actually changed.
+- **Cleanup**: an output that the config or the document no longer produces is removed. The app
+  entry, `modules/` and the generated tests are never removed, because they hold your code.
+- A config that fails to load is reported and the previous one stays in effect; the next save
+  retries, so a typo never needs a restart. Every run is queued, so two never overlap.
+
 ## Eden Treaty Integration
 
 ### Type-Only Distribution
@@ -320,6 +331,10 @@ declare answers `500` with an `application/problem+json` body saying what is mis
 
 With `split: true`, `output` is a directory (one file per entry + `index.ts` barrel); otherwise it
 is a single `.ts` file. `components.output` and the per-type components are mutually exclusive.
+
+A split directory belongs to the generator: every run empties its `.ts` files before refilling it,
+so an entry that leaves the document does not leave an orphaned file behind. Subdirectories, other
+files and the single-file outputs of other generators are left alone.
 
 ```ts
 import { defineConfig } from 'asphodelos'
