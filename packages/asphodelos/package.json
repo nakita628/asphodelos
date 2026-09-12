@@ -1,6 +1,6 @@
 {
   "name": "asphodelos",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Asphodelos is a code generator from OpenAPI to Elysia",
   "keywords": [
     "elysia",
