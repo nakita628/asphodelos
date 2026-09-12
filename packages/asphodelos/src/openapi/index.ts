@@ -15,29 +15,25 @@ export class OpenAPIError extends Data.TaggedError('OpenAPIError')<{
 /** Parses `input` into an OpenAPI document. */
 export function parseOpenAPI(input: string) {
   return Effect.tryPromise({
-    try: () => readOpenAPI(input),
+    try: async () => {
+      if (!input.endsWith('.tsp')) return (await SwaggerParser.bundle(input)) as OpenAPI
+      const program = await compile(NodeHost, path.resolve(input), { noEmit: true })
+      if (program.diagnostics.length > 0) {
+        throw new Error(
+          `TypeSpec compile failed:\n${program.diagnostics.map((d) => d.message).join('\n')}`,
+        )
+      }
+      const [record] = await getOpenAPI3(program)
+      const document =
+        record && ('document' in record ? record.document : record.versions[0]?.document)
+      if (!document) throw new Error(`TypeSpec emitted no OpenAPI document: ${input}`)
+      // The emitter returns a self-contained document (every `$ref` is `#/...`), so there is
+      // nothing for `bundle()` to resolve here.
+      return document as OpenAPI
+    },
     catch: (error) =>
       new OpenAPIError({ message: error instanceof Error ? error.message : String(error) }),
   })
-}
-
-async function readOpenAPI(input: string): Promise<OpenAPI> {
-  if (input.endsWith('.tsp')) {
-    const program = await compile(NodeHost, path.resolve(input), { noEmit: true })
-    if (program.diagnostics.length > 0) {
-      throw new Error(
-        `TypeSpec compile failed:\n${program.diagnostics.map((d) => d.message).join('\n')}`,
-      )
-    }
-    const [record] = await getOpenAPI3(program)
-    const document =
-      record && ('document' in record ? record.document : record.versions[0]?.document)
-    if (!document) throw new Error(`TypeSpec emitted no OpenAPI document: ${input}`)
-    // The emitter returns a self-contained document (every `$ref` is `#/...`), so there is
-    // nothing for `bundle()` to resolve here.
-    return document as OpenAPI
-  }
-  return (await SwaggerParser.bundle(input)) as OpenAPI
 }
 
 export type OpenAPI = {
