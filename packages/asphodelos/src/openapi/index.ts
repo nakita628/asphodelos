@@ -8,7 +8,7 @@ import { Data, Effect } from 'effect'
 import type { VendorExtensions } from './vendor-ext.js'
 
 /** The document could not be read, compiled or parsed into an OpenAPI object. */
-export class OpenAPIError extends Data.TaggedError('OpenAPIError')<{
+class OpenAPIError extends Data.TaggedError('OpenAPIError')<{
   readonly message: string
 }> {}
 
