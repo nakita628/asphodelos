@@ -8,7 +8,7 @@ alwaysApply: false
 
 ## The workflows
 
-- `.github/workflows/test.yaml` (Test) runs the root scripts in the same order as `bun run check`:
+- `.github/workflows/test.yml` (Test) runs the root scripts in the same order as `bun run check`:
   install → `fmt:check` → `lint` → `typecheck` → package tests → `test:clients` → `test:pack`.
   A new check is added to the root `package.json` scripts **and** to this workflow, so local and
   CI cannot disagree about what "clean" means.
@@ -24,7 +24,7 @@ alwaysApply: false
 - `permissions` stays minimal (`contents: read`); checkout uses `persist-credentials: false`.
 - Bun comes from `packageManager` in the root `package.json` (`bun-version-file`); change that
   field to move Bun, not the workflow.
-- `.github/workflows/release.yaml` runs after Test succeeds on a push to `main`; see Releasing.
+- `.github/workflows/release.yml` runs after Test succeeds on a push to `main`; see Releasing.
 - actionlint (`scripts/actionlint.ts`) and zizmor (`scripts/zizmor.ts`, the workflow security
   audit) download a pinned release and verify its sha256. Bumping one means changing `VERSION`
   and **every checksum** together: actionlint's from the release's `*_checksums.txt`, zizmor's
@@ -119,7 +119,7 @@ plugin: untyped ESTree in, a default export out. When adding a rule there:
 ## Releasing
 
 Releases are CI's job, and the `version` field of `packages/asphodelos/package.json` drives them.
-Mirroring hono-takibi, `release.yaml` runs after Test passes on a push to `main` and, from the
+Mirroring hono-takibi, `release.yml` runs after Test passes on a push to `main` and, from the
 exact commit Test ran on:
 
 1. **check** — reads the version and asks npm whether it is published;
@@ -143,4 +143,4 @@ is safe to re-run. Rules that follow:
 - If publish fails (an npm outage, a missing trusted publisher), fix the cause and re-run the
   failed jobs; the tag already points at the right commit.
 - The npm side is configured once, on https://www.npmjs.com/package/asphodelos/access: a trusted
-  publisher for this repository, workflow `release.yaml`, environment `release`.
+  publisher for this repository, workflow `release.yml`, environment `release`.

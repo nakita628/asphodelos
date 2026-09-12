@@ -1,7 +1,7 @@
-# actionlint's schema predates concurrency queues. `queue: max` makes release.yaml keep every
+# actionlint's schema predates concurrency queues. `queue: max` makes release.yml keep every
 # pending run instead of cancelling all but the newest, so a quick second version bump is released
 # too. The message is excused for that file only, rather than by dropping the setting.
 paths:
-  .github/workflows/release.yaml:
+  .github/workflows/release.yml:
     ignore:
       - 'unexpected key "queue" for "concurrency" section'

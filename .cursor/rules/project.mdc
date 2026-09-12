@@ -36,8 +36,8 @@ scripts/typespec.ts           fails when the @typespec/* packages in bun.lock ar
 scripts/zizmor.ts             downloads a pinned zizmor (workflow security audit), verifies it, runs it
 oxfmt.config.ts               source of truth for formatting (printWidth 100, single quotes, no semicolons)
 renovate.json                 dependency updates (Saturdays, Asia/Tokyo); see the CI rule's Dependencies
-.github/workflows/test.yaml   CI (Test): the same commands as below, in the same order
-.github/workflows/release.yaml  after Test on main: tag, npm publish, GitHub release
+.github/workflows/test.yml    CI (Test): the same commands as below, in the same order
+.github/workflows/release.yml after Test on main: tag, npm publish, GitHub release
 ```
 
 ## Commands
@@ -100,7 +100,7 @@ If you only ran part of it, say which part.
   "Service not found"; `bun run test:pack` checks that exactly one `effect` is installed.
 - **Never bump `version` in `packages/asphodelos/package.json`** unless the task is a release
   that was asked for: pushing a new version to `main` is what publishes it. Never `npm publish`,
-  `bun publish` or push a `v*` tag by hand — `.github/workflows/release.yaml` tags, publishes and
+  `bun publish` or push a `v*` tag by hand — `.github/workflows/release.yml` tags, publishes and
   releases, from one commit.
 
 ## Working order
