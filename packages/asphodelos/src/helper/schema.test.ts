@@ -753,6 +753,12 @@ describe('stringifyRefs — plain objects', () => {
     expect(stringifyRefs({ a: 1, b: 'x' })).toBe('{"a":1,"b":"x"}')
   })
 
+  it('leaves out keys whose value is undefined, as JSON.stringify does', () => {
+    expect(stringifyRefs({ type: 'http', description: undefined, nested: { a: undefined } })).toBe(
+      '{"type":"http","nested":{}}',
+    )
+  })
+
   it('preserves objects whose only property happens to be named $ref but is not a string', () => {
     expect(stringifyRefs({ $ref: 42 })).toBe('{"$ref":42}')
   })

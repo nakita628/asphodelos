@@ -289,8 +289,10 @@ export function stringifyRefs(value: unknown): string {
       const ident = refIdent(value.$ref)
       if (ident) return ident
     }
-    const entries = Object.entries(value).map(
-      ([k, v]) => `${JSON.stringify(k)}:${stringifyRefs(v)}`,
+    // A key holding `undefined` is left out, as `JSON.stringify` does: the TypeSpec emitter
+    // writes an absent field (a security scheme's `description`) as `undefined`.
+    const entries = Object.entries(value).flatMap(([k, v]) =>
+      v === undefined ? [] : [`${JSON.stringify(k)}:${stringifyRefs(v)}`],
     )
     return `{${entries.join(',')}}`
   }
