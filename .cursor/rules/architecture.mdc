@@ -74,6 +74,7 @@ What users can import is exactly the `exports` map of `packages/asphodelos/packa
 Each subpath resolves `types` / `import` from `dist` for users and `@asphodelos/source` (the
 `.ts` source) inside the test workspace. `tsdown.config.ts` has one entry per subpath; adding a
 subpath means adding it in both places, with all three conditions. The config
-schema, the CLI flags and the Vite plugin's behavior are public too: changing them updates the
-README (`Full Config Reference`, `CLI Reference`, `Vite Plugin`) in the same change. Do not
+schema, the CLI flags and the Vite plugin's behavior are public too: changing them updates
+`packages/asphodelos/README.md` (`Full Config Reference`, `CLI Reference`, `Vite Plugin`) in the
+same change. Do not
 introduce a breaking change on your own initiative — say what it would take and ask.

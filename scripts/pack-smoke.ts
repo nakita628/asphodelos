@@ -7,8 +7,8 @@
 // rc than `effect`, installed two copies of `effect`, and the CLI died with "Service not found".
 //
 // The steps, each failing the run with a message that names what broke:
-// 1. `npm pack` the package (its prepack copies README.md and LICENSE in) and check the tarball
-//    carries the files a consumer needs;
+// 1. `npm pack` the package and check the tarball carries the files a consumer needs, and that
+//    its LICENSE is still the root's;
 // 2. `npm install` it into a fresh directory, with TypeScript and Vite as a user would have them;
 // 3. require exactly one installed version of `effect`;
 // 4. typecheck imports of both entry points under NodeNext and bundler resolution;
@@ -17,13 +17,15 @@
 //
 // Needs network access for npm, and a built `dist` (`bun run test:pack` builds first).
 
+const repositoryRoot = join(import.meta.dirname, '..')
+
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 
-const packageDir = join(import.meta.dirname, '..', 'packages', 'asphodelos')
+const packageDir = join(repositoryRoot, 'packages', 'asphodelos')
 const work = mkdtempSync(join(tmpdir(), 'asphodelos-pack-smoke-'))
 
 function run(command: string, args: readonly string[], cwd: string) {
@@ -107,6 +109,13 @@ try {
     const files = packedFiles(json.slice(json.indexOf('[')))
     const missing = REQUIRED_FILES.filter((file) => !files.includes(file))
     if (missing.length > 0) throw new Error(`missing from the tarball: ${missing.join(', ')}`)
+    // npm drops symlinks, so the package keeps a real copy of the root LICENSE; the two must match.
+    if (
+      readFileSync(join(packageDir, 'LICENSE'), 'utf8') !==
+      readFileSync(join(repositoryRoot, 'LICENSE'), 'utf8')
+    ) {
+      throw new Error('packages/asphodelos/LICENSE differs from the root LICENSE')
+    }
     const version: unknown = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'))
     const name =
       typeof version === 'object' && version !== null && 'version' in version

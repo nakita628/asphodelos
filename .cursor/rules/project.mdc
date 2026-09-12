@@ -64,8 +64,9 @@ Before reporting a task finished, **`bun run check` must be green**. One failure
 If you only ran part of it, say which part.
 
 - A behavior change ships with a test that fails before it and passes after.
-- A change to the config, the CLI, the Vite plugin or the generated output updates `README.md`
-  in the same change (it is the user documentation and the config reference).
+- A change to the config, the CLI, the Vite plugin or the generated output updates
+  `packages/asphodelos/README.md` in the same change (the user documentation and the config
+  reference; the root `README.md` is a symlink to it).
 - Report results as they are. Never call a task complete while hiding a failing command, and
   never make a check pass by weakening it.
 

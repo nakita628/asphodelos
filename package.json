@@ -9,24 +9,16 @@
   ],
   "type": "module",
   "scripts": {
+    "build": "cd packages/asphodelos && bun run build",
     "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run test && bun run test:clients && bun run test:pack",
-    "fix": "bun run fmt && bun run lint:fix && markdownlint-cli2 --fix && textlint --fix --ignore-path .gitignore '**/*.md'",
+    "fix": "bun run fmt && cd packages/asphodelos && bun run lint --fix && cd ../../test && bun run lint --fix && cd .. && markdownlint-cli2 --fix && textlint --fix --ignore-path .gitignore '**/*.md'",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "lint": "bun run lint:code && bun run lint:md && bun run lint:text && bun run lint:spell && bun run lint:secret && bun run lint:actions",
-    "lint:code": "cd packages/asphodelos && bun run lint && cd ../../test && bun run lint",
-    "lint:fix": "cd packages/asphodelos && bun run lint:fix && cd ../../test && bun run lint --fix",
-    "lint:md": "markdownlint-cli2",
-    "lint:text": "textlint --ignore-path .gitignore '**/*.md'",
-    "lint:spell": "cspell --no-progress --dot '**'",
-    "lint:secret": "secretlint '**/*'",
-    "lint:actions": "bun scripts/actionlint.ts -color",
-    "typecheck": "cd packages/asphodelos && bun run typecheck",
+    "lint": "cd packages/asphodelos && bun run lint && cd ../../test && bun run lint && cd .. && markdownlint-cli2 && textlint --ignore-path .gitignore '**/*.md' && cspell --no-progress --dot '**' && secretlint '**/*' && bun scripts/actionlint.ts -color",
     "test": "cd packages/asphodelos && bun test",
     "test:clients": "bun run build && cd test && bun run typecheck && bun test",
     "test:pack": "bun run build && bun scripts/pack-smoke.ts",
-    "build": "cd packages/asphodelos && bun run build",
-    "prepublishOnly": "echo 'The repository root is not a package. Publish from the package: cd packages/asphodelos && npm publish' >&2 && exit 1"
+    "typecheck": "cd packages/asphodelos && bun run typecheck"
   },
   "devDependencies": {
     "@secretlint/secretlint-rule-preset-recommend": "13.0.5",

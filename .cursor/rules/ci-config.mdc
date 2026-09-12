@@ -78,10 +78,12 @@ plugin: untyped ESTree in, a default export out. When adding a rule there:
   only by the test workspace through `customConditions` in `test/tsconfig.base.json`, so it
   typechecks without a build), then `types` (`dist/*.d.mts`) and `import` (`dist/*.mjs`) for
   users. Keep the three in step when adding a subpath, and add the entry to `tsdown.config.ts`.
-- `files: ["dist"]`. The `prepack` script copies the root `README.md` and `LICENSE` into the
-  package for the tarball and `postpack` removes them; the root files are the only originals, and
-  the copies are gitignored. npm leaves symlinked files out, which is why they are copies.
-- `prepublishOnly` builds, so a publish can never ship a stale `dist`.
+- `files: ["dist"]`, plus the `README.md` and `LICENSE` npm always includes. Both sit in
+  `packages/asphodelos` as real files because npm leaves symlinks out: the root `README.md` is a
+  symlink to the package's, and the root `LICENSE` is a copy kept identical (for GitHub's license
+  detection). `test:pack` fails when the two LICENSE files differ.
+- There are no lifecycle scripts: `npm publish` does not build, so `dist` is built right before
+  publishing (see Releasing).
 - `bun run test:pack` is the proof the tarball works for a user: it checks the file list,
   installs it with npm, requires one `effect`, typechecks both entry points, runs the CLI and the
   Vite plugin.
@@ -91,11 +93,11 @@ plugin: untyped ESTree in, a default export out. When adding a rule there:
 Publishing is by hand and only when asked:
 
 1. Bump `version` in `packages/asphodelos/package.json` in its own commit.
-2. `bun run check` (which includes `bun run test:pack`), all green.
+2. `bun run check`, all green. It ends with `bun run test:pack`, which builds `dist` and
+   installs the tarball with npm, so `dist` is fresh afterwards.
 3. `cd packages/asphodelos && npm publish` — never from the root. npm needs `npm login` first.
-   The root `package.json` has a `version` and a `prepublishOnly` that fails with this command,
-   so `npm publish` at the root stops with an instruction (and with `EPRIVATE` under
-   `--ignore-scripts`) instead of npm's "Cannot read properties of null (reading 'prerelease')".
-   Keep both.
+   The root `package.json` carries a `version` only so that npm refuses a root publish with
+   `EPRIVATE` instead of crashing with "Cannot read properties of null (reading 'prerelease')".
+   Keep it.
 
 Never reuse a published version; to fix a release, bump again.

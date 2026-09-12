@@ -36,15 +36,9 @@
     }
   },
   "scripts": {
-    "dev": "bun run src/index.ts",
     "build": "tsdown",
     "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run build",
-    "prepack": "cp ../../README.md ../../LICENSE .",
-    "postpack": "rm -f README.md LICENSE"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",

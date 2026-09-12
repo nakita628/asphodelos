@@ -3,10 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate": "bun run scripts/generate.ts",
     "lint": "oxlint",
-    "typecheck": "bun run scripts/typecheck.ts && tsc -p .",
-    "test": "bun test"
+    "typecheck": "bun run scripts/typecheck.ts && tsc -p ."
   },
   "devDependencies": {
     "@elysiajs/eden": "^1.4.1",

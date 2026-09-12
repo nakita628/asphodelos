@@ -19,7 +19,8 @@ Every playbook ends the same way: `bun run fix`, then `bun run check`, all green
    builders), respecting the layering.
 5. If the output is a client hook, add or update a case under `test/cases/` and assert it in
    `test/runtime/` or `test/types/`.
-6. Document it in the README: the section of that generator and `Full Config Reference`.
+6. Document it in `packages/asphodelos/README.md`: the section of that generator and
+   `Full Config Reference`.
 
 ## Fix a generator bug
 
@@ -86,7 +87,8 @@ Every playbook ends the same way: `bun run fix`, then `bun run check`, all green
 
 1. Confirm `main` is green.
 2. Bump `version` in `packages/asphodelos/package.json` only, in its own commit.
-3. `bun run check`, which ends with `bun run test:pack` — the npm tarball installed and used.
-4. `cd packages/asphodelos && npm publish` (`prepublishOnly` builds, `prepack` adds README and
-   LICENSE). Never publish from the root: it is `private` and npm refuses with `EPRIVATE`.
+3. `bun run check`, which ends with `bun run test:pack`: it builds `dist`, then installs the npm
+   tarball and uses it. Publish right after, so what was tested is what ships.
+4. `cd packages/asphodelos && npm publish`. `npm publish` does not build. Never publish from the
+   root: it is `private` and npm refuses with `EPRIVATE`.
 5. Never reuse or roll back a published version; to fix a release, bump again.

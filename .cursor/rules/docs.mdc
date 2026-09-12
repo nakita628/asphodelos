@@ -10,9 +10,11 @@ Three linters split the work and never overlap: **markdownlint** owns the docume
 **textlint** the prose, **cspell** the individual words. All three run in `bun run lint`;
 `bun run fix` autofixes markdownlint and textlint.
 
-`README.md` at the root is the user documentation: install, CLI reference, Vite plugin, every
-generator, the full config reference and the vendor extensions. It is the file to update when
-behavior changes.
+`packages/asphodelos/README.md` is the user documentation — install, CLI reference, Vite plugin,
+every generator, the full config reference and the vendor extensions — and it is what npm shows.
+The root `README.md` is a **symlink** to it, so GitHub shows the same file. Edit the package copy;
+never replace the symlink with a file. Links inside it are absolute `https://github.com/...` URLs,
+because a relative link breaks on npm.
 
 ## Structure (markdownlint)
 
