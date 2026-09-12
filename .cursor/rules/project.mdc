@@ -32,8 +32,10 @@ test/                         client suite: compiles and runs the generated hook
   oxlint.config.ts            reuses the package's rules; do not copy rules into it
 scripts/actionlint.ts         downloads a pinned actionlint, verifies its checksum, runs it
 scripts/pack-smoke.ts         installs the packed tarball with npm into an empty project and uses it
+scripts/zizmor.ts             downloads a pinned zizmor (workflow security audit), verifies it, runs it
 oxfmt.config.ts               source of truth for formatting (printWidth 100, single quotes, no semicolons)
-.github/workflows/test.yaml   CI: the same commands as below, in the same order
+.github/workflows/test.yaml   CI (Test): the same commands as below, in the same order
+.github/workflows/release.yaml  after Test on main: tag, npm publish, GitHub release
 ```
 
 ## Commands
@@ -51,7 +53,7 @@ Run these from the repository root.
 | Build `dist` | `bun run build` |
 | Client suite (builds first) | `bun run test:clients` |
 | npm tarball smoke test (builds first, needs network) | `bun run test:pack` |
-| One test file | `cd packages/asphodelos && bun test src/<path>.test.ts` |
+| One test file | `bun -F asphodelos test src/<path>.test.ts` |
 
 - `test:clients` runs the packaged CLI and Vite plugin from `dist`, so it always builds first.
   Never run `cd test && bun test` against a stale build.
@@ -90,9 +92,10 @@ If you only ran part of it, say which part.
   (`4.0.0-rc.112`, an rc whose API still moves) and move together, in one change. Leaving one of
   them to a range lets npm install a second `effect` for users, and the CLI then fails with
   "Service not found"; `bun run test:pack` checks that exactly one `effect` is installed.
-- **Never bump `version` in `packages/asphodelos/package.json` or publish** unless the task is
-  a release that was asked for. Publishing happens from `packages/asphodelos`, never from the
-  root, whose manifest is `private`.
+- **Never bump `version` in `packages/asphodelos/package.json`** unless the task is a release
+  that was asked for: pushing a new version to `main` is what publishes it. Never `npm publish`,
+  `bun publish` or push a `v*` tag by hand — `.github/workflows/release.yaml` tags, publishes and
+  releases, from one commit.
 
 ## Working order
 
@@ -109,5 +112,5 @@ If you only ran part of it, say which part.
   green. Never force-push and never rewrite pushed history.
 - One logical change per commit. The subject is an imperative sentence in the shape of the
   existing history (`Generate the client cases before typechecking them`), with no `feat:` /
-  `fix:` prefix; the body explains why.
+  `fix:` prefix; the body explains why. A version bump is its own commit, subject the version.
 - Do not commit generated output, secrets or local tooling files.

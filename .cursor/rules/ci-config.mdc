@@ -6,9 +6,9 @@ alwaysApply: false
 
 # CI and configuration
 
-## The workflow
+## The workflows
 
-- `.github/workflows/test.yaml` runs the root scripts in the same order as `bun run check`:
+- `.github/workflows/test.yaml` (Test) runs the root scripts in the same order as `bun run check`:
   install → `fmt:check` → `lint` → `typecheck` → package tests → `test:clients` → `test:pack`.
   A new check is added to the root `package.json` scripts **and** to this workflow, so local and
   CI cannot disagree about what "clean" means.
@@ -19,9 +19,17 @@ alwaysApply: false
 - `permissions` stays minimal (`contents: read`); checkout uses `persist-credentials: false`.
 - Bun comes from `packageManager` in the root `package.json` (`bun-version-file`); change that
   field to move Bun, not the workflow.
-- actionlint runs through `scripts/actionlint.ts`, which downloads a pinned release and verifies
-  its checksum. Bumping it means changing `VERSION` and **every entry of `CHECKSUMS`** together,
-  from that release's `*_checksums.txt`.
+- `.github/workflows/release.yaml` runs after Test succeeds on a push to `main`; see Releasing.
+- actionlint (`scripts/actionlint.ts`) and zizmor (`scripts/zizmor.ts`, the workflow security
+  audit) download a pinned release and verify its sha256. Bumping one means changing `VERSION`
+  and **every checksum** together: actionlint's from the release's `*_checksums.txt`, zizmor's
+  from each asset's `digest` in the GitHub releases API.
+- A finding is excused next to the thing it is about, with the reason: an actionlint message in
+  `.github/actionlint.yaml` scoped to one file, a zizmor audit with an inline
+  `# zizmor: ignore[audit]` comment. Never by dropping the check or the setting.
+- Root scripts reach a workspace with `bun -F <package> <script>` (`asphodelos`,
+  `@asphodelos/test`), never `cd <dir> && …`. Arguments pass through (`bun -F asphodelos test
+  --coverage`) and so does a failing exit code.
 
 ## Editing the lint configuration
 
@@ -82,22 +90,37 @@ plugin: untyped ESTree in, a default export out. When adding a rule there:
   `packages/asphodelos` as real files because npm leaves symlinks out: the root `README.md` is a
   symlink to the package's, and the root `LICENSE` is a copy kept identical (for GitHub's license
   detection). `test:pack` fails when the two LICENSE files differ.
-- There are no lifecycle scripts: `npm publish` does not build, so `dist` is built right before
-  publishing (see Releasing).
+- There are no lifecycle scripts: `npm publish` does not build, so the release workflow's publish
+  job runs `bun -F asphodelos build` right before it.
 - `bun run test:pack` is the proof the tarball works for a user: it checks the file list,
   installs it with npm, requires one `effect`, typechecks both entry points, runs the CLI and the
   Vite plugin.
 
 ## Releasing
 
-Publishing is by hand and only when asked:
+Releases are CI's job, and the `version` field of `packages/asphodelos/package.json` drives them.
+Mirroring hono-takibi, `release.yaml` runs after Test passes on a push to `main` and, from the
+exact commit Test ran on:
 
-1. Bump `version` in `packages/asphodelos/package.json` in its own commit.
-2. `bun run check`, all green. It ends with `bun run test:pack`, which builds `dist` and
-   installs the tarball with npm, so `dist` is fresh afterwards.
-3. `cd packages/asphodelos && npm publish` — never from the root. npm needs `npm login` first.
-   The root `package.json` carries a `version` only so that npm refuses a root publish with
-   `EPRIVATE` instead of crashing with "Cannot read properties of null (reading 'prerelease')".
-   Keep it.
+1. **check** — reads the version and asks npm whether it is published;
+2. **tag** — creates `v<version>` on that commit through the REST API, or verifies it is already
+   there. A version published by hand without a tag is tagged only when npm's recorded `gitHead`
+   is this commit; anything else stops with an error that says what to do;
+3. **publish** — only when npm does not have the version: `bun -F asphodelos build`, then
+   `npm publish` with npm trusted publishing (OIDC, `id-token: write`, environment `release`), so
+   no npm token is stored. It is npm rather than `bun publish` because `bun publish` can only
+   authenticate with a stored token;
+4. **release** — creates the GitHub release for the tag with generated notes.
 
-Never reuse a published version; to fix a release, bump again.
+So the tag, the npm tarball and the GitHub release always describe the same commit, and every job
+is safe to re-run. Rules that follow:
+
+- **To release, bump `version` in its own commit whose subject is the version (`0.1.0`), with
+  `bun run check` green, and push to `main`.** Nothing else publishes.
+- **Never `npm publish` or `bun publish` by hand, and never create or move a `v*` tag by hand.**
+  The root is `private` and has a `version` only so npm refuses a root publish with `EPRIVATE`.
+- Never reuse or roll back a published version; to fix a release, bump again.
+- If publish fails (an npm outage, a missing trusted publisher), fix the cause and re-run the
+  failed jobs; the tag already points at the right commit.
+- The npm side is configured once, on https://www.npmjs.com/package/asphodelos/access: a trusted
+  publisher for this repository, workflow `release.yaml`, environment `release`.

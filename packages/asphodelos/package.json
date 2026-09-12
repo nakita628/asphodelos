@@ -1,7 +1,7 @@
 {
   "name": "asphodelos",
   "version": "0.0.1",
-  "description": "Generate type-safe Elysia code — routes, TypeBox schemas, Eden wrappers, client hooks, tests and a mock server — from OpenAPI or TypeSpec",
+  "description": "Asphodelos is a code generator from OpenAPI to Elysia",
   "keywords": [
     "elysia",
     "openapi"
@@ -38,6 +38,7 @@
   "scripts": {
     "build": "tsdown",
     "lint": "oxlint",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

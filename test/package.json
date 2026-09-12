@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "lint": "oxlint",
+    "test": "bun test",
     "typecheck": "bun run scripts/typecheck.ts && tsc -p ."
   },
   "devDependencies": {

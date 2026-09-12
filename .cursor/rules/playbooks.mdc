@@ -86,9 +86,10 @@ Every playbook ends the same way: `bun run fix`, then `bun run check`, all green
 ## Release (only when asked)
 
 1. Confirm `main` is green.
-2. Bump `version` in `packages/asphodelos/package.json` only, in its own commit.
-3. `bun run check`, which ends with `bun run test:pack`: it builds `dist`, then installs the npm
-   tarball and uses it. Publish right after, so what was tested is what ships.
-4. `cd packages/asphodelos && npm publish`. `npm publish` does not build. Never publish from the
-   root: it is `private` and npm refuses with `EPRIVATE`.
-5. Never reuse or roll back a published version; to fix a release, bump again.
+2. Bump `version` in `packages/asphodelos/package.json` only (semver: a breaking change to the
+   config, the CLI or the generated output is a minor bump while the version is `0.x`).
+3. `bun run check`, then commit with the version as the subject (`0.1.0`) and push to `main`.
+4. Watch Test, then `release`: it tags `v<version>`, publishes to npm and creates the GitHub
+   release from that commit. Never publish or tag by hand.
+5. If a job fails, fix the cause and re-run the failed jobs. To fix a published release, bump
+   again — never reuse a version.

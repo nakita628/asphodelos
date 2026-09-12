@@ -9,16 +9,16 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "cd packages/asphodelos && bun run build",
+    "build": "bun -F asphodelos build",
     "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run test && bun run test:clients && bun run test:pack",
-    "fix": "bun run fmt && cd packages/asphodelos && bun run lint --fix && cd ../../test && bun run lint --fix && cd .. && markdownlint-cli2 --fix && textlint --fix --ignore-path .gitignore '**/*.md'",
+    "fix": "bun run fmt && bun -F asphodelos lint --fix && bun -F @asphodelos/test lint --fix && markdownlint-cli2 --fix && textlint --fix --ignore-path .gitignore '**/*.md'",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "lint": "cd packages/asphodelos && bun run lint && cd ../../test && bun run lint && cd .. && markdownlint-cli2 && textlint --ignore-path .gitignore '**/*.md' && cspell --no-progress --dot '**' && secretlint '**/*' && bun scripts/actionlint.ts -color",
-    "test": "cd packages/asphodelos && bun test",
-    "test:clients": "bun run build && cd test && bun run typecheck && bun test",
+    "lint": "bun -F asphodelos lint && bun -F @asphodelos/test lint && markdownlint-cli2 && textlint --ignore-path .gitignore '**/*.md' && cspell --no-progress --dot '**' && secretlint '**/*' && bun scripts/actionlint.ts -color && bun scripts/zizmor.ts .github/workflows",
+    "test": "bun -F asphodelos test",
+    "test:clients": "bun run build && bun -F @asphodelos/test typecheck && bun -F @asphodelos/test test",
     "test:pack": "bun run build && bun scripts/pack-smoke.ts",
-    "typecheck": "cd packages/asphodelos && bun run typecheck"
+    "typecheck": "bun -F asphodelos typecheck"
   },
   "devDependencies": {
     "@secretlint/secretlint-rule-preset-recommend": "13.0.5",

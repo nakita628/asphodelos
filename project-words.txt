@@ -23,8 +23,10 @@ injectively
 lowlink
 Mersenne
 Metavar
+msvc
 nakita
 petstore
+pipefail
 prefault
 registrator
 rhysd
@@ -42,3 +44,5 @@ unparseable
 untypeable
 uuidv
 workdirs
+zizmor
+zizmorcore
