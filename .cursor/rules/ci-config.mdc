@@ -30,7 +30,7 @@ alwaysApply: false
   and **every checksum** together: actionlint's from the release's `*_checksums.txt`, zizmor's
   from each asset's `digest` in the GitHub releases API.
 - A finding is excused next to the thing it is about, with the reason: an actionlint message in
-  `.github/actionlint.yaml` scoped to one file, a zizmor audit with an inline
+  `.github/actionlint.yml` scoped to one file, a zizmor audit with an inline
   `# zizmor: ignore[audit]` comment. Never by dropping the check or the setting.
 - Root scripts reach a workspace with `bun -F <package> <script>` (`asphodelos`,
   `@asphodelos/test`), never `cd <dir> && …`. Arguments pass through (`bun -F asphodelos test
