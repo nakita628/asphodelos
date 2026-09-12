@@ -1,3 +1,5 @@
+// An over-long string is the input under test.
+// cspell:ignore hellooo
 import { describe, expect, it } from 'bun:test'
 
 import { Value } from '@sinclair/typebox/value'

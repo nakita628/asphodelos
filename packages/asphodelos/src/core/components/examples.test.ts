@@ -65,7 +65,7 @@ describe('examples — caller ≡ generator contract', () => {
     await runGenerator(examples(sample, output, false))
     const emitted = fs.readFileSync(output, 'utf-8')
     const generated = examplesCode(sample)
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Example\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Example\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)
@@ -79,7 +79,7 @@ describe('examples — caller ≡ generator contract', () => {
     await runGenerator(examples(sample, output, true))
     const emitted = fs.readFileSync(path.join(dir, 'examples', 'hello.ts'), 'utf-8')
     const generated = examplesCode({ Hello: sample.Hello })
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Example\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Example\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)

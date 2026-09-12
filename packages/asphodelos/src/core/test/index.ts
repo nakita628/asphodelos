@@ -31,16 +31,16 @@ export function test(
   return Effect.gen(function* () {
     const { appOutput = 'src/index.ts', split = false, pathAlias, prefix } = options
     const appOutputAbs = path.resolve(process.cwd(), appOutput)
-    const appBase = path.basename(appOutput).replace(/\.ts$/, '')
+    const appBase = path.basename(appOutput).replace(/\.ts$/u, '')
     // Specifier the generated test uses to import the assembled `app`. pathAlias
     // rewrites it to '<alias>/<entry>'; otherwise it is the relative path from the
     // test file's directory to the app entry (e.g. './index', '../..', '../../index').
     const appImportFor = (fromFileAbs: string) => {
-      if (pathAlias) return `${pathAlias.replace(/\/$/, '')}/${appBase}`
+      if (pathAlias) return `${pathAlias.replace(/\/$/u, '')}/${appBase}`
       const rel = path
         .relative(path.dirname(fromFileAbs), appOutputAbs)
         .replaceAll('\\', '/')
-        .replace(/\.ts$/, '')
+        .replace(/\.ts$/u, '')
       return rel.startsWith('.') ? rel : `./${rel}`
     }
 

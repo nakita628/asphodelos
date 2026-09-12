@@ -238,7 +238,7 @@ describe('makeRoute', () => {
     ])
   })
 
-  it('sanitises a hyphenated operationId for synth identifiers while keeping route.operationId verbatim', () => {
+  it('sanitizes a hyphenated operationId for synth identifiers while keeping route.operationId verbatim', () => {
     const operation: Operation = {
       operationId: 'get-current-users-profile',
       parameters: [{ name: 'q', in: 'query', schema: { type: 'string' } }],

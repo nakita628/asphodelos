@@ -74,7 +74,7 @@ describe('parameters — caller ≡ generator contract', () => {
     await runGenerator(parameters(sample, output, false, false))
     const emitted = fs.readFileSync(output, 'utf-8')
     const generated = parametersCode(sample)
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ParamsSchema\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ParamsSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)
@@ -90,7 +90,7 @@ describe('parameters — caller ≡ generator contract', () => {
     await runGenerator(parameters(sample, output, true, false))
     const emitted = fs.readFileSync(path.join(dir, 'parameters', 'idParam.ts'), 'utf-8')
     const generated = parametersCode({ IdParam: sample.IdParam })
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ParamsSchema\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ParamsSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)

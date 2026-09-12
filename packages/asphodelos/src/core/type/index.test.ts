@@ -123,13 +123,13 @@ describe('schemaToTs', () => {
     expect(schemaToTs({ $ref: '#/components/schemas/Other' })).toBe('Other')
   })
 
-  it('sanitises hyphenated component names through pascalCase', () => {
+  it('sanitizes hyphenated component names through pascalCase', () => {
     expect(schemaToTs({ $ref: '#/components/schemas/My-Schema' })).toBe('MySchema')
   })
 })
 
 describe('makeAppType — component aliases', () => {
-  it('sanitises component names with hyphens in alias declarations', () => {
+  it('sanitizes component names with hyphens in alias declarations', () => {
     const openAPI: OpenAPI = {
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },

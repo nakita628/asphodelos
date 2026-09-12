@@ -10,7 +10,7 @@ import { elysia } from './index.js'
 
 // Integration coverage for `elysia()` writing `src/index.ts`. Statement-level
 // merge contracts (var:/type:/expr:* drop on user deletion, etc.) live in
-// `src/merge/index.test.ts`; these tests only exercise behaviours that span
+// `src/merge/index.test.ts`; these tests only exercise behaviors that span
 // generator + merge + file I/O end-to-end.
 
 const TAGLESS_OPENAPI = {
@@ -179,7 +179,7 @@ export type App = typeof app
 
     // Remove the console.log line from inside the listen block, keeping the block.
     const trimmed = initial.replace(
-      /\n {2}console\.log\(`🦊 Elysia is running at \$\{app\.server\?\.hostname\}:\$\{app\.server\?\.port\}`\)/,
+      /\n {2}console\.log\(`🦊 Elysia is running at \$\{app\.server\?\.hostname\}:\$\{app\.server\?\.port\}`\)/u,
       '',
     )
     expect(trimmed.includes('console.log')).toBe(false)

@@ -1,3 +1,5 @@
+// `sess_<id>` is the cookie shape the parameter pattern under test expects.
+// cspell:ignore sess
 import { afterAll, describe, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -18,7 +20,7 @@ import { elysia, schemas } from './index.js'
  * This is the layer that string-comparison tests cannot reach. `typebox()` emitting
  * `error:(error)=>{...if(type===52)return "too short"...}` proves nothing on its own — the
  * numbers are TypeBox's `ValueErrorType` enum, and whether Elysia routes a 422 to that callback
- * at all depends on the validator it builds. Both are upstream behaviour, so both need a request
+ * at all depends on the validator it builds. Both are upstream behavior, so both need a request
  * to confirm. A change in either shows up here as a failing status or a missing message.
  *
  * The work tree has to live inside this package: the generated modules `import { t } from
@@ -454,31 +456,33 @@ describe('vendor extension messages — generated app answers a real request', (
     checkDocument(MESSAGE_CASES.map((c) => ({ key: c.key, schema: c.schema }))),
   )
 
-  for (const testCase of MESSAGE_CASES) {
-    describe(testCase.extension, () => {
-      for (const [index, rejected] of testCase.rejects.entries()) {
-        it(`rejects ${JSON.stringify(rejected)} with 422${index > 0 ? ' (second bound)' : ''}`, async () => {
-          const app = await (await built()).mount('check')
-          const res = await app.handle(jsonRequest(`/check/${testCase.key}`, { value: rejected }))
-          expect(res.status).toBe(422)
-          if (testCase.message !== undefined) expect(await res.text()).toBe(testCase.message)
-        })
-      }
-
-      it(`accepts ${JSON.stringify(testCase.accepts)}`, async () => {
-        const app = await (await built()).mount('check')
-        const res = await app.handle(
-          jsonRequest(`/check/${testCase.key}`, { value: testCase.accepts }),
-        )
-        expect(res.status).not.toBe(422)
-      })
-
-      it('keeps the keyword on the emitted schema (OpenAPI round-trip)', async () => {
-        const source = await (await built()).schemasSource()
-        expect(source).toContain(testCase.extension)
-      })
+  describe.each([...MESSAGE_CASES])('$extension', (testCase) => {
+    it.each(
+      testCase.rejects.map((rejected, index) => ({
+        rejected,
+        title: `${JSON.stringify(rejected)} with 422${index > 0 ? ' (second bound)' : ''}`,
+      })),
+    )('rejects $title', async ({ rejected }) => {
+      const app = await (await built()).mount('check')
+      const res = await app.handle(jsonRequest(`/check/${testCase.key}`, { value: rejected }))
+      expect(res.status).toBe(422)
+      // A case without a `message` pins only the status: its text is best-effort.
+      expect(await res.text()).toStrictEqual(testCase.message ?? expect.any(String))
     })
-  }
+
+    it(`accepts ${JSON.stringify(testCase.accepts)}`, async () => {
+      const app = await (await built()).mount('check')
+      const res = await app.handle(
+        jsonRequest(`/check/${testCase.key}`, { value: testCase.accepts }),
+      )
+      expect(res.status).not.toBe(422)
+    })
+
+    it('keeps the keyword on the emitted schema (OpenAPI round-trip)', async () => {
+      const source = await (await built()).schemasSource()
+      expect(source).toContain(testCase.extension)
+    })
+  })
 })
 
 // ── Round-trip-only extensions ───────────────────────────────────────────────────────────────
@@ -516,8 +520,9 @@ describe('round-trip-only extensions', () => {
   ] as const
   const built = generateOnce(checkDocument(cases.map((c) => ({ key: c.key, schema: c.schema }))))
 
-  for (const testCase of cases) {
-    it(`${testCase.extension} does not reject, but survives on the schema`, async () => {
+  it.each([...cases])(
+    '$extension does not reject, but survives on the schema',
+    async (testCase) => {
       const generated = await built()
       const app = await generated.mount('check')
       for (const payload of testCase.payloads) {
@@ -525,8 +530,8 @@ describe('round-trip-only extensions', () => {
         expect(res.status).not.toBe(422)
       }
       expect(await generated.schemasSource()).toContain(testCase.extension)
-    })
-  }
+    },
+  )
 
   it('x-required-message rejects the missing field, and survives on the schema', async () => {
     const document = {
@@ -658,16 +663,12 @@ describe('message text survives code generation', () => {
   ] as const
   const built = generateOnce(checkDocument(cases.map((c) => ({ key: c.key, schema: c.schema }))))
 
-  for (const testCase of cases) {
-    it(`returns ${testCase.key} text byte for byte`, async () => {
-      const app = await (await built()).mount('check')
-      const res = await app.handle(
-        jsonRequest(`/check/${testCase.key}`, { value: testCase.rejects }),
-      )
-      expect(res.status).toBe(422)
-      expect(await res.text()).toBe(testCase.text)
-    })
-  }
+  it.each([...cases])('returns $key text byte for byte', async (testCase) => {
+    const app = await (await built()).mount('check')
+    const res = await app.handle(jsonRequest(`/check/${testCase.key}`, { value: testCase.rejects }))
+    expect(res.status).toBe(422)
+    expect(await res.text()).toBe(testCase.text)
+  })
 })
 
 // ── Coercion ─────────────────────────────────────────────────────────────────────────────────
@@ -860,23 +861,19 @@ describe('coercion', () => {
     expect((await get('/coerce/header', { 'x-api-version': String(MAX_SAFE) })).status).toBe(200)
   })
 
-  for (const [query, expected] of [
+  it.each([
     ['value=42', 42],
     ['value=0', 0],
     ['value=-1', -1],
-  ] as const) {
-    it(`query integer ?${query} arrives as the JS number ${expected}`, async () => {
-      const res = await get(`/coerce/integer?${query}`)
-      expect(res.status).toBe(200)
-      expect(await res.json()).toStrictEqual({ value: expected, type: 'number', isArray: false })
-    })
-  }
+  ] as const)('query integer ?%s arrives as the JS number %p', async (query, expected) => {
+    const res = await get(`/coerce/integer?${query}`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toStrictEqual({ value: expected, type: 'number', isArray: false })
+  })
 
-  for (const query of ['value=1.5', 'value=abc', 'value='] as const) {
-    it(`query integer ?${query} is rejected`, async () => {
-      expect((await get(`/coerce/integer?${query}`)).status).toBe(422)
-    })
-  }
+  it.each(['value=1.5', 'value=abc', 'value='])('query integer ?%s is rejected', async (query) => {
+    expect((await get(`/coerce/integer?${query}`)).status).toBe(422)
+  })
 
   it('query number accepts a decimal and rejects a non-number', async () => {
     const res = await get('/coerce/number?value=1.5')
@@ -885,38 +882,37 @@ describe('coercion', () => {
     expect((await get('/coerce/number?value=abc')).status).toBe(422)
   })
 
-  for (const [flag, expected] of [
+  it.each([
     ['true', true],
     ['false', false],
-  ] as const) {
-    it(`query boolean ?flag=${flag} arrives as the JS boolean ${expected}`, async () => {
-      const res = await get(`/coerce/boolean?flag=${flag}`)
-      expect(res.status).toBe(200)
-      expect(await res.json()).toStrictEqual({ value: expected, type: 'boolean', isArray: false })
-    })
-  }
+  ] as const)('query boolean ?flag=%s arrives as the JS boolean %p', async (flag, expected) => {
+    const res = await get(`/coerce/boolean?flag=${flag}`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toStrictEqual({ value: expected, type: 'boolean', isArray: false })
+  })
 
   // Coercion is exact and case-sensitive: none of the usual shorthands are accepted, so a client
   // sending `1` or `on` gets a 422 rather than a silently wrong `false`.
-  for (const flag of ['1', '0', 'yes', 'no', 'TRUE', 'False', 'on', 'off', ''] as const) {
-    it(`query boolean ?flag=${flag || '(empty)'} is rejected`, async () => {
-      expect((await get(`/coerce/boolean?flag=${flag}`)).status).toBe(422)
-    })
-  }
+  it.each(
+    ['1', '0', 'yes', 'no', 'TRUE', 'False', 'on', 'off', ''].map((flag) => ({
+      flag,
+      title: flag || '(empty)',
+    })),
+  )('query boolean ?flag=$title is rejected', async ({ flag }) => {
+    expect((await get(`/coerce/boolean?flag=${flag}`)).status).toBe(422)
+  })
 
-  for (const [query, expected] of [
+  it.each([
     ['tags=a,b,c', ['a', 'b', 'c']],
     ['tags=a&tags=b&tags=c', ['a', 'b', 'c']],
     ['tags=a,b&tags=c', ['a', 'b', 'c']],
     ['tags=a', ['a']],
     ['tags=', ['']],
-  ] as const) {
-    it(`query array ?${query} arrives as ${JSON.stringify(expected)}`, async () => {
-      const res = await get(`/coerce/array?${query}`)
-      expect(res.status).toBe(200)
-      expect(await res.json()).toStrictEqual({ value: expected, type: 'object', isArray: true })
-    })
-  }
+  ] as const)('query array ?%s arrives as %j', async (query, expected) => {
+    const res = await get(`/coerce/array?${query}`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toStrictEqual({ value: expected, type: 'object', isArray: true })
+  })
 
   it('query array rejects the parameter being absent', async () => {
     expect((await get('/coerce/array')).status).toBe(422)
@@ -1260,14 +1256,12 @@ describe('vendor messages on parameters', () => {
     ),
   } as unknown as OpenAPI)
 
-  for (const testCase of CASES) {
-    it(`${testCase.location}: returns the message verbatim`, async () => {
-      const app = await (await built()).mount('params')
-      const res = await app.handle(testCase.violate(`/params/${testCase.key}`))
-      expect(res.status).toBe(422)
-      expect(await res.text()).toBe(testCase.message)
-    })
-  }
+  it.each([...CASES])('$location: returns the message verbatim', async (testCase) => {
+    const app = await (await built()).mount('params')
+    const res = await app.handle(testCase.violate(`/params/${testCase.key}`))
+    expect(res.status).toBe(422)
+    expect(await res.text()).toBe(testCase.message)
+  })
 
   it('a required parameter that is absent still 422s', async () => {
     const app = await (await built()).mount('params')
@@ -1276,7 +1270,7 @@ describe('vendor messages on parameters', () => {
   })
 })
 
-// ── Behaviour extensions ─────────────────────────────────────────────────────────────────────
+// ── Behavior extensions ─────────────────────────────────────────────────────────────────────
 //
 // `x-trim` / `x-toLowerCase` / `x-normalize` compile to a `t.Transform(...).Decode(...)` around
 // the base schema, and `x-brand` / `x-readonly` wrap it in `t.Unsafe` / `t.Readonly`. The order
@@ -1287,7 +1281,7 @@ describe('vendor messages on parameters', () => {
 // That distinction is invisible in the emitted string and decides whether a request is accepted,
 // so it is pinned here on real requests rather than inferred.
 
-describe('behaviour extensions', () => {
+describe('behavior extensions', () => {
   const cases = [
     { key: 'trim', schema: prop({ type: 'string', minLength: 3, 'x-trim': true }) },
     {
@@ -1306,7 +1300,7 @@ describe('behaviour extensions', () => {
 
   it('x-trim validates before it trims, so padding counts toward minLength', async () => {
     // `'  ab  '` is six characters at validation time and only becomes `'ab'` afterwards. A
-    // reading of the extension as "normalise, then validate" would make this a 422.
+    // reading of the extension as "normalize, then validate" would make this a 422.
     expect((await post('trim', '  ab  ')).status).toBe(200)
     expect((await post('trim', '  abc  ')).status).toBe(200)
     expect((await post('trim', 'ab')).status).toBe(422)

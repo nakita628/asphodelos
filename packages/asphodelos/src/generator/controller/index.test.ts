@@ -240,6 +240,6 @@ describe('controllerFile', () => {
 
   it('imports t for any t.<PascalCase>(…) factory the renderer might emit', () => {
     const fakeChain = '.get("/foo", () => "ok", { response: { 200: t.String() } })'
-    expect(/\bt\.[A-Z]\w*\(/.test(fakeChain)).toBe(true)
+    expect(/\bt\.[A-Z]\w*\(/u.test(fakeChain)).toBe(true)
   })
 })

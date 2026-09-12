@@ -35,9 +35,9 @@ export function makePrefixKeyCodes(openAPI: OpenAPI, basePath: string): readonly
 }
 
 export function tagName(tag: string) {
-  const cleaned = tag.replaceAll(/[^a-zA-Z0-9]+/g, ' ').trim()
+  const cleaned = tag.replaceAll(/[^a-zA-Z0-9]+/gu, ' ').trim()
   if (!cleaned) return 'default'
-  const parts = cleaned.split(/\s+/)
+  const parts = cleaned.split(/\s+/u)
   return parts
     .map((p, i) =>
       i === 0 ? p.toLowerCase() : p.charAt(0).toUpperCase() + p.slice(1).toLowerCase(),
@@ -52,13 +52,13 @@ export function resourceName(pathStr: string) {
 
 export function makeOperationId(method: string, path: string) {
   const parts = path
-    .replaceAll(/\{([^}]+)\}/g, 'By-$1')
+    .replaceAll(/\{([^}]+)\}/gu, 'By-$1')
     .split('/')
     .filter(Boolean)
   const camel = parts
     .map((p, i) => (i === 0 ? p : p.charAt(0).toUpperCase() + p.slice(1)))
     .join('')
-    .replaceAll(/-([a-z])/gi, (_, c: string) => c.toUpperCase())
+    .replaceAll(/-([a-z])/giu, (_, c: string) => c.toUpperCase())
   return camel ? `${method}${camel.charAt(0).toUpperCase()}${camel.slice(1)}` : method
 }
 
@@ -72,7 +72,7 @@ export function resolveOperationId(
 }
 
 function lookup<T>(ref: string, section: string, table: { readonly [k: string]: T } | undefined) {
-  const m = new RegExp(`^#/components/${section}/(.+)$`).exec(ref)
+  const m = new RegExp(`^#/components/${section}/(.+)$`, 'u').exec(ref)
   return m?.[1] && table ? table[decodeURIComponent(m[1])] : undefined
 }
 
@@ -192,7 +192,7 @@ export function makeRoute(
 
 function resolvePathItem(pathItem: PathItem, api: OpenAPI) {
   if (!pathItem.$ref) return pathItem
-  const m = /^#\/components\/pathItems\/(.+)$/.exec(pathItem.$ref)
+  const m = /^#\/components\/pathItems\/(.+)$/u.exec(pathItem.$ref)
   const target = m?.[1] ? api.components?.pathItems?.[decodeURIComponent(m[1])] : undefined
   return target ?? pathItem
 }

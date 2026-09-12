@@ -2,11 +2,11 @@ import { isReference } from '../guard/index.js'
 import type { Operation } from '../openapi/index.js'
 
 function isIdentifier(name: string) {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(name)
 }
 
 function paramToken(segment: string) {
-  return /^\{(.+)\}$/.exec(segment)?.[1] ?? null
+  return /^\{(.+)\}$/u.exec(segment)?.[1] ?? null
 }
 
 // Eden treaty keys its path-tree type on the literal param name, so two routes

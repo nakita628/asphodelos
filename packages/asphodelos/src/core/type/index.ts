@@ -28,7 +28,7 @@ function primitiveTypeToTs(t: string) {
 }
 
 function tsName(name: string) {
-  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return name
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) return name
   return pascalCase(name)
 }
 

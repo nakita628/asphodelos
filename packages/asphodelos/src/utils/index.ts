@@ -20,11 +20,11 @@ function encodeNonAscii(name: string) {
 
 export function pascalCase(s: string) {
   const parts = encodeNonAscii(s)
-    .split(/[^A-Za-z0-9]+/)
+    .split(/[^A-Za-z0-9]+/u)
     .filter(Boolean)
   if (parts.length === 0) return 'Schema'
   const result = parts.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join('')
-  return /^[0-9]/.test(result) ? `_${result}` : result
+  return /^[0-9]/u.test(result) ? `_${result}` : result
 }
 
 export function filterDefined<T>(arr: readonly (T | null | undefined)[]) {
@@ -87,15 +87,15 @@ const JS_RESERVED: ReadonlySet<string> = new Set([
  * leading digits are normalized so `export const <name>` always parses.
  */
 export function toSafeIdentifier(name: string) {
-  const cleaned = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
+  const cleaned = /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(name)
     ? name
     : (() => {
-        const parts = name.split(/[^A-Za-z0-9]+/).filter(Boolean)
+        const parts = name.split(/[^A-Za-z0-9]+/u).filter(Boolean)
         const joined = parts
           .map((p, i) => (i === 0 ? p : p.charAt(0).toUpperCase() + p.slice(1)))
           .join('')
         if (joined.length === 0) return '_'
-        return /^[0-9]/.test(joined) ? `_${joined}` : joined
+        return /^[0-9]/u.test(joined) ? `_${joined}` : joined
       })()
   return JS_RESERVED.has(cleaned) ? `${cleaned}Module` : cleaned
 }
@@ -106,7 +106,7 @@ export function toSafeIdentifier(name: string) {
  * are not parsed as malformed numeric literals.
  */
 export function safeStatusKey(status: string) {
-  return /^[0-9]+$/.test(status) ? status : JSON.stringify(status)
+  return /^[0-9]+$/u.test(status) ? status : JSON.stringify(status)
 }
 
 /**
@@ -114,5 +114,5 @@ export function safeStatusKey(status: string) {
  * cache-key tuple (`/posts/{id}` → `posts`). An empty path falls back to `''`.
  */
 export function resourcePrefix(pathStr: string) {
-  return pathStr.replace(/^\//, '').split('/')[0] ?? ''
+  return pathStr.replace(/^\//u, '').split('/')[0] ?? ''
 }

@@ -1,3 +1,5 @@
+// Accented text is the input under test.
+// cspell:ignore émojis
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'

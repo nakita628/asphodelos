@@ -11,14 +11,14 @@ import type { OpenAPI, Schema, Type } from '../../openapi/index.js'
 // A JS object key that is a valid identifier is emitted bare; anything else is
 // quoted so a hostile property name cannot break out of the object literal.
 function safeObjectKey(key: string) {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key)
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(key) ? key : JSON.stringify(key)
 }
 
 // Identifier for a schema's mock factory. Dots are dropped (`Foo.Bar` →
 // `FooBar`) and any other non-identifier character is neutralized so a hostile
 // `$ref`/component name cannot inject code at the call site.
 export function mockName(schemaName: string) {
-  return `mock${schemaName.replaceAll('.', '').replaceAll(/[^A-Za-z0-9_$]/g, '_')}`
+  return `mock${schemaName.replaceAll('.', '').replaceAll(/[^A-Za-z0-9_$]/gu, '_')}`
 }
 
 const FORMAT_TO_FAKER: { [k: string]: string } = {

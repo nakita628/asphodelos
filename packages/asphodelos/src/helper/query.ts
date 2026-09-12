@@ -405,11 +405,11 @@ function needsFetchHook(pathStr: string) {
   return pathStr
     .split('/')
     .filter(Boolean)
-    .some((seg) => seg.includes('.') || (seg.includes('{') && !/^\{[^}]+\}$/.test(seg)))
+    .some((seg) => seg.includes('.') || (seg.includes('{') && !/^\{[^}]+\}$/u.test(seg)))
 }
 
 function pathParamNames(pathStr: string): readonly string[] {
-  return [...pathStr.matchAll(/\{([^}]+)\}/g)].map((m) => m[1] ?? '')
+  return [...pathStr.matchAll(/\{([^}]+)\}/gu)].map((m) => m[1] ?? '')
 }
 
 // The data type for a partial-param op comes from its 2xx response schema — the eden chain
@@ -460,7 +460,7 @@ function makeFetchOperation(
     : '{ headers?: Record<string, string> }'
   const { dataT } = successType(operation)
   const errorT = 'unknown'
-  const urlInner = pathStr.replaceAll(/\{([^}]+)\}/g, (_, n) => `\${encodeURIComponent(${n})}`)
+  const urlInner = pathStr.replaceAll(/\{([^}]+)\}/gu, (_, n) => `\${encodeURIComponent(${n})}`)
   const urlExpr = hasQuery
     ? `\`${urlInner}\${search.size ? \`?\${search}\` : ''}\``
     : `\`${urlInner}\``
@@ -470,7 +470,7 @@ function makeFetchOperation(
       : ''
   // Read body via res.json() would type as unknown (unassignable); res.text() + JSON.parse
   // yields `any`, keeping the annotated return type without an `as` cast.
-  const getBody = (returnAnnot: string, opt: string, signal: boolean) =>
+  const getBody = (returnAnnotation: string, opt: string, signal: boolean) =>
     `${searchCode(opt)}const res=await fetch(${urlExpr},{headers:${opt}?.headers${signal ? ',signal' : ''}});if(!res.ok)throw await res.json();return JSON.parse(await res.text())`
 
   const keyArgsDecl = hasQuery ? 'const{headers:_h,...keyArgs}=options??{};' : ''

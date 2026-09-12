@@ -59,7 +59,7 @@ describe('object', () => {
     ).toBe('t.Object({"name":t.String()},{additionalProperties:false})')
   })
 
-  it('additionalProperties=true is ignored (default Elysia behaviour)', () => {
+  it('additionalProperties=true is ignored (default Elysia behavior)', () => {
     // `additionalProperties: true` matches typebox default — no opts emitted.
     expect(
       object({

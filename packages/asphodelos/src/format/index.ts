@@ -29,7 +29,10 @@ export const FormatOptions = Context.Reference<FormatConfig>('asphodelos/FormatO
  * source has no author, so the gaps are an artifact of how the header was assembled.
  */
 function collapseImportGaps(code: string) {
-  return code.replaceAll(/^(import\s[^\n]*?\sfrom\s[^\n]+\n)\n+(?=import\s[^\n]*?\sfrom\s)/gm, '$1')
+  return code.replaceAll(
+    /^(import\s[^\n]*?\sfrom\s[^\n]+\n)\n+(?=import\s[^\n]*?\sfrom\s)/gmu,
+    '$1',
+  )
 }
 
 /** Formats generated TypeScript with the options in scope. */

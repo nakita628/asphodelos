@@ -35,7 +35,7 @@ export function statementKey(stmt: Statement) {
       }
       const argSig = expr
         .getArguments()
-        .map((a) => a.getText().trim().replace(/;$/, ''))
+        .map((a) => a.getText().trim().replace(/;$/u, ''))
         .join(',')
       return `expr:${callee.getText().trim()}(${argSig})`
     }

@@ -51,23 +51,37 @@ export default defineConfig({
     'custom/function-declaration': 'error',
     'custom/predicate-is-name': 'error',
     'custom/type-pascal-case': 'error',
+    'custom/no-let': 'error',
     // `@internal` and friends are modifiers, so their text belongs to the description;
     // `check-tag-names` is what catches a tag that is merely misspelled.
     'jsdoc/empty-tags': 'error',
     'jsdoc/check-tag-names': 'error',
+    // `require-param` / `require-returns` stay out: the house style is one line over a
+    // self-describing signature, and those two would turn every doc block into `@param`
+    // boilerplate restating the types. What is on is the shape of a tag once someone writes one.
+    'jsdoc/check-access': 'error',
+    'jsdoc/require-param-description': 'error',
+    'jsdoc/require-param-name': 'error',
+    'jsdoc/require-returns-description': 'error',
     eqeqeq: 'error',
     'no-var': 'error',
     'prefer-const': 'error',
     'no-param-reassign': ['error', { props: true }],
     'no-plusplus': 'error',
-    // `_enum` is the generator for the OpenAPI `enum` keyword, which is a reserved word in
-    // JavaScript; every other dangling underscore stays a smell.
     // `_enum` is the generator for the OpenAPI `enum` keyword, a reserved word in JavaScript;
     // `_tag` is Effect's discriminant on tagged errors. Every other dangling underscore stays a
     // smell.
     'no-underscore-dangle': ['error', { allow: ['_enum', '_tag'] }],
     // Paired with `env: { node: true }` above, so `process` resolves and a typo does not.
     'no-undef': 'error',
+    // A generator that meets a construct it cannot translate says so with `console.warn` and
+    // carries on — a remark about the document, not program output. Everything else the program
+    // prints goes through Effect's `Console` in the CLI, or through the Vite plugin, which is
+    // exempted by path below.
+    'no-console': ['error', { allow: ['warn'] }],
+    // `new-cap` is deliberately absent: Effect's API is PascalCase namespaces called as functions
+    // (`Schema.Struct(...)`, `Schema.TaggedError<E>()(...)`, `Command.make`), so the rule would
+    // report the library's own idiom on every schema.
 
     // Escape hatches out of the type system, and the unsound types that survive `strict`.
     'typescript/no-explicit-any': 'error',
@@ -176,9 +190,13 @@ export default defineConfig({
     'unicorn/no-length-as-slice-end': 'error',
     'unicorn/no-unreadable-array-destructuring': 'error',
     'unicorn/no-immediate-mutation': 'error',
+    'unicorn/prefer-code-point': 'error',
 
     // Regex and numbers.
     'unicorn/prefer-regexp-test': 'error',
+    // The `u` flag makes a pattern read code points rather than UTF-16 halves and turns a
+    // meaningless escape into a syntax error instead of a silent literal.
+    'require-unicode-regexp': 'error',
     'prefer-regex-literals': 'error',
     'no-div-regex': 'error',
     'no-regex-spaces': 'error',
@@ -255,6 +273,8 @@ export default defineConfig({
     'unicorn/no-useless-promise-resolve-reject': 'error',
     'unicorn/prefer-structured-clone': 'error',
     'unicorn/prefer-optional-catch-binding': 'error',
+    // The rule's default name is `error`; restating it keeps a stray `e` from creeping back in.
+    'unicorn/catch-error-name': ['error', { name: 'error' }],
 
     // Code injection surfaces (`eval` itself is already `correctness`).
     'no-new-func': 'error',
@@ -284,6 +304,7 @@ export default defineConfig({
     'promise/catch-or-return': 'error',
     'promise/always-return': 'error',
     'promise/prefer-catch': 'error',
+    'promise/prefer-await-to-then': 'error',
     'node/no-exports-assign': 'error',
     'node/no-new-require': 'error',
     'node/no-mixed-requires': 'error',
@@ -315,6 +336,10 @@ export default defineConfig({
     // Naming: the identifiers a reader scans first.
     'no-shadow-restricted-names': 'error',
     'no-delete-var': 'error',
+    // kebab-case, and camelCase for the modules named after the OpenAPI key they generate
+    // (`components/pathItems.ts`, `components/mediaTypes.ts`), so a file reads as the
+    // `components` entry it handles. PascalCase and snake_case are rejected.
+    'unicorn/filename-case': ['error', { cases: { kebabCase: true, camelCase: true } }],
   },
 
   // --- Dependency direction ----------------------------------------------------------------
@@ -324,12 +349,13 @@ export default defineConfig({
   // relative specifiers only, so an external package such as `@typespec/openapi3` never collides
   // with a banned directory name.
   //
-  //   layer 0  config  format  fsp  merge  utils  openapi   (leaves: import nothing internal)
+  //   layer 0  config  error  format  fsp  merge  utils  openapi   (leaves: nothing internal)
   //   layer 1  guard -> openapi              emit -> format, fsp
   //   layer 2  generator <-> helper -> utils, guard, openapi, emit
   //   layer 3  core -> everything below it
   //   layer 4  shared -> config, core, format, fsp, openapi
   //   layer 5  cli, vite-plugin -> config, core, format, openapi, shared
+  //   testing  -> fsp   (test-only helpers; nothing in dist imports it)
   //
   // A change that needs a new edge is a change to this list first, and to the code second.
   overrides: [
@@ -539,9 +565,12 @@ export default defineConfig({
     {
       // asphodelosVite(): any is intentional — typing the return would force Vite / Rollup type
       // installs on consumers of the library.
+      // The plugin's console is the Vite terminal: the per-job report it prints there is its
+      // whole user interface.
       files: ['src/vite-plugin/index.ts'],
       rules: {
         'typescript/no-explicit-any': 'off',
+        'no-console': 'off',
       },
     },
     {
@@ -560,6 +589,7 @@ export default defineConfig({
       // this repo's style would break the correspondence that is the point of the test.
       files: ['src/generator/typebox/index.test.ts'],
       rules: {
+        'require-unicode-regexp': 'off',
         'eslint/prefer-regex-literals': 'off',
         'unicorn/no-useless-collection-argument': 'off',
         'unicorn/no-lonely-if': 'off',
@@ -568,8 +598,44 @@ export default defineConfig({
     },
     {
       // The suite drives the generators against real files and asserts on the text they emit.
-      files: ['**/*.test.ts'],
+      files: ['**/*.test.ts', '**/*.test.tsx'],
+      // `bun:test` is Jest's API, so the `jest` plugin reads it: `describe` / `it` / `expect` are
+      // recognized through the import.
+      plugins: ['jest'],
       rules: {
+        // Focused, skipped, commented-out and `test.`-prefixed cases all pass silently, which is
+        // exactly why they must not be committed.
+        'jest/no-focused-tests': 'error',
+        'jest/no-disabled-tests': 'error',
+        'jest/no-commented-out-tests': 'error',
+        'jest/no-test-prefixes': 'error',
+        // A case that asserts nothing, or asserts only on some branch, proves nothing on the
+        // others.
+        'jest/expect-expect': 'error',
+        'jest/no-standalone-expect': 'error',
+        'jest/no-conditional-expect': 'error',
+        'jest/valid-expect': 'error',
+        'jest/valid-title': 'error',
+        'jest/valid-describe-callback': 'error',
+        'jest/no-identical-title': 'error',
+        'jest/no-test-return-statement': 'error',
+        'jest/no-duplicate-hooks': 'error',
+        'jest/prefer-hooks-on-top': 'error',
+        'jest/prefer-hooks-in-order': 'error',
+        // One spelling: `it`, inside a `describe` or not.
+        'jest/consistent-test-it': ['error', { fn: 'it', withinDescribe: 'it' }],
+        'jest/no-alias-methods': 'error',
+        'jest/prefer-equality-matcher': 'error',
+        'jest/prefer-strict-equal': 'error',
+        'jest/require-to-throw-message': 'error',
+        // A table is `it.each`, not a loop around `it`: the runner then knows every case up front.
+        'jest/prefer-each': 'error',
+        'jest/prefer-spy-on': 'error',
+        'jest/no-mocks-import': 'error',
+        'jest/no-interpolation-in-snapshots': 'error',
+        'jest/no-large-snapshots': 'error',
+        // A test captures or silences the console the code under test writes to.
+        'no-console': 'off',
         // The layering describes `src`; a test reaches for whatever fixture or helper spells the
         // case out most directly.
         'no-restricted-imports': 'off',

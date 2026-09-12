@@ -49,7 +49,7 @@ function pickBodyMedia(
 
 export function refSchemaName(s: Schema | undefined) {
   if (!s?.$ref) return null
-  const m = /^#\/components\/schemas\/([^/]+)$/.exec(s.$ref)
+  const m = /^#\/components\/schemas\/([^/]+)$/u.exec(s.$ref)
   return m?.[1] ? decodeURIComponent(m[1]) : null
 }
 
@@ -148,7 +148,7 @@ export function collectSchemaRefs(schema: Schema, acc = new Set<string>()) {
     collectSchemaRefs(schema.additionalProperties, acc)
   }
   if (schema.$ref) {
-    const m = /^#\/components\/schemas\/([^/]+)$/.exec(schema.$ref)
+    const m = /^#\/components\/schemas\/([^/]+)$/u.exec(schema.$ref)
     if (m?.[1]) acc.add(decodeURIComponent(m[1]))
   }
   if (schema.oneOf) {
@@ -268,7 +268,7 @@ const REF_SUFFIX: { readonly [k: string]: string } = {
   mediaTypes: 'MediaTypeSchema',
 }
 
-const REF_PATTERN = new RegExp(`^#/components/(${Object.keys(REF_SUFFIX).join('|')})/(.+)$`)
+const REF_PATTERN = new RegExp(`^#/components/(${Object.keys(REF_SUFFIX).join('|')})/(.+)$`, 'u')
 
 export function refIdent(ref: string): string | undefined {
   const m = REF_PATTERN.exec(ref)

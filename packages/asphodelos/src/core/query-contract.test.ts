@@ -39,7 +39,7 @@ const emitAll = async (openapi: OpenAPI) => {
 }
 
 describe('7 query clients — dataT contract', () => {
-  it('emit the same dataT pattern across all 6 clients (after oxfmt normalisation)', async () => {
+  it('emit the same dataT pattern across all 6 clients (after oxfmt normalization)', async () => {
     const results = await emitAll({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },

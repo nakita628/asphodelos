@@ -74,7 +74,7 @@ describe('headers — caller ≡ generator contract', () => {
     await runGenerator(headers(sample, output, false, false))
     const emitted = fs.readFileSync(output, 'utf-8')
     const generated = headersCode(sample)
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)HeaderSchema\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)HeaderSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)
@@ -90,7 +90,7 @@ describe('headers — caller ≡ generator contract', () => {
     await runGenerator(headers(sample, output, true, false))
     const emitted = fs.readFileSync(path.join(dir, 'headers', 'authHeader.ts'), 'utf-8')
     const generated = headersCode({ AuthHeader: sample.AuthHeader })
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)HeaderSchema\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)HeaderSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)

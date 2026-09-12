@@ -122,7 +122,7 @@ describe('requestBodies — caller ≡ generator contract', () => {
     await runGenerator(requestBodies(sample, output, false, false))
     const emitted = fs.readFileSync(output, 'utf-8')
     const generated = requestBodiesCode(sample)
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)RequestBodySchema\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)RequestBodySchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)
@@ -148,7 +148,7 @@ describe('requestBodies — caller ≡ generator contract', () => {
     await runGenerator(requestBodies(sample, output, true, false))
     const emitted = fs.readFileSync(path.join(dir, 'requestBodies', 'createUser.ts'), 'utf-8')
     const generated = requestBodiesCode({ CreateUser: sample.CreateUser })
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)RequestBodySchema\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)RequestBodySchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)

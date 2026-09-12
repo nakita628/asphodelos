@@ -5,7 +5,7 @@ import { pascalCase } from '../../utils/index.js'
 import { typebox } from '../typebox/index.js'
 
 function sub(code: string, from: string, to: string) {
-  return code.replaceAll(new RegExp(`\\b${from}\\b`, 'g'), to)
+  return code.replaceAll(new RegExp(`\\b${from}\\b`, 'gu'), to)
 }
 
 function findFree(base: string, i: number, used: ReadonlySet<string>): string {
@@ -135,7 +135,7 @@ function emitGroup(
     const refs = collectSchemaRefs(schema)
     const inner = typebox(schema)
     const expr = refs.has(name)
-      ? `t.Recursive((Self)=>${inner.replaceAll(new RegExp(`\\b${selfRef}\\b`, 'g'), 'Self')})`
+      ? `t.Recursive((Self)=>${inner.replaceAll(new RegExp(`\\b${selfRef}\\b`, 'gu'), 'Self')})`
       : inner
     const decl = `${exportKw}const ${ident}=${readonly(expr, readonlyMode)}`
     return exportTypes
@@ -150,7 +150,7 @@ function emitGroup(
       const inner = typebox(schema)
       const rewritten = [...memberNames].reduce((acc, m) => {
         const ident = `${pascalCase(m)}Schema`
-        return acc.replaceAll(new RegExp(`\\b${ident}\\b`, 'g'), `t.Ref('${m}')`)
+        return acc.replaceAll(new RegExp(`\\b${ident}\\b`, 'gu'), `t.Ref('${m}')`)
       }, inner)
       return `${name}:${rewritten}`
     })

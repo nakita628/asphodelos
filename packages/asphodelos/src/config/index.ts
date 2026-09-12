@@ -254,7 +254,7 @@ export function parseConfig(config: unknown) {
 // config file would get the copy from before the edit. The counter is what makes each reload a
 // specifier the loader has not seen — monotonic rather than a timestamp, because two edits inside
 // one millisecond would collide.
-let reloadCount = 0
+const reloads = { count: 0 }
 
 /**
  * Imports the config module, bypassing the loader cache when asked.
@@ -282,7 +282,7 @@ function importConfigModule(abs: string, reload: boolean) {
     const copy = resolve(
       abs,
       '..',
-      `.asphodelos.config.${String(process.pid)}.${String((reloadCount += 1))}.ts`,
+      `.asphodelos.config.${String(process.pid)}.${String((reloads.count += 1))}.ts`,
     )
     yield* fs
       .copyFile(abs, copy)

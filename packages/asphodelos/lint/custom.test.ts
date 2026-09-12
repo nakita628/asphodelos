@@ -22,6 +22,8 @@ import plugin from './custom.js'
 const PLUGIN = path.resolve(import.meta.dir, 'custom.js')
 // The package's own bin, not the workspace root's: `oxlint` is a devDependency here.
 const OXLINT = path.resolve(import.meta.dir, '../node_modules/.bin/oxlint')
+/** Each case starts an `oxlint` process; a loaded machine needs longer than the default. */
+const SPAWN_TIMEOUT_MS = 30_000
 
 const workdirs: string[] = []
 
@@ -53,7 +55,7 @@ function lint(rule: string, code: string, filename = 'src/core/thing.ts') {
   const output = `${run.stdout ?? ''}${run.stderr ?? ''}`
   return {
     output,
-    reports: (output.match(new RegExp(`custom\\(${rule}\\)`, 'g')) ?? []).length,
+    reports: (output.match(new RegExp(`custom\\(${rule}\\)`, 'gu')) ?? []).length,
   }
 }
 
@@ -68,40 +70,53 @@ function check(
   const split = (entry: string | readonly [string, string]) =>
     typeof entry === 'string' ? ([entry, undefined] as const) : ([entry[0], entry[1]] as const)
 
-  describe(rule, () => {
-    for (const [index, entry] of cases.valid.entries()) {
+  const rows = (entries: readonly (string | readonly [string, string])[]) =>
+    entries.map((entry, index) => {
       const [code, filename] = split(entry)
-      it(`accepts #${index + 1}: ${code.split('\n')[0]?.slice(0, 60)}`, () => {
+      return { code, filename, title: `#${index + 1}: ${code.split('\n')[0]?.slice(0, 60)}` }
+    })
+
+  describe(rule, () => {
+    it.each(rows(cases.valid))(
+      'accepts $title',
+      ({ code, filename }) => {
         const run = filename === undefined ? lint(rule, code) : lint(rule, code, filename)
         expect(run.reports).toBe(0)
-      })
-    }
-    for (const [index, entry] of cases.invalid.entries()) {
-      const [code, filename] = split(entry)
-      it(`rejects #${index + 1}: ${code.split('\n')[0]?.slice(0, 60)}`, () => {
+      },
+      SPAWN_TIMEOUT_MS,
+    )
+    it.each(rows(cases.invalid))(
+      'rejects $title',
+      ({ code, filename }) => {
         const run = filename === undefined ? lint(rule, code) : lint(rule, code, filename)
         expect(run.reports).toBeGreaterThan(0)
-      })
-    }
+      },
+      SPAWN_TIMEOUT_MS,
+    )
   })
 }
 
 const SPEC = 'src/core/thing.test.ts'
 
 describe('the plugin exposes every rule the config enables', () => {
-  it('registers all eight rules under the `custom` namespace', () => {
-    expect(plugin.meta.name).toBe('custom')
-    expect(Object.keys(plugin.rules).toSorted()).toStrictEqual([
-      'effect-gen-return',
-      'effect-promise-import',
-      'function-declaration',
-      'no-effect-flatmap',
-      'no-effect-fn',
-      'no-effect-run',
-      'predicate-is-name',
-      'type-pascal-case',
-    ])
-  })
+  it(
+    'registers all nine rules under the `custom` namespace',
+    () => {
+      expect(plugin.meta.name).toBe('custom')
+      expect(Object.keys(plugin.rules).toSorted()).toStrictEqual([
+        'effect-gen-return',
+        'effect-promise-import',
+        'function-declaration',
+        'no-effect-flatmap',
+        'no-effect-fn',
+        'no-effect-run',
+        'no-let',
+        'predicate-is-name',
+        'type-pascal-case',
+      ])
+    },
+    SPAWN_TIMEOUT_MS,
+  )
 })
 
 check('effect-gen-return', {
@@ -240,6 +255,29 @@ check('function-declaration', {
   ],
 })
 
+check('no-let', {
+  valid: [
+    'export const value = 1',
+    // A counter in a `for` head is the one place a changing binding reads naturally.
+    `for (let index = 0; index < 3; index += 1) {
+  console.warn(index)
+}`,
+    'const state = { count: 0 }\nstate.count += 1',
+    // Tests arrange imperatively, so they are exempt.
+    ['let fixture = 1\nfixture = 2', SPEC],
+  ],
+  invalid: [
+    'let value = 1\nvalue = 2',
+    `export function read(flag) {
+  let result = 0
+  if (flag) result = 1
+  return result
+}`,
+    'var legacy = 1',
+    'for (let item of [1, 2]) console.warn(item)',
+  ],
+})
+
 check('type-pascal-case', {
   valid: ['export type Config = { a: string }', 'export type OpenAPI = unknown'],
   invalid: [
@@ -302,17 +340,21 @@ describe('oxlint.config.ts — the boundary exemption', () => {
     }
   }
 
-  it('runs an Effect only inside the vite plugin and the test helpers', () => {
-    const banned = lintInPackage('src/core/tmp-runner-probe.ts', 'Effect.runPromise(program)\n')
-    expect(banned).toContain('custom(no-effect-run)')
+  it(
+    'runs an Effect only inside the vite plugin and the test helpers',
+    () => {
+      const banned = lintInPackage('src/core/tmp-runner-probe.ts', 'Effect.runPromise(program)\n')
+      expect(banned).toContain('custom(no-effect-run)')
 
-    for (const boundary of [
-      'src/vite-plugin/tmp-runner-probe.ts',
-      'src/testing/tmp-runner-probe.ts',
-    ]) {
-      expect(lintInPackage(boundary, 'Effect.runPromise(program)\n')).not.toContain(
-        'custom(no-effect-run)',
-      )
-    }
-  })
+      for (const boundary of [
+        'src/vite-plugin/tmp-runner-probe.ts',
+        'src/testing/tmp-runner-probe.ts',
+      ]) {
+        expect(lintInPackage(boundary, 'Effect.runPromise(program)\n')).not.toContain(
+          'custom(no-effect-run)',
+        )
+      }
+    },
+    SPAWN_TIMEOUT_MS,
+  )
 })

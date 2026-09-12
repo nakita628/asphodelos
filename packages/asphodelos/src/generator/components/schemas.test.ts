@@ -144,11 +144,11 @@ describe('star-collapse runtime equivalence (t.Module vs t.Recursive)', () => {
     { mixed: ['x'], n: 3 },
   ]
 
-  for (const input of inputs) {
-    it(`matches Value.Check for ${JSON.stringify(input)}`, () => {
-      expect(Value.Check(cfvRecursive, input)).toBe(Value.Check(cfvModule, input))
-    })
-  }
+  // Wrapped in a one-element tuple: `it.each` spreads an array row into arguments, and one of
+  // the inputs is itself an array.
+  it.each(inputs.map((input) => [input] as const))('matches Value.Check for %j', (input) => {
+    expect(Value.Check(cfvRecursive, input)).toBe(Value.Check(cfvModule, input))
+  })
 })
 
 describe('schemasCode — multiple disjoint groups', () => {

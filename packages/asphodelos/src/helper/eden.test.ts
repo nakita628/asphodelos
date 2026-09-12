@@ -19,7 +19,7 @@ describe('edenChain', () => {
     })
   })
 
-  it('materialises a path param as `params` and switches the type chain to ReturnType', () => {
+  it('materializes a path param as `params` and switches the type chain to ReturnType', () => {
     expect(edenChain('/items/{id}', 'app', 'get')).toStrictEqual({
       callExpr: 'app.items(params).get',
       methodHostTypeExpr: "ReturnType<typeof app.items>['get']",

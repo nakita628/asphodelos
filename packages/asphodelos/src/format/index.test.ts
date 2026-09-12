@@ -86,11 +86,9 @@ describe('FormatOptions', () => {
     ],
   ]
 
-  for (const [name, options, input, expected] of cases) {
-    it.concurrent(name, async () => {
-      expect(await fmtWith(options, input)).toStrictEqual(expected)
-    })
-  }
+  it.concurrent.each(cases)('%s', async (_name, options, input, expected) => {
+    expect(await fmtWith(options, input)).toStrictEqual(expected)
+  })
 
   it.concurrent('printWidth: 40 wraps a long line', async () => {
     const result = await fmtWith(

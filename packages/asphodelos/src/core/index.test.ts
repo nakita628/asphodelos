@@ -442,7 +442,7 @@ if (import.meta.main) {
 
   it('default mode: each kind lands in its own src/components/<kind>.ts (no top-level index.ts)', async () => {
     const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-perkind-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-per-kind-'))
     process.chdir(dir)
     try {
       const apiPath = path.join(dir, 'openapi.json')
@@ -480,7 +480,7 @@ if (import.meta.main) {
         'utf8',
       )
       expect(responsesSrc.includes('ItemListResponseSchema')).toBe(true)
-      expect(/from\s+['"]\.\/schemas['"]/.test(responsesSrc)).toBe(true)
+      expect(/from\s+['"]\.\/schemas['"]/u.test(responsesSrc)).toBe(true)
     } finally {
       process.chdir(cwd)
       rmSync(dir, { recursive: true, force: true })
@@ -489,7 +489,7 @@ if (import.meta.main) {
 
   it('modules register schemas with ORIGINAL spec names; app does NOT (registrations propagate via .use)', async () => {
     const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-modreg-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-module-registration-'))
     process.chdir(dir)
     try {
       const apiPath = path.join(dir, 'openapi.json')
@@ -597,9 +597,9 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
         path.join(dir, 'src', 'components', 'responses.ts'),
         'utf8',
       )
-      expect(/export const ItemSchema\s*=\s*t\.Readonly\(/.test(schemasSrc)).toBe(true)
-      expect(/export const ErrorSchema\s*=\s*t\.Readonly\(/.test(schemasSrc)).toBe(true)
-      expect(/ItemListResponseSchema\s*=\s*t\.Readonly\(/.test(responsesSrc)).toBe(true)
+      expect(/export const ItemSchema\s*=\s*t\.Readonly\(/u.test(schemasSrc)).toBe(true)
+      expect(/export const ErrorSchema\s*=\s*t\.Readonly\(/u.test(schemasSrc)).toBe(true)
+      expect(/ItemListResponseSchema\s*=\s*t\.Readonly\(/u.test(responsesSrc)).toBe(true)
 
       const modelSrc = await readFile(path.join(dir, 'src', 'modules', 'items', 'model.ts'), 'utf8')
       expect(modelSrc.includes('t.Readonly(')).toBe(true)
@@ -780,7 +780,7 @@ if (import.meta.main) {
 
   it('skips the components dir entirely when the spec declares no components', async () => {
     const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-nocomp-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-no-components-'))
     process.chdir(dir)
     try {
       const apiPath = path.join(dir, 'openapi.json')

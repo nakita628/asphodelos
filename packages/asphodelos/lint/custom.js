@@ -23,6 +23,9 @@
 //                              `orElse` and `mapError` alike; `Effect.tryPromise` is the one that
 //                              puts the failure in the error channel
 //   custom/type-pascal-case    a `type` alias is PascalCase
+//   custom/no-let              no `let` outside a `for` statement head — a value is one `const`
+//                              expression, so the reader never replays control flow to know
+//                              what a binding holds
 //
 // Tests are exempt from the structural rules: a test arranges and asserts imperatively when that
 // is the clearest way to spell the fixture out.
@@ -219,6 +222,26 @@ export default {
                 message: `\`Effect.${name}\` buries the control flow one closure deep. Write the step as a plain \`yield*\` inside \`Effect.gen\`, with failures as early-return guards.`,
               })
             }
+          },
+        }
+      },
+    },
+    'no-let': {
+      meta: { docs: { description: 'no let outside a for statement head' } },
+      create(context) {
+        if (isTestPath(filenameOf(context))) return {}
+        const forHeads = new Set()
+        return {
+          ForStatement(node) {
+            if (node.init !== null && node.init !== undefined) forHeads.add(node.init)
+          },
+          VariableDeclaration(node) {
+            if (node.kind === 'const' || forHeads.has(node)) return
+            context.report({
+              node,
+              message:
+                'Declare the value as one `const` expression (a ternary over the deciding condition, or an extracted function) instead of a `let` assigned later — a binding that changes over time makes the reader replay the control flow to know what it holds. A counter may live in a `for(...)` head; state that has to change over time lives in a `const` object whose property changes, and a genuinely imperative core states its reason on a `// oxlint-disable-next-line custom/no-let -- <why>` comment.',
+            })
           },
         }
       },

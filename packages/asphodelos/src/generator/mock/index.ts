@@ -44,7 +44,7 @@ function normalizeKey(key: string) {
 function pickSuccessResponse(responses: { readonly [k: string]: Responses }) {
   const keys = Object.keys(responses)
   const [status] = keys
-    .filter((k) => /^2\d\d$/.test(k))
+    .filter((k) => /^2\d\d$/u.test(k))
     .map((k) => Number.parseInt(k, 10))
     .toSorted((a, b) => a - b)
   if (status !== undefined) {
@@ -353,7 +353,7 @@ function quoteSingle(s: string) {
 
 // OpenAPI `/users/{userId}` → Elysia `/users/:userId`.
 function routePath(path: string) {
-  return quoteSingle(path.replaceAll(/\{([^}]+)\}/g, ':$1'))
+  return quoteSingle(path.replaceAll(/\{([^}]+)\}/gu, ':$1'))
 }
 
 /**

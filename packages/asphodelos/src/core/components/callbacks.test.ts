@@ -86,7 +86,7 @@ describe('callbacks — caller ≡ generator contract', () => {
     await runGenerator(callbacks(sample, output, false))
     const emitted = fs.readFileSync(output, 'utf-8')
     const generated = callbacksCode(sample)
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Callback\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Callback\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)
@@ -104,7 +104,7 @@ describe('callbacks — caller ≡ generator contract', () => {
     await runGenerator(callbacks(sample, output, true))
     const emitted = fs.readFileSync(path.join(dir, 'callbacks', 'cb1.ts'), 'utf-8')
     const generated = callbacksCode({ Cb1: sample.Cb1 })
-    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Callback\s*=/g
+    const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Callback\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
     const generatedNames = new Set([...generated.matchAll(re)].map((m) => m[1]))
     expect(emittedNames).toStrictEqual(generatedNames)

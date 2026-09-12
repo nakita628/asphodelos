@@ -10,7 +10,7 @@ function join(entries: readonly (string | null)[], sep: string) {
 }
 
 function toElysiaPath(p: string) {
-  return p.replaceAll(/\{([^}]+)\}/g, ':$1')
+  return p.replaceAll(/\{([^}]+)\}/gu, ':$1')
 }
 
 function componentKey(name: string) {
@@ -79,7 +79,7 @@ export function controllerFile(
     componentImports.length > 0
       ? `.model({${componentImports.map((n) => `${pascalCase(n)}:${schemaIdent(n)}`).join(',')}})`
       : ''
-  const usesTypebox = /\bt\.[A-Z]\w*\(/.test(chain)
+  const usesTypebox = /\bt\.[A-Z]\w*\(/u.test(chain)
   const elysiaImport = usesTypebox
     ? `import {Elysia,t} from 'elysia'`
     : `import {Elysia} from 'elysia'`

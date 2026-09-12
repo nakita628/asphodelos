@@ -5,7 +5,7 @@ export function makeModuleSpec(
   target: { readonly output: string; readonly split?: boolean },
 ) {
   const rel = path.relative(path.dirname(fromFile), target.output).replaceAll('\\', '/')
-  const stripped = rel.replace(/\.ts$/, '').replace(/(^|\/)index$/, '')
+  const stripped = rel.replace(/\.ts$/u, '').replace(/(^|\/)index$/u, '')
   return stripped === '' ? '.' : stripped.startsWith('.') ? stripped : `./${stripped}`
 }
 
@@ -36,16 +36,18 @@ const SCAN = new RegExp(
   [
     String.raw`"(?:\\.|[^"\\])*"`,
     String.raw`'(?:\\.|[^'\\])*'`,
-    String.raw`\`(?:\\.|[^\`\\])*\``,
+    // A plain string: under the `u` flag an escaped backtick is a syntax error, and a raw
+    // template cannot spell a backtick without escaping it.
+    '`(?:\\\\.|[^`\\\\])*`',
     String.raw`//[^\n]*`,
     String.raw`/\*[\s\S]*?\*/`,
     `\\b(${JS_IDENT}(?:${COMPONENT_SUFFIXES.map(([, suf]) => suf).join('|')}))\\b`,
   ].join('|'),
-  'g',
+  'gu',
 )
 
-const CONST_PATTERN = new RegExp(`(?:export\\s+)?const\\s+(${JS_IDENT})\\s*=`, 'g')
-const EXPORT_TYPE_PATTERN = new RegExp(`export\\s+type\\s+(${JS_IDENT})\\s*=`, 'g')
+const CONST_PATTERN = new RegExp(`(?:export\\s+)?const\\s+(${JS_IDENT})\\s*=`, 'gu')
+const EXPORT_TYPE_PATTERN = new RegExp(`export\\s+type\\s+(${JS_IDENT})\\s*=`, 'gu')
 
 function classifyRef(name: string) {
   return COMPONENT_SUFFIXES.reduce<readonly [string, string] | undefined>(
@@ -91,16 +93,16 @@ export function makeImports(
     bucket.add(name)
     grouped.set(kind, bucket)
   }
-  const needsT = /\bt\.[A-Z]/.test(code)
-  const needsStatic = /\bStatic\s*</.test(code) && !definedTypes.has('Static')
-  const needsUnwrap = /\bUnwrapSchema\s*</.test(code) && !definedTypes.has('UnwrapSchema')
+  const needsT = /\bt\.[A-Z]/u.test(code)
+  const needsStatic = /\bStatic\s*</u.test(code) && !definedTypes.has('Static')
+  const needsUnwrap = /\bUnwrapSchema\s*</u.test(code) && !definedTypes.has('UnwrapSchema')
   const elysiaParts = [
     needsT ? 't' : '',
     needsStatic ? 'type Static' : '',
     needsUnwrap ? 'type UnwrapSchema' : '',
   ].filter(Boolean)
   const elysiaLine = elysiaParts.length > 0 ? `import {${elysiaParts.join(',')}} from 'elysia'` : ''
-  const needsValue = /\bValue\.Check\b/.test(code)
+  const needsValue = /\bValue\.Check\b/u.test(code)
   const valueLine = needsValue ? `import {Value} from '@sinclair/typebox/value'` : ''
   const componentImports = COMPONENT_SUFFIXES.flatMap(([kind]) => {
     const names = grouped.get(kind)

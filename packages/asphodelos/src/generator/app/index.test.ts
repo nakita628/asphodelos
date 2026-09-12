@@ -110,7 +110,7 @@ describe('appFile (port argument)', () => {
 
 describe('appFile (merge contract — stable statement keys)', () => {
   it('emits exactly one top-level `if (import.meta.main)` block for stable merge keying', () => {
-    const matches = appFile(['users']).match(/^if \(import\.meta\.main\)/gm) ?? []
+    const matches = appFile(['users']).match(/^if \(import\.meta\.main\)/gmu) ?? []
     expect(matches.length).toBe(1)
   })
 

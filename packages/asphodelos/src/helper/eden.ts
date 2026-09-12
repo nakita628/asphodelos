@@ -1,5 +1,5 @@
 function isIdentifierSegment(seg: string) {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(seg)
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(seg)
 }
 
 function bracketKey(seg: string) {
@@ -20,7 +20,7 @@ export function edenChain(pathStr: string, client: string, method: string) {
     paramArgs: readonly { readonly name: string; readonly typeExpr: string }[]
   }>(
     (acc, seg) => {
-      const m = /^\{([^}]+)\}$/.exec(seg)
+      const m = /^\{([^}]+)\}$/u.exec(seg)
       if (m) {
         const t = acc.typeIsValue ? `typeof ${acc.typeChain}` : acc.typeChain
         const name = acc.paramArgs.length === 0 ? 'params' : `params${acc.paramArgs.length + 1}`

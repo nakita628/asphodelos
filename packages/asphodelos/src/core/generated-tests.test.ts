@@ -115,6 +115,9 @@ async function generateProject(api: OpenAPI, options: { readonly split: boolean 
   return dir
 }
 
+/** Each case runs a nested `bun test` over a generated project; a loaded machine needs longer than the default. */
+const SPAWN_TIMEOUT_MS = 60_000
+
 /** Runs `bun test` over a generated project and reports what the runner printed. */
 function runBunTest(dir: string) {
   const result = spawnSync('bun', ['test'], {
@@ -124,8 +127,8 @@ function runBunTest(dir: string) {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
-  const passed = Number(/(\d+) pass/.exec(output)?.[1] ?? '0')
-  const failed = Number(/(\d+) fail/.exec(output)?.[1] ?? '0')
+  const passed = Number(/(\d+) pass/u.exec(output)?.[1] ?? '0')
+  const failed = Number(/(\d+) fail/u.exec(output)?.[1] ?? '0')
   return { status: result.status, output, passed, failed }
 }
 
@@ -148,78 +151,98 @@ describe('generated tests — the red / green / regenerate workflow', () => {
     },
     {`
 
-  it('red: a fresh suite passes the routes a stub satisfies, and fails only on the one it cannot', async () => {
-    const dir = await generateProject(SHOP_API, { split: false })
-    const run = runBunTest(dir)
+  it(
+    'red: a fresh suite passes the routes a stub satisfies, and fails only on the one it cannot',
+    async () => {
+      const dir = await generateProject(SHOP_API, { split: false })
+      const run = runBunTest(dir)
 
-    // GET /users, GET /users/{id}, GET /posts — all declare 200.
-    expect(run.passed).toBe(3)
-    expect(run.failed).toBe(1)
-    expect(run.status).not.toBe(0)
-    // The failure has to name the route and the mismatch, or it is not an actionable signal.
-    expect(run.output).toContain('POST /posts')
-    expect(run.output).toContain('Expected: 201')
-    expect(run.output).toContain('Received: 200')
-  })
+      // GET /users, GET /users/{id}, GET /posts — all declare 200.
+      expect(run.passed).toBe(3)
+      expect(run.failed).toBe(1)
+      expect(run.status).not.toBe(0)
+      // The failure has to name the route and the mismatch, or it is not an actionable signal.
+      expect(run.output).toContain('POST /posts')
+      expect(run.output).toContain('Expected: 201')
+      expect(run.output).toContain('Received: 200')
+    },
+    SPAWN_TIMEOUT_MS,
+  )
 
-  it('green: implementing the handler turns the generated suite green', async () => {
-    const dir = await generateProject(SHOP_API, { split: false })
-    await implementCreatePost(dir, STUB, IMPLEMENTED)
+  it(
+    'green: implementing the handler turns the generated suite green',
+    async () => {
+      const dir = await generateProject(SHOP_API, { split: false })
+      await implementCreatePost(dir, STUB, IMPLEMENTED)
 
-    const run = runBunTest(dir)
-    expect(run.failed).toBe(0)
-    // Four operations in the document; a generator that emitted nothing must not read as success.
-    expect(run.passed).toBe(4)
-    expect(run.status).toBe(0)
-  })
+      const run = runBunTest(dir)
+      expect(run.failed).toBe(0)
+      // Four operations in the document; a generator that emitted nothing must not read as success.
+      expect(run.passed).toBe(4)
+      expect(run.status).toBe(0)
+    },
+    SPAWN_TIMEOUT_MS,
+  )
 
-  it('regenerate: the implemented handler survives, and the suite stays green', async () => {
-    const dir = await generateProject(SHOP_API, { split: false })
-    await implementCreatePost(dir, STUB, IMPLEMENTED)
+  it(
+    'regenerate: the implemented handler survives, and the suite stays green',
+    async () => {
+      const dir = await generateProject(SHOP_API, { split: false })
+      await implementCreatePost(dir, STUB, IMPLEMENTED)
 
-    // Same document, second pass — exactly what a user runs after editing the spec.
-    await runGenerator(
-      elysia(SHOP_API, {
-        output: path.join(dir, 'src/index.ts'),
-        components: {
-          schemas: { output: path.join(dir, 'src/components/schemas.ts'), split: false },
-        },
-      }),
-    )
-
-    const controller = await readFile(path.join(dir, 'src/modules/posts/index.ts'), 'utf-8')
-    expect(controller).toContain('set.status = 201')
-
-    const run = runBunTest(dir)
-    expect(run.failed).toBe(0)
-    expect(run.passed).toBe(4)
-    expect(run.status).toBe(0)
-  })
-
-  it('split: one colocated test file per resource, green once implemented', async () => {
-    const dir = await generateProject(SHOP_API, { split: true })
-    await implementCreatePost(dir, STUB, IMPLEMENTED)
-
-    const run = runBunTest(dir)
-    expect(run.failed).toBe(0)
-    expect(run.passed).toBe(4)
-
-    for (const resource of ['users', 'posts']) {
-      const source = await readFile(
-        path.join(dir, 'src/modules', resource, 'index.test.ts'),
-        'utf-8',
+      // Same document, second pass — exactly what a user runs after editing the spec.
+      await runGenerator(
+        elysia(SHOP_API, {
+          output: path.join(dir, 'src/index.ts'),
+          components: {
+            schemas: { output: path.join(dir, 'src/components/schemas.ts'), split: false },
+          },
+        }),
       )
-      expect(source).toContain("from 'bun:test'")
-      // Colocated tests reach the app entry from two directories down.
-      expect(source).toContain("from '../../index'")
-    }
-  })
 
-  it('mocks a uuid path parameter with a value the route accepts', async () => {
-    const dir = await generateProject(SHOP_API, { split: false })
-    const source = await readFile(path.join(dir, 'src/app.test.ts'), 'utf-8')
-    // A plain `faker.string.alpha()` here would 422 against `format: uuid`. The green run above
-    // is what proves the emitted call satisfies the constraint; this pins which call it emits.
-    expect(source).toContain('faker.string.uuid()')
-  })
+      const controller = await readFile(path.join(dir, 'src/modules/posts/index.ts'), 'utf-8')
+      expect(controller).toContain('set.status = 201')
+
+      const run = runBunTest(dir)
+      expect(run.failed).toBe(0)
+      expect(run.passed).toBe(4)
+      expect(run.status).toBe(0)
+    },
+    SPAWN_TIMEOUT_MS,
+  )
+
+  it(
+    'split: one colocated test file per resource, green once implemented',
+    async () => {
+      const dir = await generateProject(SHOP_API, { split: true })
+      await implementCreatePost(dir, STUB, IMPLEMENTED)
+
+      const run = runBunTest(dir)
+      expect(run.failed).toBe(0)
+      expect(run.passed).toBe(4)
+
+      for (const resource of ['users', 'posts']) {
+        const source = await readFile(
+          path.join(dir, 'src/modules', resource, 'index.test.ts'),
+          'utf-8',
+        )
+        expect(source).toContain("from 'bun:test'")
+        // Colocated tests reach the app entry from two directories down.
+        expect(source).toContain("from '../../index'")
+      }
+    },
+    SPAWN_TIMEOUT_MS,
+  )
+
+  it(
+    'mocks a uuid path parameter with a value the route accepts',
+    async () => {
+      const dir = await generateProject(SHOP_API, { split: false })
+      const source = await readFile(path.join(dir, 'src/app.test.ts'), 'utf-8')
+      // A plain `faker.string.alpha()` here would 422 against `format: uuid`. The green run above
+      // is what proves the emitted call satisfies the constraint; this pins which call it emits.
+      expect(source).toContain('faker.string.uuid()')
+    },
+    SPAWN_TIMEOUT_MS,
+  )
 })

@@ -68,7 +68,7 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
           port: config.port,
           integration: config.integration === true,
           readonly: config.readonly === true,
-          pathAlias: config.pathAlias === true ? `@/${baseDir.replace(/^\.?\/?/, '')}` : undefined,
+          pathAlias: config.pathAlias === true ? `@/${baseDir.replace(/^\.?\/?/u, '')}` : undefined,
           components: componentTargets,
           componentsOutput,
         }),

@@ -1,3 +1,5 @@
+// Non-Latin identifiers are the input under test, not English.
+// cspell:ignore Схема Русский
 import { describe, expect, it } from 'bun:test'
 
 import {

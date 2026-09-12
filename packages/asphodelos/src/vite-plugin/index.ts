@@ -380,9 +380,15 @@ export function asphodelosVite(): any {
   }
 
   const enqueue = (task: () => Promise<void>) => {
-    const queued = state.queue.then(task).catch((error: unknown) => {
-      console.error('❌ asphodelos:', error)
-    })
+    const previous = state.queue
+    const queued = (async () => {
+      await previous
+      try {
+        await task()
+      } catch (error) {
+        console.error('❌ asphodelos:', error)
+      }
+    })()
     state.queue = queued
     return queued
   }

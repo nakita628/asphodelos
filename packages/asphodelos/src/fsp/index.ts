@@ -51,7 +51,7 @@ export function readFile(path: string) {
 /**
  * Writes `data` to `path`, skipping the write when the bytes already match.
  *
- * That skip is contract, not optimisation: the Vite plugin watches its own output, so rewriting
+ * That skip is contract, not optimization: the Vite plugin watches its own output, so rewriting
  * an unchanged file would feed a change event straight back into the generator.
  */
 export function writeFile(path: string, data: string) {

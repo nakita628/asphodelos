@@ -27,7 +27,7 @@ function makeCode<T>(
         const decl = `${exportKw}const ${ident}=${readonly(expr, readonlyMode)}`
         const typeStripped = pascalCase(name)
         return exportTypes
-          ? `${decl}\n\nexport type ${typeStripped}${suffix.replace(/Schema$/, '')}=Static<typeof ${ident}>`
+          ? `${decl}\n\nexport type ${typeStripped}${suffix.replace(/Schema$/u, '')}=Static<typeof ${ident}>`
           : decl
       })
       .join('\n\n')

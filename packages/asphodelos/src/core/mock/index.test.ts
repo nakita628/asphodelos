@@ -73,7 +73,7 @@ describe('mock', () => {
         },
       },
     }
-    const dir = mkdtempSync(path.join(tmpdir(), 'asph-mock-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-mock-'))
     dirs.push(dir)
     const output = path.join(dir, 'mock.ts')
     const result = await runGenerator(mock(spec, output, { prefix: '/api' }))
@@ -141,7 +141,7 @@ if (import.meta.main) {
         },
       },
     }
-    const dir = mkdtempSync(path.join(tmpdir(), 'asph-mock-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-mock-'))
     dirs.push(dir)
     const output = path.join(dir, 'mock.ts')
     await runGenerator(mock(spec, output, { prefix: '/api' }))

@@ -20,7 +20,7 @@ describe('parseConfig', () => {
     expect(decodeError({})._tag).toBe('ConfigError')
   })
 
-  it('rejects when input lacks a recognised extension', () => {
+  it('rejects when input lacks a recognized extension', () => {
     const result = decodeError({ input: 'openapi.txt' })
     expect(result._tag).toBe('ConfigError')
     expect(result.message.includes('.yaml')).toBe(true)

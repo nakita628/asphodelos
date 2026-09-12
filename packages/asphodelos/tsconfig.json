@@ -26,5 +26,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // Throwaway work trees the tests generate into (`tmp-*`) hold generator output that imports
+  // files a half-finished run may not have written yet; .gitignore, oxfmt and oxlint skip them too.
+  "exclude": ["node_modules", "dist", "tmp-*"]
 }

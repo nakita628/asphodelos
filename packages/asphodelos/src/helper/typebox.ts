@@ -10,7 +10,7 @@ function isRaw(v: unknown): v is Raw {
 }
 
 function formatKey(k: string) {
-  return /^[a-zA-Z_$][a-zA-Z_$0-9]*$/.test(k) ? k : JSON.stringify(k)
+  return /^[a-zA-Z_$][a-zA-Z_$0-9]*$/u.test(k) ? k : JSON.stringify(k)
 }
 
 export function options(pairs: readonly (readonly [string, unknown])[]) {
@@ -452,7 +452,7 @@ function dependentSchemasSection(
 }
 
 function regexEscape(s: string) {
-  return s.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return s.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&')
 }
 
 export function stringPatternFrom(schema: Schema) {
