@@ -4,22 +4,43 @@ import { HTTP_METHODS, resolveOperation } from '../../helper/index.js'
 import { pathEntries } from '../../openapi/index.js'
 import type { Components, OpenAPI, Operation, Responses, Schema } from '../../openapi/index.js'
 import { collectSchemaRefs, makeMockFunctions, schemaToFaker } from '../faker/index.js'
+import type { FakerOptions } from '../faker/index.js'
 
 export type MockOptions = {
   readonly prefix?: string
   readonly port?: string
-  /** Prefer an `example` the document declares over a faker-generated body. Defaults to true. */
-  readonly useExamples?: boolean
+  /**
+   * `true` (default) answers with a response's media-level `example`/`examples`; `'all'` also
+   * uses the scalar `example`/`examples` of every schema and property; `false` always generates.
+   */
+  readonly useExamples?: boolean | 'all'
   /** A faker locale code; swaps the import specifier and nothing else. */
   readonly locale?: string
   /** Milliseconds every response waits, a range to pick from, or `false` for none. */
   readonly delay?: number | { readonly min: number; readonly max: number } | false
+  /** Bounds on generated array lengths; a spec `minItems`/`maxItems` wins. */
+  readonly arrayMin?: number
+  readonly arrayMax?: number
+  /**
+   * Re-seeds faker (and pins its reference date to `SEED_REF_DATE`) at the start of every
+   * handler, so each route answers the same body every time.
+   */
+  readonly seed?: number | readonly number[]
+}
+
+// `faker.date.*` is relative to the current time, so a seeded mock also pins the reference date;
+// otherwise every date (and a JWT's `iat`) would drift.
+const SEED_REF_DATE = '2025-01-01T00:00:00.000Z'
+
+// A `1XX`…`5XX` range key, upper-cased; every other key as written.
+function normalizeKey(key: string) {
+  return /^[1-5]xx$/iu.test(key) ? key.toUpperCase() : key
 }
 
 // Picks the success response a mock handler should emulate: the lowest explicit
 // 2xx, then a `2XX` wildcard / `default` (served as 200), then the first declared
 // response as a last resort. Status is a number so it can be passed to Elysia's
-// `status()` helper as a literal.
+// `status()` helper as a literal; `key` is the response's key in the document.
 function pickSuccessResponse(responses: { readonly [k: string]: Responses }) {
   const keys = Object.keys(responses)
   const [status] = keys
@@ -27,14 +48,20 @@ function pickSuccessResponse(responses: { readonly [k: string]: Responses }) {
     .map((k) => Number.parseInt(k, 10))
     .toSorted((a, b) => a - b)
   if (status !== undefined) {
-    return { status, response: responses[String(status)] } as const
+    return { key: String(status), status, response: responses[String(status)] } as const
   }
-  const wildcard = responses['2XX'] ?? responses['2xx'] ?? responses.default
-  if (wildcard) return { status: 200, response: wildcard } as const
+  const wildcard = ['2XX', '2xx', 'default'].find((k) => k in responses)
+  if (wildcard) {
+    return { key: normalizeKey(wildcard), status: 200, response: responses[wildcard] } as const
+  }
   const first = keys[0]
-  if (first === undefined) return { status: 200, response: undefined } as const
+  if (first === undefined) return { key: '200', status: 200, response: undefined } as const
   const parsed = Number.parseInt(first, 10)
-  return { status: Number.isNaN(parsed) ? 200 : parsed, response: responses[first] } as const
+  return {
+    key: normalizeKey(first),
+    status: Number.isNaN(parsed) ? 200 : parsed,
+    response: responses[first],
+  } as const
 }
 
 /**
@@ -49,41 +76,90 @@ function mediaExample(media: unknown, components: Components | undefined): unkno
   if (!isRecord(media)) return undefined
   if (media.example !== undefined) return media.example
   if (!isRecord(media.examples)) return undefined
-  const first = Object.values(media.examples)[0]
-  if (!isRecord(first)) return undefined
-  const ref = first.$ref
+  return exampleEntryValue(Object.values(media.examples)[0], components)
+}
+
+// An `examples` entry's value, a `$ref` resolved against `components.examples`. An entry that
+// only carries `externalValue` has nothing to serve.
+function exampleEntryValue(entry: unknown, components: Components | undefined): unknown {
+  if (!isRecord(entry)) return undefined
+  const ref = entry.$ref
   const resolved: unknown =
     typeof ref === 'string'
       ? components?.examples?.[ref.replace('#/components/examples/', '')]
-      : first
+      : entry
   return isRecord(resolved) ? resolved.value : undefined
 }
 
+// The `examples` entries a `Prefer: example=<name>` can select, in document order.
+function namedExamples(media: unknown, components: Components | undefined) {
+  if (!isRecord(media) || !isRecord(media.examples)) return [] as const
+  return Object.entries(media.examples).flatMap(([name, entry]) => {
+    const value = exampleEntryValue(entry, components)
+    return value === undefined ? ([] as const) : ([[name, value]] as const)
+  })
+}
+
+// The JSON media of a response: `application/json` first, then any `+json` suffix
+// (`application/problem+json`, `application/vnd.api+json`) — error responses are commonly
+// declared as problem+json, and would otherwise mock to an empty body.
+function jsonMediaType(content: Responses['content']) {
+  const types = Object.keys(content ?? {})
+  return types.includes('application/json')
+    ? 'application/json'
+    : types.find((type) => /^application\/(?:[\w.-]+\+)?json(?:;|$)/u.test(type))
+}
+
+type ResponseBody =
+  | { readonly kind: 'empty'; readonly expr: '' }
+  | { readonly kind: 'json'; readonly expr: string; readonly mediaType: string }
+  | { readonly kind: 'text'; readonly expr: string }
+
 // The expression a handler returns, classified by content type so the caller can pick the right
-// Elysia return shape (JSON value / text / empty body).
+// Elysia return shape (JSON value / text / empty body). `example` is the authored value to serve
+// instead of faker (`undefined` for none).
 function responseBody(
   response: Responses | undefined,
-  components: Components | undefined,
-  useExamples: boolean,
-) {
+  example: unknown,
+  fakerOptions: FakerOptions,
+): ResponseBody {
   const content = response?.content
-  if (!content) return { kind: 'empty', expr: '' } as const
-  const json = content['application/json']
-  if (json) {
-    const example = useExamples ? mediaExample(json, components) : undefined
-    if (example !== undefined) return { kind: 'json', expr: JSON.stringify(example) } as const
+  if (!content) return { kind: 'empty', expr: '' }
+  const jsonType = jsonMediaType(content)
+  const json = jsonType ? content[jsonType] : undefined
+  if (jsonType && json) {
+    if (example !== undefined) {
+      return { kind: 'json', expr: JSON.stringify(example), mediaType: jsonType }
+    }
     if (isMediaWithSchema(json)) {
-      return { kind: 'json', expr: schemaToFaker(json.schema) } as const
+      const expr = schemaToFaker(json.schema, undefined, fakerOptions)
+      return { kind: 'json', expr, mediaType: jsonType }
     }
   }
   const text = content['text/plain']
   if (text) {
-    const example = useExamples ? mediaExample(text, components) : undefined
-    if (typeof example === 'string') return { kind: 'text', expr: JSON.stringify(example) } as const
-    const expr = isMediaWithSchema(text) ? schemaToFaker(text.schema) : 'faker.lorem.sentence()'
-    return { kind: 'text', expr } as const
+    if (typeof example === 'string') return { kind: 'text', expr: JSON.stringify(example) }
+    const expr = isMediaWithSchema(text)
+      ? schemaToFaker(text.schema, undefined, fakerOptions)
+      : 'faker.lorem.sentence()'
+    return { kind: 'text', expr }
   }
-  return { kind: 'empty', expr: '' } as const
+  return { kind: 'empty', expr: '' }
+}
+
+// The authored example a response answers with by default: its JSON media's, else (for a text
+// response) its text media's.
+function defaultExample(
+  response: Responses | undefined,
+  components: Components | undefined,
+  useExamples: boolean,
+): unknown {
+  const content = response?.content
+  if (!useExamples || !content) return undefined
+  const jsonType = jsonMediaType(content)
+  return jsonType
+    ? mediaExample(content[jsonType], components)
+    : mediaExample(content['text/plain'], components)
 }
 
 /**
@@ -169,41 +245,99 @@ function notFoundGuard(
       const value =
         sentinel.kind === 'literal' ? quoteSingle(sentinel.value) : `String(${sentinel.code})`
       return [
-        `if (c.params[${quoteSingle(parameter.name)}] === ${value}) return c.status(404)`,
+        `if (prefer.key === undefined && c.params[${quoteSingle(parameter.name)}] === ${value}) return c.status(404)`,
       ] as const
     })
   return guards.length === 0 ? '' : `${guards.join('\n    ')}\n    `
 }
 
 /**
- * 200 returns the value directly (Elysia defaults to 200); other statuses use the
- * `status(code, body)` helper so the declared success code reaches the wire.
- *
- * Guards come first, and in this order: a request without credentials never reaches the 404
- * check, which matches what a real server tells an unauthenticated client about what exists.
+ * The return statement for one answer. 200 returns the value directly (Elysia defaults to 200);
+ * other statuses use the `status(code, body)` helper so the code reaches the wire. A `+json`
+ * media type other than `application/json` is set on the response so it survives serialization.
  */
-function makeHandler(
-  status: number,
-  body: ReturnType<typeof responseBody>,
-  guards: { readonly auth: string; readonly notFound: string },
-) {
-  const prelude = `${guards.auth}${guards.notFound}`
-  // Without a guard the handler is a single expression, and destructuring `status` off the
-  // context reads better than the whole context does.
-  if (prelude === '') {
-    if (body.kind === 'empty') return `({ status }) => status(${status})`
-    if (status === 200) return `() => ${body.kind === 'json' ? `(${body.expr})` : body.expr}`
-    return `({ status }) => status(${status}, ${body.expr})`
+function returnStatement(status: string, body: ResponseBody) {
+  if (body.kind === 'empty') return `return c.status(${status})`
+  const header =
+    body.kind === 'json' && body.mediaType !== 'application/json'
+      ? `c.set.headers['content-type'] = ${quoteSingle(body.mediaType)}\n    `
+      : ''
+  if (status === '200') {
+    return `${header}return ${body.kind === 'json' ? `(${body.expr})` : body.expr}`
   }
-  const returned =
-    body.kind === 'empty'
-      ? `c.status(${status})`
-      : status === 200
-        ? body.kind === 'json'
-          ? `(${body.expr})`
-          : body.expr
-        : `c.status(${status}, ${body.expr})`
-  return `(c) => {\n    ${prelude}return ${returned}\n  }`
+  return `${header}return c.status(${status}, ${body.expr})`
+}
+
+/**
+ * The handler: guards first, in this order — a request without credentials never reaches the 404
+ * check, which matches what a real server tells an unauthenticated client about what exists —
+ * then the `Prefer` selection, then the declared success response.
+ */
+function makeHandler(parts: {
+  readonly seed: string
+  readonly auth: string
+  readonly prefer: string
+  readonly notFound: string
+  readonly success: string
+}) {
+  return `(c) => {\n    ${parts.seed}${parts.auth}${parts.prefer}${parts.notFound}${parts.success}\n  }`
+}
+
+/**
+ * Module-level helpers for Prism-compatible response selection, emitted once per mock file. The
+ * names carry no `mock` prefix, so they can never collide with a component factory
+ * (`mock<Name>`).
+ */
+const PREFER_HELPERS = `// Reads Prism's \`Prefer: code=<status>, example=<name>\` header (or the \`__code\` /
+// \`__example\` query) and resolves it against the responses the operation declares: the exact
+// status, then its \`NXX\` range, then \`default\`. Without a code the example is looked up in
+// the success response. Anything the operation does not declare answers 500 problem+json, as
+// Prism does.
+function resolvePrefer(
+  header: string | undefined,
+  query: { readonly [k: string]: string | undefined },
+  responses: { readonly [key: string]: readonly string[] },
+  success: string,
+) {
+  let code = query.__code
+  let example = query.__example
+  for (const [, name = '', quoted, bare] of (header ?? '').matchAll(
+    /([A-Za-z]+)\\s*=\\s*(?:"([^"]*)"|([^\\s,;]*))/gu,
+  )) {
+    if (name.toLowerCase() === 'code') code ??= quoted ?? bare
+    if (name.toLowerCase() === 'example') example ??= quoted ?? bare
+  }
+  if (code === undefined && example === undefined) return {}
+  if (code !== undefined && !/^[2-5]\\d\\d$/u.test(code)) {
+    return { problem: preferProblem(\`Prefer code=\${code} is not a status code between 200 and 599.\`) }
+  }
+  const key =
+    code === undefined
+      ? success
+      : [code, \`\${code.slice(0, 1)}XX\`, 'default'].find((k) => Object.hasOwn(responses, k))
+  if (key === undefined) {
+    return { problem: preferProblem(\`No \${code} response is declared for this operation.\`) }
+  }
+  if (example !== undefined && !responses[key]?.includes(example)) {
+    return {
+      problem: preferProblem(
+        \`No example named "\${example}" is declared for the \${key} response.\`,
+      ),
+    }
+  }
+  return { key, status: code === undefined ? undefined : Number(code), example }
+}
+
+function preferProblem(detail: string) {
+  return new Response(
+    JSON.stringify({ type: 'about:blank', title: 'Mock response unavailable', status: 500, detail }),
+    { status: 500, headers: { 'content-type': 'application/problem+json' } },
+  )
+}`
+
+// Re-indents a multi-line statement one level deeper, for a branch body.
+function indent(statement: string) {
+  return statement.replaceAll('\n    ', '\n      ')
 }
 
 // Safe single-quoted JS string literal (delimiter included) so a hostile path or
@@ -248,7 +382,21 @@ function delayMiddleware(delay: MockOptions['delay']) {
  * document promises, not just the happy one.
  */
 export function makeMock(spec: OpenAPI, options: MockOptions = {}) {
-  const { prefix, port = '3000', useExamples = true, locale, delay } = options
+  const {
+    prefix,
+    port = '3000',
+    useExamples = true,
+    locale,
+    delay,
+    arrayMin,
+    arrayMax,
+    seed,
+  } = options
+  const fakerOptions: FakerOptions = {
+    ...(arrayMin !== undefined ? { arrayMin } : {}),
+    ...(arrayMax !== undefined ? { arrayMax } : {}),
+    ...(useExamples === 'all' ? { useExamples: true } : {}),
+  }
   const components = spec.components
   const routes = pathEntries(spec).flatMap(([path, pathItem]) => {
     if (!pathItem) return [] as const
@@ -256,29 +404,86 @@ export function makeMock(spec: OpenAPI, options: MockOptions = {}) {
       const operation = pathItem[method]
       if (!operation) return [] as const
       const resolved = resolveOperation(operation, components)
-      const { status, response } = pickSuccessResponse(resolved.responses)
-      const body = responseBody(response, components, useExamples)
-      const guards = {
-        auth: authGuard(resolved, spec, resolved.responses),
-        notFound: notFoundGuard(resolved, components, resolved.responses),
+      const success = pickSuccessResponse(resolved.responses)
+      const responses = Object.entries(resolved.responses).map(([rawKey, declared]) => {
+        // `resolveOperation` has already followed a `$ref` (an unresolvable one is `{}`).
+        const response: Responses = declared
+        const content = response.content
+        const jsonType = jsonMediaType(content)
+        return {
+          key: normalizeKey(rawKey),
+          response,
+          example: defaultExample(response, components, useExamples !== false),
+          named: jsonType ? namedExamples(content?.[jsonType], components) : ([] as const),
+          jsonSchema: jsonType ? content?.[jsonType] : undefined,
+        }
+      })
+      const refs = responses.flatMap(({ jsonSchema }) =>
+        jsonSchema && isMediaWithSchema(jsonSchema)
+          ? collectSchemaRefs(jsonSchema.schema, components?.schemas)
+          : ([] as const),
+      )
+      // `Prefer: code=…, example=…` picks any declared response or named example (Prism's
+      // convention), so error states can be exercised on demand. A `4XX` / `default` response
+      // answers with the requested status. The success response's default body stays the final
+      // return.
+      const preferTable = Object.fromEntries(
+        responses.map((r) => [r.key, r.named.map(([name]) => name)]),
+      )
+      const render = (r: (typeof responses)[number], example: unknown) => {
+        const status = /^\d{3}$/u.test(r.key)
+          ? r.key
+          : `prefer.status ?? ${/^[1-5]XX$/u.test(r.key) ? `${r.key.slice(0, 1)}00` : '200'}`
+        return indent(returnStatement(status, responseBody(r.response, example, fakerOptions)))
       }
-      const json = response?.content?.['application/json']
-      const refs =
-        body.kind === 'json' && json && isMediaWithSchema(json)
-          ? collectSchemaRefs(json.schema, components?.schemas)
-          : ([] as const)
-      return [
-        {
-          method,
-          path,
-          code: `.${method}(${routePath(path)}, ${makeHandler(status, body, guards)})`,
-          refs,
-        },
-      ] as const
+      // Every named-example branch comes before the plain per-response branches, so a request
+      // naming an example is never caught by its response's default answer. An entry that is
+      // already the default answer (the first one) needs no branch.
+      const namedBranches = responses.flatMap((r) =>
+        r.named
+          .filter(([, value]) => value !== r.example)
+          .map(
+            ([name, value]) =>
+              `if (prefer.key === ${quoteSingle(r.key)} && prefer.example === ${quoteSingle(name)}) {\n      ${render(r, value)}\n    }\n    `,
+          ),
+      )
+      const responseBranches = responses
+        .filter((r) => !(r.key === success.key && /^\d{3}$/u.test(r.key)))
+        .map(
+          (r) =>
+            `if (prefer.key === ${quoteSingle(r.key)}) {\n      ${render(r, r.example)}\n    }\n    `,
+        )
+      const branches = [namedBranches, responseBranches].flat()
+      const prefer = `const prefer = resolvePrefer(c.headers.prefer, c.query, ${JSON.stringify(preferTable)}, ${quoteSingle(success.key)})\n    if (prefer.problem) return prefer.problem\n    ${branches.join('')}`
+      const successBody = responseBody(
+        success.response,
+        defaultExample(success.response, components, useExamples !== false),
+        fakerOptions,
+      )
+      const auth = authGuard(resolved, spec, resolved.responses)
+      const notFound = notFoundGuard(resolved, components, resolved.responses)
+      const successReturn = returnStatement(String(success.status), successBody)
+      // Seeding inside the handler (not once at module load) makes a route's body independent of
+      // which requests ran before it, and the handler body runs synchronously after the seed.
+      const usesFaker = /\bfaker\.|\bmock[A-Za-z0-9_$]*\(/u.test(
+        `${branches.join('')}${notFound}${successReturn}`,
+      )
+      const seedCall =
+        seed !== undefined && usesFaker
+          ? `faker.seed(${JSON.stringify(seed)})\n    faker.setDefaultRefDate('${SEED_REF_DATE}')\n    `
+          : ''
+      const handler = makeHandler({
+        seed: seedCall,
+        auth,
+        prefer,
+        notFound,
+        success: successReturn,
+      })
+      return [{ method, path, code: `.${method}(${routePath(path)}, ${handler})`, refs }] as const
     })
   })
   const usedSchemaNames = new Set(routes.flatMap((r) => r.refs))
-  const mockFunctions = makeMockFunctions(spec, usedSchemaNames)
+  const mockFunctions = makeMockFunctions(spec, usedSchemaNames, fakerOptions)
   const ctorArgs = prefix ? `{ prefix: ${quoteSingle(prefix)} }` : ''
   const routeChain = routes.map((r) => `  ${r.code}`).join('\n')
   const listenBlock =
@@ -287,7 +492,8 @@ export function makeMock(spec: OpenAPI, options: MockOptions = {}) {
     '  console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`)\n' +
     '}'
   const appCode = `export const app = new Elysia(${ctorArgs})${delayMiddleware(delay)}\n${routeChain}${listenBlock}`
-  const body = mockFunctions ? `${mockFunctions}\n\n${appCode}` : appCode
+  const helpers = routes.length > 0 ? `${PREFER_HELPERS}\n\n` : ''
+  const body = mockFunctions ? `${mockFunctions}\n\n${helpers}${appCode}` : `${helpers}${appCode}`
   // The locale changes only the import specifier, so every handler body stays byte-identical.
   const fakerModule = locale === undefined ? '@faker-js/faker' : `@faker-js/faker/locale/${locale}`
   const fakerImport = body.includes('faker.') ? `\nimport { faker } from '${fakerModule}'` : ''

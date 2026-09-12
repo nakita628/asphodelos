@@ -3,10 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import type { TSchema } from '@sinclair/typebox'
+import { Value } from '@sinclair/typebox/value'
 import type { Elysia } from 'elysia'
 
 import type { OpenAPI } from '../../openapi/index.js'
 import { runGenerator } from '../../testing/index.js'
+import { schemas } from '../components/index.js'
 import { mock } from './index.js'
 
 /**
@@ -288,5 +291,309 @@ describe('generated mock server — options', () => {
     const server = await mountMock(SECURED_SPEC, { prefix: '/api/v1' })
     expect((await server.request('/api/v1/public')).status).toBe(200)
     expect((await server.request('/public')).status).toBe(404)
+  })
+})
+
+// ── Schema conformance, seed and Prefer ──────────────────────────────────────────────────────
+//
+// The mock's bodies are checked against the TypeBox models asphodelos generates for the same
+// document (the models the real Elysia app validates with), sampled repeatedly with the real
+// faker, so a value the model rejects fails here rather than in a client.
+
+const EDGE_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Edge', version: '1.0.0' },
+  paths: {
+    '/profiles/{id}': {
+      get: {
+        operationId: 'getProfile',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/User-Profile' } },
+            },
+          },
+        },
+      },
+    },
+    '/formats': {
+      get: {
+        operationId: 'getFormats',
+        responses: {
+          '200': {
+            description: 'OK',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Formats' } } },
+          },
+        },
+      },
+    },
+    '/orders/{orderId}': {
+      get: {
+        operationId: 'getOrder',
+        parameters: [{ name: 'orderId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description: 'The order',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Order' },
+                examples: {
+                  shipped: { $ref: '#/components/examples/ShippedOrder' },
+                  pending: { value: { id: 'o-2', state: 'pending' } },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'No such order',
+            content: {
+              'application/problem+json': {
+                schema: { $ref: '#/components/schemas/Problem' },
+                examples: { gone: { value: { title: 'Order deleted', status: 404 } } },
+              },
+            },
+          },
+          '4XX': {
+            description: 'Client error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Problem' } } },
+          },
+          '503': { description: 'Maintenance' },
+          default: {
+            description: 'Unexpected error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Problem' } } },
+          },
+        },
+      },
+    },
+  },
+  components: {
+    examples: { ShippedOrder: { value: { id: 'o-1', state: 'shipped' } } },
+    schemas: {
+      'User-Profile': {
+        type: 'object',
+        required: [
+          'first-name',
+          'full name',
+          '1st',
+          'status',
+          'createdAt',
+          'type',
+          'price',
+          'nickname',
+          'tags',
+          'labels',
+          'role',
+          'bio',
+          'code',
+          // Required: an absent optional `constructor` is read off Object.prototype by TypeBox.
+          'constructor',
+        ],
+        properties: {
+          'first-name': { type: 'string' },
+          'full name': { type: 'string' },
+          '1st': { type: 'integer' },
+          // Property-name hints would emit a string or a float; the declared type wins.
+          status: { type: 'integer', minimum: 100, maximum: 599 },
+          createdAt: { type: 'integer' },
+          type: { type: 'integer' },
+          price: { type: 'integer' },
+          nickname: { type: ['string', 'null'] },
+          age: { type: ['integer', 'null'] },
+          // `arrayMin: 5` must clamp to this maxItems.
+          tags: { type: 'array', maxItems: 3, items: { type: 'string' } },
+          labels: { type: 'object', additionalProperties: { type: 'integer' } },
+          role: { type: 'string', enum: ['admin', 'member'], example: 'admin' },
+          bio: { type: 'string', examples: ['Hello'] },
+          code: { type: 'string', pattern: '^[a-z]{3}/[0-9]{2}$' },
+          constructor: { type: 'string' },
+        },
+      },
+      // Every string format Elysia registers with TypeBox (`password` / `binary` are listed by
+      // Elysia but not registered, so TypeBox rejects any value for them).
+      Formats: {
+        type: 'object',
+        required: [
+          'email',
+          'uuid',
+          'url',
+          'hostname',
+          'ipv4',
+          'ipv6',
+          'time',
+          'isoTime',
+          'isoDateTime',
+          'duration',
+          'uriReference',
+          'uriTemplate',
+          'jsonPointer',
+          'jsonPointerFragment',
+          'relativeJsonPointer',
+          'byte',
+        ],
+        properties: {
+          email: { type: 'string', format: 'email' },
+          uuid: { type: 'string', format: 'uuid' },
+          url: { type: 'string', format: 'url' },
+          hostname: { type: 'string', format: 'hostname' },
+          ipv4: { type: 'string', format: 'ipv4' },
+          ipv6: { type: 'string', format: 'ipv6' },
+          time: { type: 'string', format: 'time' },
+          isoTime: { type: 'string', format: 'iso-time' },
+          isoDateTime: { type: 'string', format: 'iso-date-time' },
+          duration: { type: 'string', format: 'duration' },
+          uriReference: { type: 'string', format: 'uri-reference' },
+          uriTemplate: { type: 'string', format: 'uri-template' },
+          jsonPointer: { type: 'string', format: 'json-pointer' },
+          jsonPointerFragment: { type: 'string', format: 'json-pointer-uri-fragment' },
+          relativeJsonPointer: { type: 'string', format: 'relative-json-pointer' },
+          byte: { type: 'string', format: 'byte' },
+        },
+      },
+      Order: {
+        type: 'object',
+        required: ['id', 'state'],
+        properties: {
+          id: { type: 'string' },
+          state: { type: 'string', enum: ['pending', 'shipped'] },
+        },
+      },
+      Problem: {
+        type: 'object',
+        required: ['title', 'status'],
+        properties: { title: { type: 'string' }, status: { type: 'integer' } },
+      },
+    },
+  },
+} as unknown as OpenAPI
+
+/** Generates the TypeBox models for the document's component schemas and imports them. */
+async function generateModels(spec: OpenAPI) {
+  const dir = mkdtempSync(path.join(PKG_ROOT, 'tmp-mock-'))
+  workdirs.push(dir)
+  const output = path.join(dir, 'schemas.ts')
+  const components = { schemas: { output, split: false } }
+  await runGenerator(schemas(spec.components?.schemas, output, false, false, components))
+  const mod: { readonly [k: string]: TSchema } = await import(output)
+  return mod
+}
+
+describe('generated mock server — bodies satisfy the generated TypeBox models', () => {
+  const SAMPLES = 50
+
+  it('answers every sample with a body the model accepts', async () => {
+    const server = await mountMock(EDGE_SPEC, { useExamples: 'all', arrayMin: 5 })
+    const models = await generateModels(EDGE_SPEC)
+    const cases = [
+      ['/profiles/p1', models.UserProfileSchema],
+      ['/formats', models.FormatsSchema],
+    ] as const
+    for (const [url, model] of cases) {
+      expect(model).toBeDefined()
+      for (let i = 0; i < SAMPLES; i += 1) {
+        const body: unknown = await (await server.request(url)).json()
+        const errors = model
+          ? [...Value.Errors(model, body)].map((e) => `${e.path}: ${e.message}`)
+          : []
+        expect(errors).toStrictEqual([])
+      }
+    }
+  })
+
+  it('clamps arrayMin to maxItems, fills a map and uses schema-level examples', async () => {
+    const server = await mountMock(EDGE_SPEC, { useExamples: 'all', arrayMin: 5 })
+    const body = (await (await server.request('/profiles/p1')).json()) as {
+      readonly tags: readonly unknown[]
+      readonly labels: { readonly [k: string]: unknown }
+      readonly role: unknown
+      readonly bio: unknown
+    }
+    expect(body.tags).toHaveLength(3)
+    expect(Object.keys(body.labels).length).toBeGreaterThan(0)
+    expect(body.role).toBe('admin')
+    expect(body.bio).toBe('Hello')
+  })
+})
+
+describe('generated mock server — seed', () => {
+  it('answers the same body for a route regardless of request order', async () => {
+    const server = await mountMock(EDGE_SPEC, { seed: 42, locale: 'ja' })
+    const text = async (url: string) => (await server.request(url)).text()
+    const first = await text('/profiles/p1')
+    await text('/formats')
+    expect(await text('/profiles/p1')).toBe(first)
+    const concurrent = await Promise.all(Array.from({ length: 6 }, () => text('/formats')))
+    expect(new Set(concurrent).size).toBe(1)
+  })
+})
+
+describe('generated mock server — Prefer selects a declared response', () => {
+  async function order(init?: RequestInit, query = '') {
+    const server = await mountMock(EDGE_SPEC)
+    const res = await server.request(`/orders/o-1${query}`, init)
+    return { status: res.status, type: res.headers.get('content-type'), text: await res.text() }
+  }
+  const prefer = (value: string) => ({ headers: { Prefer: value } })
+
+  it('answers the first example of the success response by default', async () => {
+    const res = await order()
+    expect(res.status).toBe(200)
+    expect(JSON.parse(res.text)).toStrictEqual({ id: 'o-1', state: 'shipped' })
+  })
+
+  it('selects a named example of the success response', async () => {
+    const res = await order(prefer('example=pending'))
+    expect(JSON.parse(res.text)).toStrictEqual({ id: 'o-2', state: 'pending' })
+  })
+
+  it('selects a declared error status and keeps its problem+json media type', async () => {
+    const res = await order(prefer('code=404, example="gone"'))
+    expect(res.status).toBe(404)
+    expect(res.type).toStartWith('application/problem+json')
+    expect(JSON.parse(res.text)).toStrictEqual({ title: 'Order deleted', status: 404 })
+  })
+
+  it('answers a response without content with just its status', async () => {
+    const res = await order(prefer('code=503'))
+    expect(res.status).toBe(503)
+    expect(res.type).not.toStartWith('application/json')
+  })
+
+  it('falls back to the 4XX range, then default, with the requested status', async () => {
+    expect((await order(prefer('code=409'))).status).toBe(409)
+    expect((await order(prefer('code=502'))).status).toBe(502)
+  })
+
+  it('reads __code / __example from the query as well', async () => {
+    expect((await order(undefined, '?__code=503')).status).toBe(503)
+    const res = await order(undefined, '?__example=pending')
+    expect(JSON.parse(res.text)).toStrictEqual({ id: 'o-2', state: 'pending' })
+  })
+
+  it('lets an explicit Prefer win over the 404 sentinel', async () => {
+    const server = await mountMock(EDGE_SPEC)
+    const res = await server.request('/orders/__non_existent__', prefer('code=200'))
+    expect(res.status).toBe(200)
+  })
+
+  it.each([
+    ['example=missing', 'No example named "missing" is declared for the 200 response.'],
+    ['code=404, example=pending', 'No example named "pending" is declared for the 404 response.'],
+    ['code=abc', 'Prefer code=abc is not a status code between 200 and 599.'],
+  ])('answers 500 problem+json for the undeclared %s', async (value, detail) => {
+    const res = await order(prefer(value))
+    expect(res.status).toBe(500)
+    expect(res.type).toStartWith('application/problem+json')
+    expect(JSON.parse(res.text)).toMatchObject({ status: 500, detail })
+  })
+
+  it('answers 500 problem+json for a status a route without default does not declare', async () => {
+    const server = await mountMock(EDGE_SPEC)
+    const res = await server.request('/formats', prefer('code=500'))
+    expect(res.status).toBe(500)
+    expect(await res.json()).toMatchObject({
+      detail: 'No 500 response is declared for this operation.',
+    })
   })
 })

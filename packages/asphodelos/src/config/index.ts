@@ -46,6 +46,13 @@ const DelayMsSchema = Schema.Number.check(
   Schema.isLessThanOrEqualTo(60_000),
 )
 
+/** A faker seed: faker hashes it with Mersenne Twister, which takes a 32-bit unsigned integer. */
+const SeedSchema = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(4_294_967_295),
+)
+
 /** How many items a generated array holds when the schema does not say. */
 const ArrayLengthSchema = Schema.Number.check(
   Schema.isInt(),
@@ -172,8 +179,12 @@ const ConfigSchema = Schema.Struct({
     Schema.Struct({
       output: FileOutputSchema,
       // Defaults to true in the generator: a document that bothered to write an example is
-      // saying what a realistic response looks like, and faker cannot improve on that.
-      useExamples: Schema.optionalKey(Schema.Boolean),
+      // saying what a realistic response looks like, and faker cannot improve on that. `'all'`
+      // also uses the scalar example of every schema and property.
+      useExamples: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Literal('all')])),
+      // Re-seeds faker at the start of every handler, so each route answers the same body on
+      // every request — stable enough for snapshot tests.
+      seed: Schema.optionalKey(Schema.Union([SeedSchema, Schema.NonEmptyArray(SeedSchema)])),
       // Passed straight through to `@faker-js/faker/locale/<locale>`; the pattern is what keeps
       // it from breaking out of the import specifier.
       locale: Schema.optionalKey(

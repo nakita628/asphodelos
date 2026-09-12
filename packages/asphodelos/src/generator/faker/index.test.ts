@@ -57,9 +57,10 @@ describe('schemaToFaker — format mapping', () => {
 })
 
 describe('schemaToFaker — pattern / enum / const', () => {
-  it('pattern → fromRegExp called with a string literal (no /.../ literal)', () => {
+  it('pattern → fromRegExp called with a string literal (no /.../ literal), anchors stripped', () => {
+    // faker copies a string pattern's `^`/`$` into the value, which would then fail the pattern.
     expect(schemaToFaker({ type: 'string', pattern: '^a/b$' })).toBe(
-      'faker.helpers.fromRegExp("^a/b$")',
+      'faker.helpers.fromRegExp("a/b")',
     )
   })
 
@@ -154,9 +155,9 @@ describe('schemaToFaker — injection hardening', () => {
 })
 
 describe('schemaToFaker — type array & property-name hints', () => {
-  it('type:[string,null] collapses to the non-null member', () => {
+  it('type:[string,null] mocks the non-null member, or null', () => {
     expect(schemaToFaker({ type: ['string', 'null'] })).toBe(
-      'faker.string.alpha({ length: { min: 5, max: 20 } })',
+      'faker.helpers.arrayElement([faker.string.alpha({ length: { min: 5, max: 20 } }), null])',
     )
   })
 
@@ -251,6 +252,87 @@ describe('schemaToFaker — array length honors minItems/maxItems', () => {
       schemaToFaker({ type: 'array', items: { type: 'integer' }, minItems: 0, maxItems: 0 }),
     ).toBe(
       'Array.from({ length: faker.number.int({ min: 0, max: 0 }) }, () => (faker.number.int({ min: 1, max: 1000 })))',
+    )
+  })
+})
+
+describe('schemaToFaker — hints respect the declared type', () => {
+  it.each([
+    ['status', 'integer', 'faker.number.int({ min: 1, max: 1000 })'],
+    ['createdAt', 'integer', 'faker.number.int({ min: 1, max: 1000 })'],
+    ['price', 'integer', 'faker.number.int({ min: 1, max: 1000 })'],
+    ['email', 'boolean', 'faker.datatype.boolean()'],
+  ] as const)('ignores the %s hint on a %s', (name, type, expected) => {
+    expect(schemaToFaker({ type }, name)).toBe(expected)
+  })
+
+  it('does not put a number into a string int64', () => {
+    expect(schemaToFaker({ type: 'string', format: 'int64' })).toBe(
+      'faker.string.alpha({ length: { min: 5, max: 20 } })',
+    )
+  })
+
+  it.each([
+    ['created_at', 'faker.date.past().toISOString()'],
+    ['first-name', 'faker.person.firstName()'],
+  ])('matches the snake/kebab-case name %s', (name, expected) => {
+    expect(schemaToFaker({ type: 'string' }, name)).toBe(expected)
+  })
+
+  it.each(['constructor', 'toString', '__proto__'])(
+    'does not resolve the Object.prototype member %s as a hint or format',
+    (name) => {
+      const alpha = 'faker.string.alpha({ length: { min: 5, max: 20 } })'
+      expect(schemaToFaker({ type: 'string' }, name)).toBe(alpha)
+      expect(schemaToFaker(JSON.parse(`{"type":"string","format":"${name}"}`))).toBe(alpha)
+    },
+  )
+})
+
+describe('schemaToFaker — maps, arrays and examples', () => {
+  it('fills a map with a few entries, honoring min/maxProperties', () => {
+    expect(
+      schemaToFaker({
+        type: 'object',
+        additionalProperties: { type: 'boolean' },
+        minProperties: 2,
+        maxProperties: 4,
+      }),
+    ).toBe(
+      'Object.fromEntries(Array.from({ length: faker.number.int({ min: 2, max: 4 }) }, () => [faker.string.alpha(8), faker.datatype.boolean()] satisfies [string, unknown]))',
+    )
+  })
+
+  it('clamps arrayMin to maxItems and raises arrayMax to minItems', () => {
+    expect(
+      schemaToFaker({ type: 'array', items: { type: 'boolean' }, maxItems: 3 }, undefined, {
+        arrayMin: 5,
+      }),
+    ).toBe(
+      'Array.from({ length: faker.number.int({ min: 3, max: 3 }) }, () => (faker.datatype.boolean()))',
+    )
+    expect(
+      schemaToFaker({ type: 'array', items: { type: 'boolean' }, minItems: 4 }, undefined, {
+        arrayMax: 2,
+      }),
+    ).toBe(
+      'Array.from({ length: faker.number.int({ min: 4, max: 4 }) }, () => (faker.datatype.boolean()))',
+    )
+  })
+
+  it('uses a scalar example only when asked, keeping an enum example literal', () => {
+    const options = { useExamples: true }
+    expect(schemaToFaker({ type: 'string', examples: ['first'] }, undefined, options)).toBe(
+      '"first"',
+    )
+    expect(
+      schemaToFaker({ type: 'string', enum: ['a', 'b'], example: 'b' }, undefined, options),
+    ).toBe('"b" as const')
+    expect(schemaToFaker({ type: 'integer', example: 'ten' }, undefined, options)).toBe(
+      'faker.number.int({ min: 1, max: 1000 })',
+    )
+    expect(schemaToFaker({ type: 'string', example: 'x' })).toBe(
+      'faker.string.alpha({ length: { min: 5, max: 20 } })',
     )
   })
 })

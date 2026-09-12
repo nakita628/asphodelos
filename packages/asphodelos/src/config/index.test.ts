@@ -149,4 +149,23 @@ describe('parseConfig', () => {
     const dir = decode({ input: 'a.yaml', mock: { output: 'src/mocks' } })
     expect(dir.mock?.output).toBe('src/mocks/index.ts')
   })
+
+  it("accepts useExamples: 'all' and rejects any other string", () => {
+    const result = decode({ input: 'a.yaml', mock: { output: 'm.ts', useExamples: 'all' } })
+    expect(result.mock?.useExamples).toBe('all')
+    expect(
+      decodeError({ input: 'a.yaml', mock: { output: 'm.ts', useExamples: 'some' } }),
+    ).toBeDefined()
+  })
+
+  it('accepts a numeric or array seed', () => {
+    expect(decode({ input: 'a.yaml', mock: { output: 'm.ts', seed: 42 } }).mock?.seed).toBe(42)
+    expect(
+      decode({ input: 'a.yaml', mock: { output: 'm.ts', seed: [1, 2] } }).mock?.seed,
+    ).toStrictEqual([1, 2])
+  })
+
+  it.each([[-1], [1.5], [4_294_967_296], [[]], ['42']])('rejects the seed %j', (seed) => {
+    expect(decodeError({ input: 'a.yaml', mock: { output: 'm.ts', seed } })).toBeDefined()
+  })
 })

@@ -60,9 +60,10 @@ describe('nonExistentPathValue', () => {
   })
 
   it('pattern yields a runtime faker expression that satisfies it', () => {
+    // faker keeps `^`/`$` of a string pattern in the value, so the anchors are stripped.
     expect(nonExistentPathValue({ type: 'string', pattern: '^[a-z]{3}$' })).toStrictEqual({
       kind: 'expr',
-      code: 'faker.helpers.fromRegExp("^[a-z]{3}$")',
+      code: 'faker.helpers.fromRegExp("[a-z]{3}")',
     })
   })
 

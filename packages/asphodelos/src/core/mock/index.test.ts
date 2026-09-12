@@ -8,6 +8,15 @@ import type { OpenAPI } from '../../openapi/index.js'
 import { runGenerator } from '../../testing/index.js'
 import { mock } from './index.js'
 
+// The Prism-compatible `Prefer` helpers are emitted verbatim into every mock; they are pinned once
+// (the `Prefer` suite in the generator tests) and stand in as one line everywhere else.
+function withoutPreferHelpers(code: string) {
+  return code.replace(
+    /\/\/ Reads Prism's[\s\S]*?\nfunction preferProblem\([\s\S]*?\n\}\n/u,
+    '/* resolvePrefer, preferProblem */\n',
+  )
+}
+
 const dirs: string[] = []
 afterEach(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true })
@@ -69,7 +78,8 @@ describe('mock', () => {
     const output = path.join(dir, 'mock.ts')
     const result = await runGenerator(mock(spec, output, { prefix: '/api' }))
     expect(result).toStrictEqual(`Generated mock server written to ${output}`)
-    expect(await readFile(output, 'utf-8')).toBe(`import { Elysia } from 'elysia'
+    expect(withoutPreferHelpers(await readFile(output, 'utf-8')))
+      .toBe(`import { Elysia } from 'elysia'
 import { faker } from '@faker-js/faker'
 
 function mockUser() {
@@ -80,12 +90,24 @@ function mockUser() {
   }
 }
 
+/* resolvePrefer, preferProblem */
+
 export const app = new Elysia({ prefix: '/api' })
-  .get('/users', () =>
-    Array.from({ length: faker.number.int({ min: 1, max: 5 }) }, () => mockUser()),
-  )
-  .post('/users', ({ status }) => status(201, mockUser()))
-  .delete('/users/:userId', ({ status }) => status(204))
+  .get('/users', (c) => {
+    const prefer = resolvePrefer(c.headers.prefer, c.query, { '200': [] }, '200')
+    if (prefer.problem) return prefer.problem
+    return Array.from({ length: faker.number.int({ min: 1, max: 5 }) }, () => mockUser())
+  })
+  .post('/users', (c) => {
+    const prefer = resolvePrefer(c.headers.prefer, c.query, { '201': [] }, '201')
+    if (prefer.problem) return prefer.problem
+    return c.status(201, mockUser())
+  })
+  .delete('/users/:userId', (c) => {
+    const prefer = resolvePrefer(c.headers.prefer, c.query, { '204': [] }, '204')
+    if (prefer.problem) return prefer.problem
+    return c.status(204)
+  })
 
 if (import.meta.main) {
   app.listen(3000)
@@ -123,12 +145,17 @@ if (import.meta.main) {
     dirs.push(dir)
     const output = path.join(dir, 'mock.ts')
     await runGenerator(mock(spec, output, { prefix: '/api' }))
-    expect(await readFile(output, 'utf-8')).toBe(`import { Elysia } from 'elysia'
+    expect(withoutPreferHelpers(await readFile(output, 'utf-8')))
+      .toBe(`import { Elysia } from 'elysia'
 import { faker } from '@faker-js/faker'
 
-export const app = new Elysia({ prefix: '/api' }).get('/health', () => ({
-  status: faker.helpers.arrayElement(['active', 'inactive', 'pending']),
-}))
+/* resolvePrefer, preferProblem */
+
+export const app = new Elysia({ prefix: '/api' }).get('/health', (c) => {
+  const prefer = resolvePrefer(c.headers.prefer, c.query, { '200': [] }, '200')
+  if (prefer.problem) return prefer.problem
+  return { status: faker.helpers.arrayElement(['active', 'inactive', 'pending']) }
+})
 
 if (import.meta.main) {
   app.listen(3000)
