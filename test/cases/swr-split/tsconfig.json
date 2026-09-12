@@ -4,6 +4,7 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
   "include": [
+    "asphodelos.config.ts",
     "../../__generated__/swr-split/*.ts",
     "../../hosts/users-app.ts",
     "../../hosts/users-client.ts"

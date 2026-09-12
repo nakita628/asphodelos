@@ -28,6 +28,7 @@
       "dependencies": {
         "@apidevtools/swagger-parser": "^12.1.0",
         "@effect/platform-node": "4.0.0-rc.112",
+        "@effect/platform-node-shared": "4.0.0-rc.112",
         "@typespec/compiler": "^1.11.0",
         "@typespec/openapi3": "^1.11.0",
         "effect": "4.0.0-rc.112",

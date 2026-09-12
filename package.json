@@ -8,7 +8,7 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run test && bun run test:clients",
+    "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run test && bun run test:clients && bun run test:pack",
     "fix": "bun run fmt && bun run lint:fix && markdownlint-cli2 --fix && textlint --fix --ignore-path .gitignore '**/*.md'",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
@@ -23,6 +23,7 @@
     "typecheck": "cd packages/asphodelos && bun run typecheck",
     "test": "cd packages/asphodelos && bun test",
     "test:clients": "bun run build && cd test && bun run typecheck && bun test",
+    "test:pack": "bun run build && bun scripts/pack-smoke.ts",
     "build": "cd packages/asphodelos && bun run build"
   },
   "devDependencies": {

@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "include": [
+    "asphodelos.config.ts",
     "../../__generated__/vue-query/hooks.ts",
     "../../hosts/users-app.ts",
     "../../hosts/users-client.ts",

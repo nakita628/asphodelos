@@ -58,3 +58,8 @@ jobs:
       # name and the generator is invoked through `dist`.
       - name: Client suite
         run: bun run test:clients
+
+      # Packs the npm tarball and installs it with npm into an empty project, the one place the
+      # package meets a resolver that bun.lock does not pin.
+      - name: Package smoke test
+        run: bun run test:pack

@@ -328,32 +328,52 @@ check('predicate-is-name', {
 describe('oxlint.config.ts — the boundary exemption', () => {
   const PKG = path.resolve(import.meta.dir, '..')
 
-  function lintInPackage(relative: string, code: string) {
-    const file = path.join(PKG, relative)
-    mkdirSync(path.dirname(file), { recursive: true })
-    writeFileSync(file, code)
+  const PROBES = [
+    'src/core/tmp-runner-probe.ts',
+    'src/vite-plugin/tmp-runner-probe.ts',
+    'src/testing/tmp-runner-probe.ts',
+  ]
+
+  /**
+   * Lints every probe in one oxlint run and answers with the rule codes reported per file.
+   *
+   * One run rather than one per probe: the project config is type-aware, so each run builds the
+   * whole program, and three of them in a row are what timed out under a loaded test suite.
+   */
+  function lintProbes(code: string) {
+    for (const relative of PROBES) {
+      mkdirSync(path.dirname(path.join(PKG, relative)), { recursive: true })
+      writeFileSync(path.join(PKG, relative), code)
+    }
     try {
-      const run = spawnSync(OXLINT, [relative], { cwd: PKG, encoding: 'utf-8' })
-      return `${run.stdout ?? ''}${run.stderr ?? ''}`
+      const run = spawnSync(OXLINT, ['-f', 'json', ...PROBES], { cwd: PKG, encoding: 'utf-8' })
+      if (run.error !== undefined || run.stdout === '') {
+        throw new Error(`oxlint did not run: ${String(run.error ?? run.stderr)}`)
+      }
+      const { diagnostics } = JSON.parse(run.stdout) as {
+        diagnostics: readonly { filename: string; code: string }[]
+      }
+      return new Map(
+        PROBES.map((relative) => [
+          relative,
+          diagnostics.filter((d) => d.filename === relative).map((d) => d.code),
+        ]),
+      )
     } finally {
-      rmSync(file, { force: true })
+      for (const relative of PROBES) rmSync(path.join(PKG, relative), { force: true })
     }
   }
 
   it(
     'runs an Effect only inside the vite plugin and the test helpers',
     () => {
-      const banned = lintInPackage('src/core/tmp-runner-probe.ts', 'Effect.runPromise(program)\n')
-      expect(banned).toContain('custom(no-effect-run)')
+      const reported = lintProbes('Effect.runPromise(program)\n')
 
-      for (const boundary of [
-        'src/vite-plugin/tmp-runner-probe.ts',
-        'src/testing/tmp-runner-probe.ts',
-      ]) {
-        expect(lintInPackage(boundary, 'Effect.runPromise(program)\n')).not.toContain(
-          'custom(no-effect-run)',
-        )
-      }
+      expect(reported.get('src/core/tmp-runner-probe.ts')).toContain('custom(no-effect-run)')
+      expect(reported.get('src/vite-plugin/tmp-runner-probe.ts')).not.toContain(
+        'custom(no-effect-run)',
+      )
+      expect(reported.get('src/testing/tmp-runner-probe.ts')).not.toContain('custom(no-effect-run)')
     },
     SPAWN_TIMEOUT_MS,
   )

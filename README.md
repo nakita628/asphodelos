@@ -583,6 +583,7 @@ bun run fix            # autofix formatting, oxlint, markdownlint and textlint
 bun run lint           # oxlint, markdownlint, textlint, cspell, secretlint, actionlint
 bun run test           # unit tests
 bun run test:clients   # build, then compile and run the generated hooks under test/
+bun run test:pack      # build, pack, and install the tarball with npm into an empty project
 ```
 
 Coding agents: start with [AGENTS.md](AGENTS.md).

@@ -1,10 +1,25 @@
 {
   "name": "asphodelos",
   "version": "0.0.1",
+  "description": "Generate type-safe Elysia code — routes, TypeBox schemas, Eden wrappers, client hooks, tests and a mock server — from OpenAPI or TypeSpec",
   "keywords": [
+    "codegen",
+    "eden",
     "elysia",
-    "openapi"
+    "openapi",
+    "typebox",
+    "typespec"
   ],
+  "homepage": "https://github.com/nakita628/asphodelos#readme",
+  "bugs": {
+    "url": "https://github.com/nakita628/asphodelos/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nakita628/asphodelos.git",
+    "directory": "packages/asphodelos"
+  },
   "bin": {
     "asphodelos": "dist/cli.mjs"
   },
@@ -14,11 +29,13 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./src/config/index.ts",
+      "@asphodelos/source": "./src/config/index.ts",
+      "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
     "./vite-plugin": {
-      "types": "./src/vite-plugin/index.ts",
+      "@asphodelos/source": "./src/vite-plugin/index.ts",
+      "types": "./dist/vite-plugin/index.d.mts",
       "import": "./dist/vite-plugin/index.mjs"
     }
   },
@@ -29,11 +46,14 @@
     "lint:fix": "oxlint --fix",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "release": "bun build & bun publish"
+    "prepublishOnly": "bun run build",
+    "prepack": "cp ../../README.md ../../LICENSE .",
+    "postpack": "rm -f README.md LICENSE"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",
     "@effect/platform-node": "4.0.0-rc.112",
+    "@effect/platform-node-shared": "4.0.0-rc.112",
     "@typespec/compiler": "^1.11.0",
     "@typespec/openapi3": "^1.11.0",
     "effect": "4.0.0-rc.112",

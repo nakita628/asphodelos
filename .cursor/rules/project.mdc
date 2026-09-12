@@ -31,6 +31,7 @@ test/                         client suite: compiles and runs the generated hook
   cases/<name>/               one asphodelos.config.ts + tsconfig.json per client library
   oxlint.config.ts            reuses the package's rules; do not copy rules into it
 scripts/actionlint.ts         downloads a pinned actionlint, verifies its checksum, runs it
+scripts/pack-smoke.ts         installs the packed tarball with npm into an empty project and uses it
 oxfmt.config.ts               source of truth for formatting (printWidth 100, single quotes, no semicolons)
 .github/workflows/test.yaml   CI: the same commands as below, in the same order
 ```
@@ -49,6 +50,7 @@ Run these from the repository root.
 | Unit tests | `bun run test` |
 | Build `dist` | `bun run build` |
 | Client suite (builds first) | `bun run test:clients` |
+| npm tarball smoke test (builds first, needs network) | `bun run test:pack` |
 | One test file | `cd packages/asphodelos && bun test src/<path>.test.ts` |
 
 - `test:clients` runs the packaged CLI and Vite plugin from `dist`, so it always builds first.
@@ -83,10 +85,13 @@ If you only ran part of it, say which part.
   `test/__generated__/`, `tmp-*` work trees.
 - **`elysia` and `test` output holds the user's code.** Those generators merge into what is on
   disk (`src/merge`). Nothing may delete or blindly overwrite that output.
-- **`effect` and `@effect/platform-node` are pinned exactly** (`4.0.0-rc.112`, an rc whose API
-  still moves). They move together, in one change.
+- **`effect`, `@effect/platform-node` and `@effect/platform-node-shared` are pinned exactly**
+  (`4.0.0-rc.112`, an rc whose API still moves) and move together, in one change. Leaving one of
+  them to a range lets npm install a second `effect` for users, and the CLI then fails with
+  "Service not found"; `bun run test:pack` checks that exactly one `effect` is installed.
 - **Never bump `version` in `packages/asphodelos/package.json` or publish** unless the task is
-  a release that was asked for.
+  a release that was asked for. Publishing happens from `packages/asphodelos`, never from the
+  root, whose manifest is `private`.
 
 ## Working order
 

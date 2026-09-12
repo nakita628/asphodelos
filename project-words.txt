@@ -13,6 +13,7 @@ dedup
 Docable
 elysia
 elysiajs
+EPRIVATE
 GOARCH
 happydom
 healthz

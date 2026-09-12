@@ -11,6 +11,9 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "lib": ["ESNext"],
-    "types": ["bun"]
+    "types": ["bun"],
+    // `asphodelos` resolves to its source here, so the suite typechecks and lints without a
+    // build. Users skip this condition and get the `.d.mts` files in dist.
+    "customConditions": ["@asphodelos/source"]
   }
 }

@@ -73,16 +73,20 @@ Every playbook ends the same way: `bun run fix`, then `bun run check`, all green
 
 ## Bump effect
 
-1. Change `effect` and `@effect/platform-node` in `packages/asphodelos/package.json` together,
-   then `bun install`.
+1. Change `effect`, `@effect/platform-node` and `@effect/platform-node-shared` in
+   `packages/asphodelos/package.json` together (all exact), then `bun install`.
 2. `bun run typecheck`. The rc moves the Schema and CLI APIs, so expect errors in `config/` and
    `cli/` first.
 3. `bun run check`. Read every behavior difference rather than adjusting an assertion to match.
+   `test:pack` failing on "exactly one copy of effect" means another `@effect/*` package in the
+   chain needs pinning to the same version.
 4. Report which upstream changes forced code changes; that is what the commit body explains.
 
 ## Release (only when asked)
 
 1. Confirm `main` is green.
 2. Bump `version` in `packages/asphodelos/package.json` only, in its own commit.
-3. `bun run build`, then publish from `packages/asphodelos`.
-4. Never reuse or roll back a published version; to fix a release, bump again.
+3. `bun run check`, which ends with `bun run test:pack` — the npm tarball installed and used.
+4. `cd packages/asphodelos && npm publish` (`prepublishOnly` builds, `prepack` adds README and
+   LICENSE). Never publish from the root: it is `private` and npm refuses with `EPRIVATE`.
+5. Never reuse or roll back a published version; to fix a release, bump again.

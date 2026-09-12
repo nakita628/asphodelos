@@ -9,9 +9,9 @@ alwaysApply: false
 ## The workflow
 
 - `.github/workflows/test.yaml` runs the root scripts in the same order as `bun run check`:
-  install → `fmt:check` → `lint` → `typecheck` → package tests → `test:clients`. A new check is
-  added to the root `package.json` scripts **and** to this workflow, so local and CI cannot
-  disagree about what "clean" means.
+  install → `fmt:check` → `lint` → `typecheck` → package tests → `test:clients` → `test:pack`.
+  A new check is added to the root `package.json` scripts **and** to this workflow, so local and
+  CI cannot disagree about what "clean" means.
 - **Actions are pinned to a commit digest with the tag kept as a comment**:
   `uses: actions/checkout@fbc6f399… # v5.1.0`. A floating tag is a mutable dependency with
   access to the job — never introduce one. Resolve a tag with
@@ -64,14 +64,34 @@ plugin: untyped ESTree in, a default export out. When adding a rule there:
 
 - `bun.lock` is written by `bun install`. Never edit it by hand, and never delete it to "fix" an
   install. CI installs with `--frozen-lockfile`.
-- `effect` and `@effect/platform-node` are pinned exactly and move together.
+- `effect`, `@effect/platform-node` and `@effect/platform-node-shared` are pinned exactly and
+  move together. A dependency that pulls in another `@effect/*` package with a caret range gets
+  that package pinned too: users install with npm, not with bun.lock, and two copies of `effect`
+  break the CLI. `bun run test:pack` fails when more than one `effect` is installed.
 - The package's runtime `dependencies` are what every user installs. Adding one is a design
   decision — ask first. Tooling goes in `devDependencies` of the workspace that uses it.
 - The repository-wide linters are root `devDependencies`, pinned exactly.
 
+## The published package
+
+- `exports` carries three conditions per subpath: `@asphodelos/source` (the `.ts` source, used
+  only by the test workspace through `customConditions` in `test/tsconfig.base.json`, so it
+  typechecks without a build), then `types` (`dist/*.d.mts`) and `import` (`dist/*.mjs`) for
+  users. Keep the three in step when adding a subpath, and add the entry to `tsdown.config.ts`.
+- `files: ["dist"]`. The `prepack` script copies the root `README.md` and `LICENSE` into the
+  package for the tarball and `postpack` removes them; the root files are the only originals, and
+  the copies are gitignored. npm leaves symlinked files out, which is why they are copies.
+- `prepublishOnly` builds, so a publish can never ship a stale `dist`.
+- `bun run test:pack` is the proof the tarball works for a user: it checks the file list,
+  installs it with npm, requires one `effect`, typechecks both entry points, runs the CLI and the
+  Vite plugin.
+
 ## Releasing
 
-Publishing is by hand and only when asked: bump `version` in `packages/asphodelos/package.json`
-in its own commit, `bun run check`, then build and publish from `packages/asphodelos`. Never
-reuse a published version. `files: ["dist"]` — what a consumer needs must be reachable from the
-build output.
+Publishing is by hand and only when asked:
+
+1. Bump `version` in `packages/asphodelos/package.json` in its own commit.
+2. `bun run check` (which includes `bun run test:pack`), all green.
+3. `cd packages/asphodelos && npm publish` — never from the root. npm needs `npm login` first.
+
+Never reuse a published version; to fix a release, bump again.
