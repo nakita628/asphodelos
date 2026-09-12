@@ -93,5 +93,9 @@ Publishing is by hand and only when asked:
 1. Bump `version` in `packages/asphodelos/package.json` in its own commit.
 2. `bun run check` (which includes `bun run test:pack`), all green.
 3. `cd packages/asphodelos && npm publish` — never from the root. npm needs `npm login` first.
+   The root `package.json` has a `version` and a `prepublishOnly` that fails with this command,
+   so `npm publish` at the root stops with an instruction (and with `EPRIVATE` under
+   `--ignore-scripts`) instead of npm's "Cannot read properties of null (reading 'prerelease')".
+   Keep both.
 
 Never reuse a published version; to fix a release, bump again.

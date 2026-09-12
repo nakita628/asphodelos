@@ -1,5 +1,6 @@
 {
   "name": "asphodelos-monorepo",
+  "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "workspaces": [
@@ -24,7 +25,8 @@
     "test": "cd packages/asphodelos && bun test",
     "test:clients": "bun run build && cd test && bun run typecheck && bun test",
     "test:pack": "bun run build && bun scripts/pack-smoke.ts",
-    "build": "cd packages/asphodelos && bun run build"
+    "build": "cd packages/asphodelos && bun run build",
+    "prepublishOnly": "echo 'The repository root is not a package. Publish from the package: cd packages/asphodelos && npm publish' >&2 && exit 1"
   },
   "devDependencies": {
     "@secretlint/secretlint-rule-preset-recommend": "13.0.5",
