@@ -24,7 +24,7 @@
     "@secretlint/secretlint-rule-preset-recommend": "13.0.5",
     "@textlint-rule/textlint-rule-no-unmatched-pair": "2.0.4",
     "@types/bun": "latest",
-    "cspell": "10.2.1",
+    "cspell": "10.2.2",
     "markdownlint-cli2": "0.23.2",
     "oxfmt": "^0.67.0",
     "secretlint": "13.0.5",
