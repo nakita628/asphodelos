@@ -36,6 +36,8 @@ query-params/     a self-contained case: document, config, echo app and tests, i
 path-params/      the same for path parameters
 client/           the generated Eden Treaty client, under a path alias, driven over HTTP against
                   hosts/users-server.ts in a process of its own
+monorepo/         the client in a package of its own: apps/elysia, apps/eden and apps/react reach
+                  each other by package name, mapped in the case's tsconfig
 scripts/          cases.ts, generate.ts, typecheck.ts, pretest.ts
 __generated__/    output; gitignored, refreshed before every run (a root-level case has its own)
 ```

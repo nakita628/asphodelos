@@ -13,13 +13,14 @@
     "*.ts",
     "client",
     "hosts",
+    "monorepo",
     "path-params",
     "query-params",
     "runtime",
     "scripts",
     "types"
   ],
-  // The client case's generated app is a scaffold whose handlers are not written; its own
-  // tsconfig says why it is not compiled.
-  "exclude": ["client/__generated__"]
+  // The client and monorepo cases' generated apps are scaffolds whose handlers are not written,
+  // and the monorepo's package names resolve only through its own tsconfig; each says so.
+  "exclude": ["client/__generated__", "monorepo/apps"]
 }
