@@ -2,10 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { asphodelosVite } from 'asphodelos/vite-plugin'
 import { createServer } from 'vite'
 import type { HotPayload, ViteDevServer } from 'vite'
+
+import { resumeHappyDom, suspendHappyDom } from '../happydom.js'
 
 /**
  * The packaged Vite plugin inside a real Vite dev server.
@@ -57,9 +58,9 @@ const consoleLog = console.log
 let server: ViteDevServer | undefined
 
 beforeAll(async () => {
-  // The suite preloads happy-dom for the React hooks, and its timers are the browser's: Vite calls
+  // The suite preloads happy-dom for the React hooks, and its globals are the browser's: Vite calls
   // `.unref()` on what `setTimeout` returns. A dev server is a Node program, so it gets Node's.
-  await GlobalRegistrator.unregister()
+  suspendHappyDom()
   rmSync(projectDir, { recursive: true, force: true })
   mkdirSync(projectDir, { recursive: true })
   writeFileSync(specPath, readFileSync(path.join(testRoot, 'specs', 'users.yaml'), 'utf8'))
@@ -87,7 +88,7 @@ afterAll(async () => {
   await server?.close()
   console.log = consoleLog
   process.chdir(originalCwd)
-  GlobalRegistrator.register()
+  resumeHappyDom()
 })
 
 describe('asphodelosVite in a Vite dev server', () => {
@@ -97,7 +98,7 @@ describe('asphodelosVite in a Vite dev server', () => {
 
     expect(existsSync(path.join(projectDir, 'app/index.ts'))).toBe(true)
     expect(existsSync(path.join(projectDir, 'app/modules/users/index.ts'))).toBe(true)
-    expect(readFileSync(path.join(projectDir, 'hooks/index.ts'), 'utf8')).toContain('useListUsers')
+    expect(readFileSync(path.join(projectDir, 'hooks/index.ts'), 'utf8')).toContain('useGetUsers')
   }, 120_000)
 
   it('regenerates and reloads when the document changes', async () => {
