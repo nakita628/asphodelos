@@ -29,7 +29,7 @@ and compile-time assertions about the generated types.
 ```text
 cases/<name>/     one asphodelos.config.ts + tsconfig.json per client library
 specs/            the OpenAPI documents the cases generate from
-hosts/            the Elysia app and Eden client the generated hooks talk to
+hosts/            the Elysia app the generated hooks talk to, in memory or in a process of its own
 runtime/          tests that execute the generated hooks, and the Vite plugin in a dev server
 types/            compile-time assertions about the generics
 query-params/     a self-contained case: document, config, echo app and tests, in one directory

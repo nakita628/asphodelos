@@ -33,15 +33,16 @@ describe('makeJob', () => {
     expect(jobs).toStrictEqual([{ name: 'elysia', output: 'src/index.ts', split: false }])
   })
 
-  it('assembles component, eden, types and hook jobs in canonical order with default outputs', () => {
+  it('assembles component, client, eden, types and hook jobs in canonical order with default outputs', () => {
     const parsed = Effect.runSync(
       parseConfig({
         input: 'api.yaml',
         output: 'src/index.ts',
-        eden: { output: 'src/eden.ts', import: './lib' },
+        client: { output: 'src/client.ts' },
+        eden: { output: 'src/eden.ts' },
         types: { output: 'src/types.ts' },
-        swr: { output: 'src/swr.ts', import: './lib' },
-        'preact-query': { output: 'src/preact.ts', import: './lib' },
+        swr: { output: 'src/swr.ts' },
+        'preact-query': { output: 'src/preact.ts' },
       }),
     )
     const openAPI = {
@@ -62,6 +63,7 @@ describe('makeJob', () => {
       { name: 'elysia', output: 'src/index.ts', split: false },
       { name: 'schemas', output: 'src/components/schemas.ts', split: false },
       { name: 'responses', output: 'src/components/responses.ts', split: false },
+      { name: 'client', output: 'src/client.ts', split: false },
       { name: 'eden', output: 'src/eden.ts', split: false },
       { name: 'types', output: 'src/types.ts', split: false },
       { name: 'swr', output: 'src/swr.ts', split: false },
@@ -100,7 +102,8 @@ describe('makeJob', () => {
     const parsed = Effect.runSync(
       parseConfig({
         input: 'api.yaml',
-        'preact-query': { output: 'src/preact', import: './lib' },
+        client: { output: 'src/client.ts' },
+        'preact-query': { output: 'src/preact' },
       }),
     )
     const openAPI = {

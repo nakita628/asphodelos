@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createApp, effectScope, nextTick, ref } from 'vue'
@@ -9,6 +9,7 @@ import {
   usePostUsers,
   useUsersId,
 } from '../__generated__/vue-query/hooks.js'
+import { serveInMemory } from '../hosts/in-memory.js'
 import { requestLog } from '../hosts/users-app.js'
 
 /**
@@ -52,8 +53,18 @@ function withApp<T>(setup: () => T) {
   }
 }
 
+const restoreFetch = { restore: () => {} }
+
+beforeAll(() => {
+  restoreFetch.restore = serveInMemory()
+})
+
 afterEach(() => {
   requestLog.length = 0
+})
+
+afterAll(() => {
+  restoreFetch.restore()
 })
 
 describe('generated useQuery hooks (vue)', () => {

@@ -249,40 +249,45 @@ export const client = treaty<typeof app>(origin)
 ```
 
 The `index.ts` beside the client re-exports it, so it is imported as `./lib`; `eden` and the hooks
-import it from there. `baseUrl` left out is `http://localhost:<port>`.
+import it from there. `baseUrl` left out is `http://localhost:<port>`. `sameOrigin` suits an app a
+host framework such as TanStack Start or Next.js serves beside its pages, where the API shares the
+origin and CORS has nothing to allow. The project needs `@elysiajs/eden`.
 
-In a workspace, the client can be a package of its own. `import` names the package that exports
-`app`, `package` the one the client is published as, and the files in other packages import it by
-that name — relative paths never cross a package:
+### Imports Between Generated Files
+
+Nothing is configured per file: how one generated file imports another follows from where the two
+are written.
+
+- In the same package, relatively — `./lib`, `../components/schemas`.
+- Under the app entry's directory with `pathAlias: '@/'`, through the alias — `@/lib`,
+  `@/components/schemas`.
+- In different packages (each with its own `package.json`), by the name the output is published
+  as: the top-level `package` for the app entry, `client.package` for the client, and `package` on
+  a component section or on `components` for the schemas. A relative path never crosses a package.
 
 ```ts
-// apps/elysia/asphodelos.config.ts
+// apps/elysia/asphodelos.config.ts — the app, the client and the hooks in three packages
 export default defineConfig({
   input: 'openapi.yaml',
   output: 'src/index.ts',
-  client: { output: '../eden/src/client.ts', import: '@repo/elysia', package: '@repo/eden' },
-  'tanstack-query': { output: '../react/src/api/hooks.ts' }, // import { client } from '@repo/eden'
+  package: '@repo/elysia', // the client imports `app` from here
+  client: { output: '../eden/src/client.ts', package: '@repo/eden' }, // the hooks import it from here
+  'tanstack-query': { output: '../react/src/api/hooks.ts' },
 })
 ```
 
 `@repo/elysia` exports `app` from its entry, `@repo/eden` exports the `index.ts` beside the client,
 and `elysia` resolves to one copy across the workspace.
-`sameOrigin` suits an app a host framework such as TanStack Start or Next.js serves beside its
-pages, where the API shares the origin and CORS has nothing to allow. The project needs
-`@elysiajs/eden`.
 
 ### Wrapper Functions
 
-Generate one wrapper per operation over a Treaty client.
+Generate one wrapper per operation over the generated client.
 
 ```ts
 export default defineConfig({
   input: 'openapi.yaml',
-  eden: {
-    output: 'src/eden.ts',
-    import: './lib', // module exporting `client` = treaty<App>(...); left out: the generated client
-    client: 'client',
-  },
+  client: { output: 'src/lib/client.ts' },
+  eden: { output: 'src/eden.ts' },
 })
 ```
 
@@ -293,17 +298,13 @@ Supported: SWR, TanStack Query, Preact Query, Solid Query, Vue Query, Svelte Que
 ```ts
 export default defineConfig({
   input: 'openapi.yaml',
-  'tanstack-query': {
-    output: './src/tanstack-query.ts',
-    import: '../lib',
-    client: 'client',
-  },
+  client: { output: 'src/lib/client.ts' },
+  'tanstack-query': { output: './src/tanstack-query.ts' },
 })
 ```
 
-The hooks are written into one file. `import` names the module that exports your Eden Treaty
-client, and `client` its export name (`client` when left out). With a top-level `client` block,
-both are left out: the hooks import the client it generates.
+The hooks are written into one file and import the generated client, so a `client` block comes
+with them.
 
 Every operation is named by its method and path: a GET on `/users/{id}` becomes `useUsersId`, with
 `getUsersIdQueryKey` and `getUsersIdQueryOptions` beside it; a POST on `/users` becomes
@@ -403,14 +404,13 @@ it, and the CLI checks it again when it runs:
 - A split directory belongs to the generator: every run empties its `.ts` files before refilling
   it, so an entry that leaves the document does not leave an orphaned file behind. Subdirectories,
   other files and the single-file outputs of other generators are left alone.
-- Imports between generated files are worked out: relative inside a package, through `pathAlias`
-  under the app entry's directory, and by the output's `package` from another package. A
-  section's `import` overrides that.
-- `prefix` must start with `/`. `import` must be a module specifier, `client` an identifier.
-- `eden` and the hooks need an `import`, unless a top-level `client` is generated: then they
-  import that client, and neither `import` nor `client` is an option there.
+- Imports between generated files are worked out from where they are written; see
+  [Imports Between Generated Files](#imports-between-generated-files). `package` names are
+  module specifiers.
+- `prefix` must start with `/`.
+- `eden` and the hooks import the generated client, so they need the `client` block.
 - The hooks (`swr`, `tanstack-query`, …) are always one file; `split` is no longer an option
-  there, and neither is the `test` generator or `eden.docs`.
+  there, and neither is the `test` generator, `eden.docs`, or `import` and `client` on a section.
 
 ```ts
 import { defineConfig } from 'asphodelos'
@@ -422,7 +422,8 @@ export default defineConfig({
   prefix: '/api/v3', // new Elysia({ prefix })
   port: '3000',
   integration: false, // true: no .listen(), a host framework owns the server
-  // pathAlias: '@/', // import prefix for the app entry's directory: `@/index`, `@/client`
+  // pathAlias: '@/', // import prefix for the app entry's directory: `@/index`, `@/lib`
+  // package: '@repo/elysia', // the app's package name, for a client in another package
   readonly: false, // wrap top-level schemas in t.Readonly(...)
   // format: {}, // oxfmt FormatConfig
 
@@ -435,7 +436,6 @@ export default defineConfig({
       split: true,
       exportTypes: true,
       // package: '@repo/schemas', // what other packages import this section by
-      // import: '../schemas', // overrides how the generated files import it
     },
     responses: {
       output: 'src/components/responses',
@@ -490,16 +490,14 @@ export default defineConfig({
 
   client: {
     output: 'src/lib/client.ts', // re-exported by src/lib/index.ts
-    // import: '@repo/server', // where `app` comes from, for a client in another package
-    // package: '@repo/client', // what other packages import the client by
+    // package: '@repo/eden', // what other packages import the client by
     baseUrl: 'http://localhost:3000', // `http://localhost:<port>` when left out
     // baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
     // baseUrl: { env: 'API_URL', import: '@/env', name: 'env' },
     sameOrigin: false, // true: a browser uses window.location.origin, baseUrl is for the rest
   },
 
-  // With the `client` block above, eden and the hooks import the generated client; without it,
-  // each names its own: `import: './lib'` (the module) and `client: 'client'` (its export).
+  // eden and the hooks import the generated client, so the `client` block above comes with them.
   eden: {
     output: 'src/eden.ts',
   },

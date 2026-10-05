@@ -1,13 +1,20 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // `@asphodelos/host` is the app the generated client is typed by: the host app, whose routes
+    // are the document's and whose handlers are written.
+    "paths": {
+      "@asphodelos/host": ["../../hosts/users-app.ts"]
+    }
+  },
   "include": [
     "asphodelos.config.ts",
+    "../../__generated__/vue-query/client.ts",
     "../../__generated__/vue-query/hooks.ts",
     "../../hosts/users-app.ts",
-    "../../hosts/users-client.ts",
     "../../runtime/vue-query.test.ts",
     "../../types/vue-query.ts",
     "../../types/assert.ts"
   ],
-  "exclude": ["../../__generated__/vue-query/app/**"]
+  "exclude": ["app/**"]
 }

@@ -118,20 +118,44 @@ describe('parseConfig', () => {
     expect(result.components?.schemas?.output).toBe('src/schemas/index.ts')
   })
 
-  // The name is left to the generator, which takes `client`; what the config keeps is whether
-  // one was given, since beside a generated client none may be.
-  it('keeps the hook client name as given, and absent when omitted', () => {
-    const omitted = decode({ input: 'a.yaml', swr: { output: 'src/swr.ts', import: './lib' } })
-    expect(omitted.swr?.client).toBeUndefined()
-    const named = decode({
-      input: 'a.yaml',
-      swr: { output: 'src/swr.ts', import: './lib', client: 'api' },
-    })
-    expect(named.swr?.client).toBe('api')
+  // The hooks import the generated client, exported as `client`; the options that pointed at
+  // another client are gone, and a config from before is told what replaced them.
+  it('rejects a hooks import or client name, naming what replaced them', () => {
+    expect(
+      decodeError({
+        input: 'a.yaml',
+        client: { output: 'src/client.ts' },
+        swr: { output: 'src/swr.ts', import: './lib' },
+      }).message,
+    ).toBe(
+      'Invalid config: swr.import: import was removed: the file imports the client the top-level `client` block generates — relatively, through `pathAlias`, or by `client.package` from another package. Delete the import and add client: { output }.',
+    )
+    expect(
+      decodeError({
+        input: 'a.yaml',
+        client: { output: 'src/client.ts' },
+        swr: { output: 'src/swr.ts', client: 'api' },
+      }).message,
+    ).toBe(
+      'Invalid config: swr.client: client was removed: the generated client is exported as `client`. Delete the name.',
+    )
+    expect(
+      decodeError({
+        input: 'a.yaml',
+        client: { output: 'src/client.ts' },
+        eden: { output: 'src/eden.ts', import: './lib' },
+      }).message,
+    ).toBe(
+      'Invalid config: eden.import: import was removed: the file imports the client the top-level `client` block generates — relatively, through `pathAlias`, or by `client.package` from another package. Delete the import and add client: { output }.',
+    )
   })
 
   it('normalizes a hooks output that names a directory to its index.ts', () => {
-    const result = decode({ input: 'a.yaml', swr: { output: 'src/swr', import: './lib' } })
+    const result = decode({
+      input: 'a.yaml',
+      client: { output: 'src/client.ts' },
+      swr: { output: 'src/swr' },
+    })
     expect(result.swr?.output).toBe('src/swr/index.ts')
   })
 
@@ -140,60 +164,28 @@ describe('parseConfig', () => {
     expect(
       decodeError({
         input: 'a.yaml',
-        'tanstack-query': { output: 'src/query', import: './lib', split: true },
+        client: { output: 'src/client.ts' },
+        'tanstack-query': { output: 'src/query', split: true },
       }).message,
     ).toBe(
       'Invalid config: tanstack-query.split: split was removed: the hooks are always generated into a single file. Set output to a .ts file path and delete the directory the previous run wrote.',
     )
   })
 
-  it('rejects a hooks import with whitespace or quotes', () => {
-    expect(
-      decodeError({ input: 'a.yaml', swr: { output: 'src/swr.ts', import: "'./lib'" } }).message,
-    ).toBe('Invalid config: swr.import: must be a module specifier, with no whitespace or quotes')
-  })
-
-  it('rejects a hooks client that is not an identifier', () => {
-    expect(
-      decodeError({
-        input: 'a.yaml',
-        swr: { output: 'src/swr.ts', import: './lib', client: 'api-client' },
-      }).message,
-    ).toBe('Invalid config: swr.client: must be a JavaScript identifier')
-  })
-
-  it('keeps the eden client name as given, and absent when omitted', () => {
-    const omitted = decode({
-      input: 'a.yaml',
-      eden: { output: 'src/eden.ts', import: './lib' },
-    })
-    expect(omitted.eden?.client).toBeUndefined()
-    const explicit = decode({
-      input: 'a.yaml',
-      eden: { output: 'src/eden.ts', import: './lib', client: 'api' },
-    })
-    expect(explicit.eden?.client).toBe('api')
-    expect(
-      decodeError({
-        input: 'a.yaml',
-        eden: { output: 'src/eden.ts', import: './lib', client: '1' },
-      }).message,
-    ).toBe('Invalid config: eden.client: must be a JavaScript identifier')
-  })
-
-  // Without a generated client there is nothing for the wrappers to import.
-  it('rejects eden config without an import when no client is generated', () => {
+  // The wrappers and the hooks import the generated client, so the block that generates it has
+  // to be there.
+  it('rejects eden without the top-level client', () => {
     const error = decodeError({ input: 'a.yaml', eden: { output: 'src/eden.ts' } })
     expect(error._tag).toBe('ConfigError')
     expect(error.message).toBe(
-      'Invalid config: eden.import is required unless a top-level client is generated: name the module that exports the Eden Treaty client, or add client: { output }.',
+      'Invalid config: eden needs the top-level client it imports: add client: { output }.',
     )
   })
 
-  it('rejects a hooks block without an import when no client is generated', () => {
+  it('rejects a hooks block without the top-level client', () => {
     const error = decodeError({ input: 'a.yaml', swr: { output: 'src/swr.ts' } })
     expect(error.message).toBe(
-      'Invalid config: swr.import is required unless a top-level client is generated: name the module that exports the Eden Treaty client, or add client: { output }.',
+      'Invalid config: swr needs the top-level client it imports: add client: { output }.',
     )
   })
 
@@ -285,16 +277,13 @@ describe('parseConfig', () => {
       expect(config.client?.baseUrl).toStrictEqual({ env: 'API_URL', import: '@/env', name: 'env' })
     })
 
-    it('takes the module the app comes from and the name the client is imported by', () => {
+    it('takes the name the client is imported by, and the app its package name', () => {
       const config = decode({
         input: 'a.yaml',
-        client: {
-          output: '../client/src/client.ts',
-          import: '@repo/server',
-          package: '@repo/client',
-        },
+        package: '@repo/elysia',
+        client: { output: '../client/src/client.ts', package: '@repo/client' },
       })
-      expect(config.client?.import).toBe('@repo/server')
+      expect(config.package).toBe('@repo/elysia')
       expect(config.client?.package).toBe('@repo/client')
       expect(
         decodeError({ input: 'a.yaml', client: { output: 'src/client.ts', package: 'a b' } })
@@ -302,51 +291,26 @@ describe('parseConfig', () => {
       ).toBe(
         'Invalid config: client.package: must be a module specifier, with no whitespace or quotes',
       )
+      expect(
+        decodeError({
+          input: 'a.yaml',
+          client: { output: '../client/src/client.ts', import: '@repo/server' },
+        }).message,
+      ).toBe(
+        'Invalid config: client.import: import was removed: a client in another package imports the app by the top-level `package`, the name the app entry is published as. Delete the import and set package.',
+      )
     })
 
-    // The generated client is what `eden` and the hooks read when they name no import.
-    it('lets eden and the hooks leave their import out', () => {
+    // The generated client is what `eden` and the hooks import; their blocks name an output only.
+    it('takes eden and the hooks with an output alone', () => {
       const config = decode({
         input: 'a.yaml',
         client: { output: 'src/client.ts' },
         eden: { output: 'src/eden.ts' },
         'tanstack-query': { output: 'src/tanstack-query.ts' },
       })
-      expect(config.eden?.import).toBeUndefined()
-      expect(config['tanstack-query']?.import).toBeUndefined()
-      expect(config['tanstack-query']?.client).toBeUndefined()
-    })
-
-    // Beside a generated client there is one client to import, under one name, so a block that
-    // names an import or a client of its own is written for another client.
-    it('rejects an import or a client name in eden or the hooks beside a generated client', () => {
-      expect(
-        decodeError({
-          input: 'a.yaml',
-          client: { output: 'src/client.ts' },
-          swr: { output: 'src/swr.ts', client: 'api' },
-        }).message,
-      ).toBe(
-        'Invalid config: swr.client is not taken with a top-level client: the generated client is exported as `client`. Delete the name.',
-      )
-      expect(
-        decodeError({
-          input: 'a.yaml',
-          client: { output: 'src/client.ts' },
-          'tanstack-query': { output: 'src/tanstack-query.ts', import: './lib' },
-        }).message,
-      ).toBe(
-        'Invalid config: tanstack-query.import is not taken with a top-level client: the file imports the client it generates. Delete the import.',
-      )
-      expect(
-        decodeError({
-          input: 'a.yaml',
-          client: { output: 'src/client.ts' },
-          eden: { output: 'src/eden.ts', import: './lib', client: 'client' },
-        }).message,
-      ).toBe(
-        'Invalid config: eden.import is not taken with a top-level client: the file imports the client it generates. Delete the import.',
-      )
+      expect(config.eden).toStrictEqual({ output: 'src/eden.ts' })
+      expect(config['tanstack-query']).toStrictEqual({ output: 'src/tanstack-query.ts' })
     })
 
     it('counts the client among the outputs that may not collide', () => {
@@ -365,7 +329,8 @@ describe('parseConfig', () => {
   it('rejects eden.docs, naming what happened to it', () => {
     const error = decodeError({
       input: 'a.yaml',
-      eden: { output: 'src/eden.ts', import: './lib', docs: true },
+      client: { output: 'src/client.ts' },
+      eden: { output: 'src/eden.ts', docs: true },
     })
     expect(error.message).toBe(
       'Invalid config: eden.docs: docs was removed: the wrappers carry no JSDoc. Delete the option.',
@@ -438,13 +403,15 @@ describe('defineConfig', () => {
         schemas: { output: 'src/components/schemas', split: true, exportTypes: true },
         responses: { output: 'src/components/responses.ts' },
       },
-      eden: { output: 'src/eden.ts', import: './lib', client: 'client' },
+      package: '@repo/elysia',
+      client: { output: 'src/lib/client.ts', package: '@repo/client', sameOrigin: true },
+      eden: { output: 'src/eden.ts' },
       types: { output: 'src/types.ts' },
       mock: { output: 'src/mock.ts', seed: 42, delay: { min: 100, max: 800 } },
-      swr: { output: 'src/swr.ts', import: '../lib' },
-      'tanstack-query': { output: 'src/tanstack-query.ts', import: '../lib', client: 'api' },
+      swr: { output: 'src/swr.ts' },
+      'tanstack-query': { output: 'src/tanstack-query.ts' },
     })
-    expect(config.eden.client).toBe('client')
+    expect(config.eden.output).toBe('src/eden.ts')
   })
 
   // A value that is not a literal is left to the check made when the config is read.
@@ -485,32 +452,54 @@ describe('defineConfig', () => {
       // @ts-expect-error -- `src/api.ts` is also the output of eden
       types: { output: 'src/api.ts' },
       // @ts-expect-error -- `src/api.ts` is also the output of types
-      eden: { output: 'src/api.ts', import: './lib' },
+      eden: { output: 'src/api.ts' },
     })
     expect(config.input).toBe('openapi.yaml')
   })
 
-  // The runtime check has a type-level twin, so the import or the name is refused as it is typed.
-  it('is a type error to name an import or the client beside a generated one', () => {
-    const config = defineConfig({
+  // An option that was removed is typed `never`, so a config that carries one does not compile;
+  // one per call, since a literal that fails the constraint is not inferred.
+  it('is a type error to name an import or a client on the hooks', () => {
+    const named = defineConfig({
       input: 'openapi.yaml',
-      client: { output: 'src/client.ts' },
-      // @ts-expect-error -- `client` is not taken with a top-level client
+      // @ts-expect-error -- `client` was removed
       swr: { output: 'src/swr.ts', client: 'api' },
-      // @ts-expect-error -- `import` is not taken with a top-level client
-      eden: { output: 'src/eden.ts', import: './lib' },
-      // @ts-expect-error -- `import` is not taken with a top-level client
-      'tanstack-query': { output: 'src/tanstack-query.ts', import: './lib' },
-      'vue-query': { output: 'src/vue-query.ts' },
     })
-    expect(config.input).toBe('openapi.yaml')
+    expect(named.input).toBe('openapi.yaml')
+    const imported = defineConfig({
+      input: 'openapi.yaml',
+      // @ts-expect-error -- `import` was removed
+      'tanstack-query': { output: 'src/tanstack-query.ts', import: './lib' },
+    })
+    expect(imported.input).toBe('openapi.yaml')
+  })
+
+  it('is a type error to name an import on eden, a component section or the client', () => {
+    const eden = defineConfig({
+      input: 'openapi.yaml',
+      // @ts-expect-error -- `import` was removed
+      eden: { output: 'src/eden.ts', import: './lib' },
+    })
+    expect(eden.input).toBe('openapi.yaml')
+    const section = defineConfig({
+      input: 'openapi.yaml',
+      // @ts-expect-error -- `import` was removed
+      components: { schemas: { output: 'src/schemas.ts', import: '../schemas' } },
+    })
+    expect(section.input).toBe('openapi.yaml')
+    const client = defineConfig({
+      input: 'openapi.yaml',
+      // @ts-expect-error -- `import` was removed
+      client: { output: 'src/client.ts', import: '@repo/elysia' },
+    })
+    expect(client.input).toBe('openapi.yaml')
   })
 
   it('is a type error to ask eden for docs', () => {
     const config = defineConfig({
       input: 'openapi.yaml',
       // @ts-expect-error -- docs was removed
-      eden: { output: 'src/eden.ts', import: './lib', docs: true },
+      eden: { output: 'src/eden.ts', docs: true },
     })
     expect(config.input).toBe('openapi.yaml')
   })
@@ -537,7 +526,7 @@ describe('defineConfig', () => {
     const config = defineConfig({
       input: 'openapi.yaml',
       // @ts-expect-error -- the hooks are always one file
-      swr: { output: 'src/swr', import: './lib', split: true },
+      swr: { output: 'src/swr', split: true },
     })
     expect(config.input).toBe('openapi.yaml')
   })

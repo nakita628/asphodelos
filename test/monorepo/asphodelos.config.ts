@@ -9,9 +9,9 @@ import { defineConfig } from 'asphodelos'
 export default defineConfig({
   input: '../specs/users.yaml',
   output: 'apps/elysia/__generated__/src/index.ts',
+  package: '@repo/elysia',
   client: {
     output: 'apps/eden/__generated__/src/client.ts',
-    import: '@repo/elysia',
     package: '@repo/eden',
     baseUrl: { env: 'ASPHODELOS_TEST_API_URL', source: 'process.env' },
   },

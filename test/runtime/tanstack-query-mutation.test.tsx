@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
@@ -9,6 +9,7 @@ import {
   getPostUsersMutationOptions,
   usePostUsers,
 } from '../__generated__/tanstack-query/hooks.js'
+import { serveInMemory } from '../hosts/in-memory.js'
 import { requestLog } from '../hosts/users-app.js'
 
 /**
@@ -31,8 +32,18 @@ function makeWrapper(queryClient: QueryClient) {
 
 const generatedKey = getPostUsersMutationKey()
 
+const restoreFetch = { restore: () => {} }
+
+beforeAll(() => {
+  restoreFetch.restore = serveInMemory()
+})
+
 afterEach(() => {
   requestLog.length = 0
+})
+
+afterAll(() => {
+  restoreFetch.restore()
 })
 
 describe('generated useMutation hooks', () => {

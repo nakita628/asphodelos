@@ -123,20 +123,23 @@ const ImportSchema = Schema.String.check(
   examples: ['@packages/schemas', '../lib', '.'],
 })
 
-// No decoding default: whether the name was given is what the check against a top-level `client`
-// reads, and the generators take `client` for a name left out.
-const ClientSchema = Schema.optionalKey(
-  Schema.String.check(
-    Schema.isPattern(/^[A-Za-z_$][A-Za-z0-9_$]*$/u, {
-      message: 'must be a JavaScript identifier',
-    }),
-  ).annotate({
-    title: 'Client export name',
-    description:
-      'Named export to import from `import` as the Eden Treaty client, `client` when left out. Not taken with the top-level `client` block: the generated client is exported as `client`.',
-    examples: ['client', 'apiClient'],
-  }),
-)
+/**
+ * An option that is gone, kept as a key so a config written for an earlier version is told what
+ * replaced it rather than silently losing the key.
+ */
+function removed(message: string) {
+  return Schema.optionalKey(Schema.Never.annotate({ message }))
+}
+
+/** The `import` and `client` of a file that calls the client: both gone, the generated client being the one it imports. */
+const CLIENT_CONSUMER_REMOVED = {
+  import: removed(
+    'import was removed: the file imports the client the top-level `client` block generates — relatively, through `pathAlias`, or by `client.package` from another package. Delete the import and add client: { output }.',
+  ),
+  client: removed(
+    'client was removed: the generated client is exported as `client`. Delete the name.',
+  ),
+}
 
 /**
  * Every component target is the same two-branch union: `split: true` writes one file per entry
@@ -185,13 +188,17 @@ const PackageSchema = ImportSchema.annotate({
   examples: ['@repo/schemas'],
 })
 
+const SECTION_IMPORT_REMOVED = removed(
+  'import was removed: a section is imported relatively, through `pathAlias`, or by its `package` from another package. Delete the import.',
+)
+
 const OutputSchema = splitUnion({
-  import: Schema.optionalKey(ImportSchema),
+  import: SECTION_IMPORT_REMOVED,
   package: Schema.optionalKey(PackageSchema),
 })
 
 const ExportTypesOutputSchema = splitUnion({
-  import: Schema.optionalKey(ImportSchema),
+  import: SECTION_IMPORT_REMOVED,
   package: Schema.optionalKey(PackageSchema),
   exportTypes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
     description: 'Also export the TypeScript type inferred from each generated schema.',
@@ -279,12 +286,8 @@ const ClientOutputSchema = Schema.Struct({
     description: 'The `.ts` file the client is written to.',
     examples: ['./src/client.ts'],
   }),
-  import: Schema.optionalKey(
-    ImportSchema.annotate({
-      description:
-        "Module specifier the client imports the app entry from, for a client written into another package: the one that exports `app`. Left out, the client reaches the entry relatively or through the alias, and a client outside the entry's package is refused.",
-      examples: ['@repo/server'],
-    }),
+  import: removed(
+    'import was removed: a client in another package imports the app by the top-level `package`, the name the app entry is published as. Delete the import and set package.',
   ),
   package: Schema.optionalKey(
     ImportSchema.annotate({
@@ -308,24 +311,15 @@ const ClientOutputSchema = Schema.Struct({
     'The Eden Treaty client of the generated app, `treaty<typeof app>(baseUrl)`, typed by a type-only import of the app entry so the server never reaches a browser bundle. `eden` and the hooks import it unless they name an `import` of their own. Needs `@elysiajs/eden` in the project.',
   examples: [
     { output: './src/client.ts', baseUrl: 'http://localhost:3000', sameOrigin: true },
-    { output: '../client/src/lib/client.ts', import: '@repo/server', package: '@repo/client' },
+    { output: '../client/src/lib/client.ts', package: '@repo/client' },
   ],
 })
 
 const HooksSchema = Schema.Struct({
   output: FileOutputSchema,
-  import: Schema.optionalKey(
-    ImportSchema.annotate({
-      description:
-        'Module specifier the generated file imports the Eden Treaty client from. Not taken with the top-level `client` block, whose client the file imports.',
-    }),
-  ),
-  client: ClientSchema,
-  split: Schema.optionalKey(
-    Schema.Never.annotate({
-      message:
-        'split was removed: the hooks are always generated into a single file. Set output to a .ts file path and delete the directory the previous run wrote.',
-    }),
+  ...CLIENT_CONSUMER_REMOVED,
+  split: removed(
+    'split was removed: the hooks are always generated into a single file. Set output to a .ts file path and delete the directory the previous run wrote.',
   ),
 })
 
@@ -486,6 +480,14 @@ const ConfigSchema = Schema.Struct({
       description: 'Leave `.listen()` out of the app entry: a host framework owns the server.',
     }),
   ),
+  package: Schema.optionalKey(
+    PackageSchema.annotate({
+      title: 'App package name',
+      description:
+        "The name the app entry's package is published as. A client written into another package imports `app` by it; left out, such a client is refused.",
+      examples: ['@repo/elysia'],
+    }),
+  ),
   readonly: Schema.optionalKey(
     Schema.Boolean.annotate({
       description: 'Wrap every top-level generated schema in `t.Readonly(...)`.',
@@ -496,22 +498,13 @@ const ConfigSchema = Schema.Struct({
   eden: Schema.optionalKey(
     Schema.Struct({
       output: FileOutputSchema,
-      import: Schema.optionalKey(
-        ImportSchema.annotate({
-          description:
-            'Module specifier the generated file imports the Eden Treaty client from. Not taken with the top-level `client` block, whose client the file imports.',
-        }),
-      ),
-      client: ClientSchema,
-      docs: Schema.optionalKey(
-        Schema.Never.annotate({
-          message: 'docs was removed: the wrappers carry no JSDoc. Delete the option.',
-        }),
-      ),
+      ...CLIENT_CONSUMER_REMOVED,
+      docs: removed('docs was removed: the wrappers carry no JSDoc. Delete the option.'),
     }).annotate({
       title: 'Eden wrappers output',
-      description: 'Typed function wrappers around the Eden Treaty client, one per operation.',
-      examples: [{ output: './src/eden.ts', import: './lib', client: 'client' }],
+      description:
+        'Typed function wrappers around the generated Eden Treaty client, one per operation. Needs `client`.',
+      examples: [{ output: './src/eden.ts' }],
     }),
   ),
   types: Schema.optionalKey(
@@ -603,49 +596,49 @@ const ConfigSchema = Schema.Struct({
     HooksSchema.annotate({
       title: 'SWR hooks output',
       description: 'Generates `useSWR` / `useSWRMutation` hooks per operation.',
-      examples: [{ output: './src/swr.ts', import: '../lib', client: 'client' }],
+      examples: [{ output: './src/swr.ts' }],
     }),
   ),
   'tanstack-query': Schema.optionalKey(
     HooksSchema.annotate({
       title: 'TanStack Query hooks output',
       description: 'Generates `@tanstack/react-query` hooks per operation.',
-      examples: [{ output: './src/tanstack-query.ts', import: '../lib', client: 'client' }],
+      examples: [{ output: './src/tanstack-query.ts' }],
     }),
   ),
   'preact-query': Schema.optionalKey(
     HooksSchema.annotate({
       title: 'Preact Query hooks output',
       description: 'Generates `@tanstack/preact-query` hooks per operation.',
-      examples: [{ output: './src/preact-query.ts', import: '../lib', client: 'client' }],
+      examples: [{ output: './src/preact-query.ts' }],
     }),
   ),
   'solid-query': Schema.optionalKey(
     HooksSchema.annotate({
       title: 'Solid Query hooks output',
       description: 'Generates `@tanstack/solid-query` hooks per operation.',
-      examples: [{ output: './src/solid-query.ts', import: '../lib', client: 'client' }],
+      examples: [{ output: './src/solid-query.ts' }],
     }),
   ),
   'vue-query': Schema.optionalKey(
     HooksSchema.annotate({
       title: 'Vue Query hooks output',
       description: 'Generates `@tanstack/vue-query` hooks per operation.',
-      examples: [{ output: './src/vue-query.ts', import: '../lib', client: 'client' }],
+      examples: [{ output: './src/vue-query.ts' }],
     }),
   ),
   'svelte-query': Schema.optionalKey(
     HooksSchema.annotate({
       title: 'Svelte Query hooks output',
       description: 'Generates `@tanstack/svelte-query` hooks per operation.',
-      examples: [{ output: './src/svelte-query.ts', import: '../lib', client: 'client' }],
+      examples: [{ output: './src/svelte-query.ts' }],
     }),
   ),
   'angular-query': Schema.optionalKey(
     HooksSchema.annotate({
       title: 'Angular Query hooks output',
       description: 'Generates `@tanstack/angular-query-experimental` hooks per operation.',
-      examples: [{ output: './src/angular-query.ts', import: '../lib', client: 'client' }],
+      examples: [{ output: './src/angular-query.ts' }],
     }),
   ),
 })
@@ -681,33 +674,20 @@ const ConfigSchema = Schema.Struct({
       },
       { message: 'every generator needs its own output path' },
     ),
-    // A file that calls the client has to be told where it is: by its own `import`, or by the
-    // top-level `client` block that generates it. With the block, that client is the one every
-    // file imports, under its export name `client` — so neither an `import` nor a `client` is
-    // taken there; a block that names one is written for another client.
+    // A file that calls the client imports the one the top-level `client` block generates, so the
+    // block has to be there for it.
     Schema.makeFilter(
       (v) => {
-        const consumers: readonly (readonly [string, { import?: string; client?: string }])[] = [
-          ...(v.eden ? [['eden', v.eden] as const] : []),
-          ...HOOK_KINDS.flatMap((kind) => {
-            const block = v[kind]
-            return block ? [[kind, block] as const] : []
-          }),
+        const consumers = [
+          ...(v.eden ? ['eden'] : []),
+          ...HOOK_KINDS.filter((kind) => v[kind] !== undefined),
         ]
-        for (const [field, block] of consumers) {
-          if (v.client === undefined) {
-            if (block.import === undefined) {
-              return `${field}.import is required unless a top-level client is generated: name the module that exports the Eden Treaty client, or add client: { output }.`
-            }
-          } else if (block.import !== undefined) {
-            return `${field}.import is not taken with a top-level client: the file imports the client it generates. Delete the import.`
-          } else if (block.client !== undefined) {
-            return `${field}.client is not taken with a top-level client: the generated client is exported as \`client\`. Delete the name.`
-          }
-        }
-        return true
+        const [first] = consumers
+        return v.client === undefined && first !== undefined
+          ? `${first} needs the top-level client it imports: add client: { output }.`
+          : true
       },
-      { message: 'every file that calls the client needs to know where it is' },
+      { message: 'every file that calls the client needs the client to be generated' },
     ),
   )
   .annotate({
@@ -825,8 +805,6 @@ export function readConfig(configPath?: string, reload = false) {
 
 type ConfigInput = typeof ConfigSchema.Encoded
 
-type HookKind = (typeof HOOK_KINDS)[number]
-
 type ComponentKind = (typeof COMPONENT_KINDS)[number]
 
 type OptionOf<S> = S extends unknown ? keyof S : never
@@ -900,42 +878,6 @@ type Written<T, F, V, S> = [SplitOf<V>] extends [true]
     : Collided<T, F, V, S>
   : Collided<T, F, V, S>
 
-type Hooked<T, F, V, S> = [SplitOf<V>] extends [boolean]
-  ? Replaced<
-      V,
-      'split',
-      'was removed: the hooks are always generated into a single file, so output names a .ts file',
-      S
-    >
-  : Written<T, F, V, S>
-
-/**
- * A block that calls the client, checked against the top-level `client`: with the block, the
- * generated client is the one the file imports, as `client`, so neither an `import` nor a
- * `client` name is taken there.
- */
-type Consuming<T, V, S, Else> = 'client' extends keyof T
-  ? 'import' extends keyof V
-    ? Replaced<
-        V,
-        'import',
-        'is not taken with a top-level client: the file imports the client it generates',
-        S
-      >
-    : 'client' extends keyof V
-      ? Replaced<
-          V,
-          'client',
-          'is not taken with a top-level client: the generated client is exported as `client`',
-          S
-        >
-      : Else
-  : Else
-
-type Documented<T, F, V, S> = 'docs' extends keyof V
-  ? Replaced<V, 'docs', 'was removed: the wrappers carry no JSDoc', S>
-  : Written<T, F, V, S>
-
 type Single<T, O> = [Shared<T, 'output', O>] extends [never] ? O : Shared<T, 'output', O>
 
 type Mounted<P> = P extends `/${string}` ? P : string extends P ? P : "must start with '/'"
@@ -959,24 +901,20 @@ type Composed<T, V, S> = {
  *
  * Every rule `parseConfig` applies at run time that can be told from the literal is told here,
  * on the field it concerns: an unknown key, a `.ts` output in split mode, an output two
- * generators share, a prefix without its slash, an import or a client name beside a generated
- * client, and the options that were removed.
+ * generators share, and a prefix without its slash. An option that was removed is typed `never`
+ * in `ConfigInput`, so a config that still carries one fails the constraint before any of this.
  */
 type Checked<T> = {
   readonly [K in keyof T]: K extends keyof ConfigInput
     ? K extends 'test'
       ? 'is not an option: asphodelos no longer generates tests'
-      : K extends HookKind
-        ? Consuming<T, T[K], ConfigInput[K], Hooked<T, K, T[K], ConfigInput[K]>>
-        : K extends 'eden'
-          ? Consuming<T, T[K], ConfigInput[K], Documented<T, K, T[K], ConfigInput[K]>>
-          : K extends 'output'
-            ? Single<T, T[K]>
-            : K extends 'prefix'
-              ? Mounted<T[K]>
-              : K extends 'components'
-                ? Composed<T, T[K], ConfigInput[K]>
-                : Written<T, K, T[K], ConfigInput[K]>
+      : K extends 'output'
+        ? Single<T, T[K]>
+        : K extends 'prefix'
+          ? Mounted<T[K]>
+          : K extends 'components'
+            ? Composed<T, T[K], ConfigInput[K]>
+            : Written<T, K, T[K], ConfigInput[K]>
     : 'is not an option'
 }
 

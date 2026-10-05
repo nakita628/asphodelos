@@ -1,12 +1,13 @@
 import { defineConfig } from 'asphodelos'
 
+// The hooks import the client this config generates beside them; the client is typed by the app the
+// config writes under app/, a package of its own (see app/package.json), so it imports `app` by the
+// name below — which tsconfig.json maps onto the host app, whose handlers are written. The
+// generated app itself is a scaffold and is not compiled.
 export default defineConfig({
-  'vue-query': {
-    output: '../../__generated__/vue-query/hooks.ts',
-    import: '../../hosts/users-client',
-  },
   input: '../../specs/users.yaml',
-  // Every case generates the app too, since that job always runs; it is sent to the same
-  // gitignored tree so a case directory holds nothing but its config.
-  output: '../../__generated__/vue-query/app/index.ts',
+  output: './app/index.ts',
+  package: '@asphodelos/host',
+  client: { output: '../../__generated__/vue-query/client.ts' },
+  'vue-query': { output: '../../__generated__/vue-query/hooks.ts' },
 })

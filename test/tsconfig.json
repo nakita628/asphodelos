@@ -7,7 +7,11 @@
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     // oxlint.config.ts reuses the package config by its `.ts` path.
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // The generated clients are typed by the host app under this name; the cases map it the same.
+    "paths": {
+      "@asphodelos/host": ["./hosts/users-app.ts"]
+    }
   },
   "include": [
     "*.ts",

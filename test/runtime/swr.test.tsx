@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 
 import { EdenFetchError } from '@elysiajs/eden'
 import { renderHook, waitFor } from '@testing-library/react'
@@ -15,6 +15,7 @@ import {
   useInfiniteGetItems,
   usePostUsers,
 } from '../__generated__/swr/hooks.js'
+import { serveInMemory } from '../hosts/in-memory.js'
 import { requestLog } from '../hosts/users-app.js'
 
 /**
@@ -39,8 +40,18 @@ const pagination = {
   }),
 }
 
+const restoreFetch = { restore: () => {} }
+
+beforeAll(() => {
+  restoreFetch.restore = serveInMemory()
+})
+
 afterEach(() => {
   requestLog.length = 0
+})
+
+afterAll(() => {
+  restoreFetch.restore()
 })
 
 describe('generated useSWR hooks', () => {

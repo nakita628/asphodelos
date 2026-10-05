@@ -142,7 +142,12 @@ describe('asphodelos --watch', () => {
         watch.lines.some((line) => line.includes('Generated 1 module(s) (ping)')),
       )
       expect(started, watch.output()).toBe(true)
-      expect(watch.output()).toContain(`👀 Watching ${dir} and asphodelos.config.ts`)
+      // The watcher reports what it watches once it is set up, which the first pass does not
+      // wait for; the line is awaited rather than expected to be there already.
+      expect(
+        await until(() => watch.output().includes(`👀 Watching ${dir} and asphodelos.config.ts`)),
+        watch.output(),
+      ).toBe(true)
 
       const regenerated = await writeUntil(
         path.join(dir, 'openapi.yaml'),

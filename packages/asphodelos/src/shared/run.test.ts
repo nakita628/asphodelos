@@ -197,13 +197,14 @@ describe('makeJob — every job actually runs', () => {
     expect(run.exists('src/schemas/index.ts')).toBe(true)
   })
 
-  it('eden: writes per-operation wrappers importing the configured client', async () => {
+  it('eden: writes per-operation wrappers importing the generated client', async () => {
     const run = await runJobs({
-      eden: { output: 'src/eden.ts', import: './lib', client: 'api' },
+      client: { output: 'src/client.ts' },
+      eden: { output: 'src/api/eden.ts' },
     })
     expect(run.names).toContain('eden')
-    const eden = run.read('src/eden.ts')
-    expect(eden).toContain("import { api } from './lib'")
+    const eden = run.read('src/api/eden.ts')
+    expect(eden).toContain("import { client } from '../client'")
     expect(eden).toContain('listItems')
   })
 
@@ -271,17 +272,14 @@ describe('makeJob — every job actually runs', () => {
   })
 
   // Across packages — the nearest `package.json` says which one a file is in — the client imports
-  // the app by the module `client.import` names, and the files elsewhere import the client by its
-  // package name; a file in the client's own package still imports it relatively.
-  it('client: another package imports the client by its package name, and the client the app by its import', async () => {
+  // the app by the name the top-level `package` gives the app, and the files elsewhere import the
+  // client by its own; a file in the client's own package still imports it relatively.
+  it("client: another package imports the client by its package name, and the client the app by the app's", async () => {
     const run = await runJobs(
       {
         output: 'src/index.ts',
-        client: {
-          output: '../client/src/lib/client.ts',
-          import: '@repo/server',
-          package: '@repo/client',
-        },
+        package: '@repo/server',
+        client: { output: '../client/src/lib/client.ts', package: '@repo/client' },
         eden: { output: '../client/src/lib/eden.ts' },
         'tanstack-query': { output: '../react/src/api/hooks.ts' },
         swr: { output: 'src/hooks/swr.ts' },
@@ -319,11 +317,12 @@ describe('makeJob — every job actually runs', () => {
     expect(
       await failure({ client: { output: '../client/src/lib/client.ts', package: '@repo/client' } }),
     ).toContain(
-      'client.output is in another package than the app entry: name the module that exports the app, client.import, for the client to import it by.',
+      'client.output is in another package than the app entry: name the package the app is published as, the top-level package, for the client to import it by.',
     )
     expect(
       await failure({
-        client: { output: '../client/src/lib/client.ts', import: '@repo/server' },
+        package: '@repo/server',
+        client: { output: '../client/src/lib/client.ts' },
         'tanstack-query': { output: '../react/src/api/hooks.ts' },
       }),
     ).toContain(
@@ -451,9 +450,9 @@ describe('makeJob — every job actually runs', () => {
       'angular-query',
     ] as const
     const config = Object.fromEntries(
-      libraries.map((library) => [library, { output: `src/${library}.ts`, import: './lib' }]),
+      libraries.map((library) => [library, { output: `src/${library}.ts` }]),
     )
-    const run = await runJobs(config)
+    const run = await runJobs({ client: { output: 'src/client.ts' }, ...config })
     for (const library of libraries) {
       expect(run.names).toContain(library)
       expect(run.exists(`src/${library}.ts`)).toBe(true)
@@ -462,7 +461,8 @@ describe('makeJob — every job actually runs', () => {
 
   it('hook libraries: a directory output is written as its index.ts', async () => {
     const run = await runJobs({
-      swr: { output: 'src/swr', import: './lib' },
+      client: { output: 'src/client.ts' },
+      swr: { output: 'src/swr' },
     })
     expect(run.exists('src/swr/index.ts')).toBe(true)
     expect(run.read('src/swr/index.ts')).toContain('useGetItems')

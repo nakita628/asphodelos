@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 
 import { EdenFetchError } from '@elysiajs/eden'
 import { MutationObserver, QueryClient } from '@tanstack/react-query'
@@ -14,6 +14,7 @@ import {
   getUsersKey,
   getUsersQueryOptions,
 } from '../__generated__/tanstack-query/hooks.js'
+import { serveInMemory } from '../hosts/in-memory.js'
 import { abortLog, requestLog } from '../hosts/users-app.js'
 
 /**
@@ -61,9 +62,19 @@ const pagination = {
 }
 
 // The host records every request it serves, and whether each slow request was aborted.
+const restoreFetch = { restore: () => {} }
+
+beforeAll(() => {
+  restoreFetch.restore = serveInMemory()
+})
+
 afterEach(() => {
   requestLog.length = 0
   abortLog.length = 0
+})
+
+afterAll(() => {
+  restoreFetch.restore()
 })
 
 describe('generated queryOptions', () => {

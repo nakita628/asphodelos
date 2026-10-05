@@ -147,7 +147,7 @@ function edenRun(
 ) {
   return Effect.gen(function* () {
     const specifier = yield* importPath
-    return yield* eden(openAPI, output, specifier, edenConfig.client ?? 'client', prefix)
+    return yield* eden(openAPI, output, specifier, 'client', prefix)
   })
 }
 
@@ -179,15 +179,13 @@ function hooksRun(
 type Alias = { readonly prefix: string; readonly directory: string } | undefined
 
 /**
- * How the file at `from` imports the component kind `target`: as the config says; by the package
- * name across a package boundary; through the alias under the app entry's directory; and
- * relatively otherwise — which the generators work out themselves, so it is left unsaid here. A
+ * How the file at `from` imports the component kind `target`: by the package name across a
+ * package boundary; through the alias under the app entry's directory; and relatively otherwise — which the generators work out themselves, so it is left unsaid here. A
  * kind in another package that names no package is imported relatively as well: which kinds a
  * file imports depends on the document, so a name cannot be demanded ahead of it.
  */
 function settleTarget(from: string, target: Target, pathAlias: Alias) {
   return Effect.gen(function* () {
-    if (target.import !== undefined) return target
     const [fromRoot, targetRoot] = yield* Effect.all([
       packageRoot(path.dirname(path.resolve(process.cwd(), from))),
       packageRoot(path.dirname(path.resolve(process.cwd(), target.output))),
@@ -264,15 +262,12 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
   // top-level `client` generates, reached from where the generated file is written. A file beside
   // the client imports the client itself: the barrel is for the others, and may come to re-export
   // the file that would import it. A file in another package imports the client by the name of
-  // its package. `parseConfig` requires an import or a client, so a file with neither is a wiring
-  // error, not a config error.
-  const clientImport = (field: string, output: string, named: string | undefined): Import => {
-    if (named !== undefined) return Effect.succeed(named)
+  // its package. `parseConfig` requires the client block for them, so a file without it is a
+  // wiring error, not a config error.
+  const clientImport = (field: string, output: string): Import => {
     if (clientConfig === undefined) {
       return Effect.fail(
-        new GenerateError({
-          message: `${field}.import is required unless a top-level client is generated`,
-        }),
+        new GenerateError({ message: `${field} needs the top-level client it imports` }),
       )
     }
     const isBeside = posix.dirname(posix.normalize(output)) === posix.dirname(clientConfig.output)
@@ -346,15 +341,13 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
           run: (output: string) =>
             clientRun(
               output,
-              clientConfig.import === undefined
-                ? packageImport(
-                    output,
-                    appOutput,
-                    importSpecifier(output, appOutput, pathAlias),
-                    undefined,
-                    'client.output is in another package than the app entry: name the module that exports the app, client.import, for the client to import it by.',
-                  )
-                : Effect.succeed(clientConfig.import),
+              packageImport(
+                output,
+                appOutput,
+                importSpecifier(output, appOutput, pathAlias),
+                config.package,
+                'client.output is in another package than the app entry: name the package the app is published as, the top-level package, for the client to import it by.',
+              ),
               {
                 baseUrl: clientConfig.baseUrl ?? localhost,
                 fallback: localhost,
@@ -370,13 +363,7 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
           output: edenConfig.output,
           split: false,
           run: (output: string) =>
-            edenRun(
-              openAPI,
-              output,
-              clientImport('eden', output, edenConfig.import),
-              edenConfig,
-              config.prefix,
-            ),
+            edenRun(openAPI, output, clientImport('eden', output), edenConfig, config.prefix),
         }
       : undefined,
     config.types
@@ -413,11 +400,11 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
               hooksRun(
                 openAPI,
                 output,
-                clientImport(library, output, cfg.import),
+                clientImport(library, output),
                 library,
                 view(output),
                 componentsOutput,
-                { client: cfg.client ?? 'client', basePath: config.prefix },
+                { client: 'client', basePath: config.prefix },
               ),
           }
         : undefined
