@@ -10,7 +10,7 @@
 - TypeBox component bundles (schemas, responses, parameters, …)
 - Eden Treaty wrappers and a self-contained `App` type
 - Client library hooks (SWR, TanStack Query, Preact Query, Solid Query, Vue Query, Svelte Query, Angular Query)
-- `bun:test` tests and a mock server
+- A mock server
 
 Asphodelos targets the [Bun](https://bun.sh/) runtime.
 
@@ -51,7 +51,7 @@ bunx asphodelos
 
 ```text
 DESCRIPTION
-  Generate Elysia code from OpenAPI or TypeSpec
+  Asphodelos is a code generator from OpenAPI to Elysia
 
 USAGE
   asphodelos [flags] [<input>]
@@ -95,7 +95,10 @@ bunx asphodelos --watch
 ```
 
 Reruns the config on every change to the input documents or to the config itself, and keeps
-watching when a run fails. It cannot be combined with `<input>` / `--output`.
+watching when a run fails. The whole directory of the input document is watched, so TypeSpec
+imports and `$ref` files beside it trigger a rerun too — and so do the files a `$ref` or an import
+reaches outside that directory. An input directory that is removed and recreated, or that does not
+exist yet, is picked up when it appears. It cannot be combined with `<input>` / `--output`.
 
 ### Example
 
@@ -193,14 +196,15 @@ export default defineConfig({
 })
 ```
 
-- **What it watches**: `asphodelos.config.ts`, and every `.yaml` / `.json` / `.tsp` in the
-  directory of `input` — a `$ref` or a TypeSpec import can reach a sibling file.
+- **What it watches**: `asphodelos.config.ts`, every `.yaml` / `.json` / `.tsp` in the directory
+  of `input` — a `$ref` or a TypeSpec import can reach a sibling file — and every file the document
+  reads from outside that directory.
 - **When it regenerates**: a config save always regenerates. A document save regenerates only when
   the documents' contents changed, or a generated file has gone missing; a save with nothing new in
   it is skipped.
 - **When the browser reloads**: only when a generated file actually changed.
 - **Cleanup**: an output that the config or the document no longer produces is removed. The app
-  entry, `modules/` and the generated tests are never removed, because they hold your code.
+  entry and `modules/` are never removed, because they hold your code.
 - A config that fails to load is reported and the previous one stays in effect; the next save
   retries, so a typo never needs a restart. Every run is queued, so two never overlap.
 
@@ -242,13 +246,15 @@ Supported: SWR, TanStack Query, Preact Query, Solid Query, Vue Query, Svelte Que
 export default defineConfig({
   input: 'openapi.yaml',
   'tanstack-query': {
-    output: './src/tanstack-query',
+    output: './src/tanstack-query.ts',
     import: '../lib',
-    split: true,
     client: 'client',
   },
 })
 ```
+
+The hooks are written into one file. `import` names the module that exports your Eden Treaty
+client, and `client` its export name (`client` when left out).
 
 ### Infinite Query (`x-pagination`)
 
@@ -274,30 +280,12 @@ const items = useListItemsInfinite(undefined, {
 Vue Query takes only `buildInit` there, with `initialPageParam` / `getNextPageParam` in the third
 argument. SWR takes `buildInit(pageIndex, previousPage)` and stops when it returns `null`.
 
-## Test & Mock Generation
-
-### Test Generation
-
-Generates `bun:test` tests that call `app.handle(...)` on the real app: a success-status test per
-operation, plus `401` / `404` tests when the spec declares them. They start red against the empty
-handlers; re-running keeps your hand-written tests.
-
-```ts
-export default defineConfig({
-  input: 'openapi.yaml',
-  test: {
-    output: 'src/app.test.ts', // or `split: true` for modules/<resource>/index.test.ts
-    pathAlias: '@/', // optional: import the app through a tsconfig alias
-  },
-})
-```
-
-### Mock Server Generation
+## Mock Server Generation
 
 Generates a standalone Elysia server that answers every operation with a
 [`@faker-js/faker`](https://fakerjs.dev/) mock of its success response. Secured operations that
 declare a `401` answer it when the credential is missing, and path parameters answer a declared
-`404` for the same sentinel values the generated tests send.
+`404` for a sentinel value the schema accepts but no record is likely to carry.
 
 ```ts
 export default defineConfig({
@@ -325,12 +313,19 @@ declare answers `500` with an `application/problem+json` body saying what is mis
 
 ## Full Config Reference
 
-With `split: true`, `output` is a directory (one file per entry + `index.ts` barrel); otherwise it
-is a single `.ts` file. `components.output` and the per-type components are mutually exclusive.
+Every generator is opted in by adding its section. `defineConfig` checks the config while you type
+it, and the CLI checks it again when it runs:
 
-A split directory belongs to the generator: every run empties its `.ts` files before refilling it,
-so an entry that leaves the document does not leave an orphaned file behind. Subdirectories, other
-files and the single-file outputs of other generators are left alone.
+- Every generator needs its own `output`. Two generators writing to one path is an error.
+- `components.output` (one file) and the per-type `components.*` sections are mutually exclusive.
+- A component section with `split: true` writes one file per entry plus an `index.ts` barrel into a
+  directory; otherwise `output` is a single `.ts` file (a directory stands for its `index.ts`).
+- A split directory belongs to the generator: every run empties its `.ts` files before refilling
+  it, so an entry that leaves the document does not leave an orphaned file behind. Subdirectories,
+  other files and the single-file outputs of other generators are left alone.
+- `prefix` must start with `/`. `import` must be a module specifier, `client` an identifier.
+- The hooks (`swr`, `tanstack-query`, …) are always one file; `split` is no longer an option
+  there, and neither is the `test` generator.
 
 ```ts
 import { defineConfig } from 'asphodelos'
@@ -424,11 +419,6 @@ export default defineConfig({
     docs: false,
   },
 
-  test: {
-    split: true, // false: a single file at `output`
-    pathAlias: '@/',
-  },
-
   mock: {
     output: 'src/mock.ts',
     useExamples: true, // true: response examples | 'all': also schema/property examples | false
@@ -440,45 +430,38 @@ export default defineConfig({
   },
 
   swr: {
-    output: 'src/swr',
+    output: 'src/swr.ts',
     import: '../lib',
-    split: true,
     client: 'client',
   },
   'tanstack-query': {
-    output: 'src/tanstack-query',
+    output: 'src/tanstack-query.ts',
     import: '../lib',
-    split: true,
     client: 'client',
   },
   'preact-query': {
-    output: 'src/preact-query',
+    output: 'src/preact-query.ts',
     import: '../lib',
-    split: true,
     client: 'client',
   },
   'solid-query': {
-    output: 'src/solid-query',
+    output: 'src/solid-query.ts',
     import: '../lib',
-    split: true,
     client: 'client',
   },
   'vue-query': {
-    output: 'src/vue-query',
+    output: 'src/vue-query.ts',
     import: '../lib',
-    split: true,
     client: 'client',
   },
   'svelte-query': {
-    output: 'src/svelte-query',
+    output: 'src/svelte-query.ts',
     import: '../lib',
-    split: true,
     client: 'client',
   },
   'angular-query': {
-    output: 'src/angular-query',
+    output: 'src/angular-query.ts',
     import: '../lib',
-    split: true,
     client: 'client',
   },
 })

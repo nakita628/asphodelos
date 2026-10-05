@@ -5,6 +5,4 @@ import { Effect } from 'effect'
 
 import { asphodelos } from './cli/index.js'
 
-NodeRuntime.runMain(
-  asphodelos(process.argv.slice(2), import.meta.url).pipe(Effect.provide(NodeServices.layer)),
-)
+NodeRuntime.runMain(asphodelos().pipe(Effect.provide(NodeServices.layer)))

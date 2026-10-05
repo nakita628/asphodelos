@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test'
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { makeQueryHooks } from '../../helper/query.js'
 import type { OpenAPI } from '../../openapi/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
+import { runGenerator } from '../../testing/index.js'
 import { HOOK_CONFIGS } from './index.js'
 
 describe('swr generator', () => {
@@ -15,8 +15,7 @@ describe('swr generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS.swr, client, basePath, split)
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS.swr, client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()
@@ -529,165 +528,52 @@ export function useDeleteItem<
     expect(result).toStrictEqual('No operations found')
   })
 
-  it('split mode: emits one file per operation + index.ts barrel with selective per-file imports', async () => {
+  // Eden cannot type a segment that mixes a parameter with static text, so the hook falls back
+  // to `fetch` and names its data by the response's component — which has to be imported from
+  // the schemas module the config writes.
+  it('imports the response component a fetch fallback hook is typed by', async () => {
     const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-split-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-fetch-'))
     process.chdir(dir)
     try {
-      const outDir = path.join(dir, 'src/swr')
       await runGenerator(
-        swr(
+        makeQueryHooks(
           {
             openapi: '3.1.0',
             info: { title: 'T', version: '0' },
             paths: {
-              '/items': {
-                get: { operationId: 'listItems', responses: { '200': { description: 'ok' } } },
-                post: { operationId: 'createItem', responses: { '201': { description: 'ok' } } },
+              '/Accounts/{Sid}.json': {
+                get: {
+                  operationId: 'fetchAccount',
+                  parameters: [
+                    { name: 'Sid', in: 'path', required: true, schema: { type: 'string' } },
+                  ],
+                  responses: {
+                    '200': {
+                      description: 'ok',
+                      content: {
+                        'application/json': {
+                          schema: { $ref: '#/components/schemas/Account' },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
+            components: { schemas: { Account: { type: 'object' } } },
           },
-          outDir,
-          './lib',
+          'src/hooks/swr.ts',
+          '../client',
+          HOOK_CONFIGS.swr,
+          'client',
           undefined,
-          undefined,
-          true,
+          '../components/schemas',
         ),
       )
-      const files = readdirSync(outDir).toSorted()
-      expect(files).toStrictEqual(['createItem.ts', 'index.ts', 'keys.ts', 'listItems.ts'])
-
-      const expectedIndex = `export * from './keys'
-export * from './listItems'
-export * from './createItem'
-`
-      expect(readFileSync(path.join(outDir, 'index.ts'), 'utf8')).toBe(expectedIndex)
-
-      const expectedKeys = `export function getItemsKey() {
-  return ['items'] as const
-}
-`
-      expect(readFileSync(path.join(outDir, 'keys.ts'), 'utf8')).toBe(expectedKeys)
-
-      // Mutation file imports ONLY swr/mutation — no swr/swr/infinite.
-      const expectedCreateItem = `import useSWRMutation from 'swr/mutation'
-import type { SWRMutationConfiguration } from 'swr/mutation'
-import { client } from './lib'
-
-export function createItemMutationKey() {
-  return ['items', '/items', 'POST'] as const
-}
-
-export function useCreateItem<
-  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
->(
-  config?: SWRMutationConfiguration<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    ReturnType<typeof createItemMutationKey>,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >,
-) {
-  return useSWRMutation<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    ReturnType<typeof createItemMutationKey>,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >(
-    createItemMutationKey(),
-    async (
-      _key: ReturnType<typeof createItemMutationKey>,
-      {
-        arg,
-      }: {
-        arg: {
-          body: Parameters<typeof client.items.post>[0]
-          options?: Parameters<typeof client.items.post>[1]
-        }
-      },
-    ) => {
-      const { data, error } = await client.items.post(arg.body, arg.options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
-}
-`
-      expect(readFileSync(path.join(outDir, 'createItem.ts'), 'utf8')).toBe(expectedCreateItem)
-    } finally {
-      process.chdir(cwd)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('split mode: errors when an operation resolves to the reserved keys.ts file name', async () => {
-    const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-keys-collision-'))
-    process.chdir(dir)
-    try {
-      const result = await runGeneratorError(
-        swr(
-          {
-            openapi: '3.1.0',
-            info: { title: 'T', version: '0' },
-            paths: {
-              '/keys': {
-                get: { operationId: 'keys', responses: { '200': { description: 'ok' } } },
-              },
-            },
-          },
-          path.join(dir, 'src/swr'),
-          './lib',
-          undefined,
-          undefined,
-          true,
-        ),
-      )
-      expect(result.message).toStrictEqual(
-        "Operation file name 'keys.ts' collides with the aggregated cache-key file. Rename the operation (operationId) that resolves to 'keys'.",
-      )
-    } finally {
-      process.chdir(cwd)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('split mode: emits no keys.ts (and no barrel entry) when there are no prefixes', async () => {
-    const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-no-prefix-'))
-    process.chdir(dir)
-    try {
-      const outDir = path.join(dir, 'src/swr')
-      await runGenerator(
-        swr(
-          {
-            openapi: '3.1.0',
-            info: { title: 'T', version: '0' },
-            paths: {
-              '/': {
-                get: { operationId: 'getRoot', responses: { '200': { description: 'ok' } } },
-              },
-            },
-          },
-          outDir,
-          './lib',
-          undefined,
-          undefined,
-          true,
-        ),
-      )
-      const files = readdirSync(outDir).toSorted()
-      expect(files).toStrictEqual(['getRoot.ts', 'index.ts'])
-      expect(readFileSync(path.join(outDir, 'index.ts'), 'utf8')).toBe(
-        `export * from './getRoot'\n`,
-      )
+      const code = readFileSync(path.join(dir, 'src/hooks/swr.ts'), 'utf8')
+      expect(code).toContain("import type { Account } from '../components/schemas'")
+      expect(code).toContain('useSWR<Account, TError>')
     } finally {
       process.chdir(cwd)
       rmSync(dir, { recursive: true, force: true })
@@ -702,7 +588,6 @@ describe('tanstack-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
     packageName?: string,
   ) =>
     makeQueryHooks(
@@ -714,7 +599,6 @@ describe('tanstack-query generator', () => {
         : HOOK_CONFIGS['tanstack-query'],
       client,
       basePath,
-      split,
     )
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
@@ -724,29 +608,6 @@ describe('tanstack-query generator', () => {
     try {
       await runGenerator(tanstackQuery(api, 'src/tanstack.ts', './lib'))
       return readFileSync(path.join(dir, 'src/tanstack.ts'), 'utf8')
-    } finally {
-      process.chdir(cwd)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-
-  const generateSplitAndRead = async (
-    api: OpenAPI,
-  ): Promise<{ files: string[]; index: string; perOp: Record<string, string> }> => {
-    const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-tq-split-'))
-    process.chdir(dir)
-    try {
-      const outDir = path.join(dir, 'src/tanstack')
-      await runGenerator(tanstackQuery(api, outDir, './lib', undefined, undefined, true))
-      const files = readdirSync(outDir).toSorted()
-      const perOp: Record<string, string> = {}
-      for (const f of files) {
-        if (f === 'index.ts') continue
-        perOp[f] = readFileSync(path.join(outDir, f), 'utf8')
-      }
-      const index = readFileSync(path.join(outDir, 'index.ts'), 'utf8')
-      return { files, index, perOp }
     } finally {
       process.chdir(cwd)
       rmSync(dir, { recursive: true, force: true })
@@ -1501,177 +1362,7 @@ export function useDeleteItem<
     expect(result).toStrictEqual('No operations found')
   })
 
-  it('split mode: emits one file per operation + index.ts barrel with selective per-file imports', async () => {
-    const { files, index, perOp } = await generateSplitAndRead({
-      openapi: '3.1.0',
-      info: { title: 'T', version: '0' },
-      paths: {
-        '/items': {
-          get: { operationId: 'listItems', responses: { '200': { description: 'ok' } } },
-          post: { operationId: 'createItem', responses: { '201': { description: 'ok' } } },
-        },
-      },
-    })
-    expect(files).toStrictEqual(['createItem.ts', 'index.ts', 'keys.ts', 'listItems.ts'])
-    const expectedIndex = `export * from './keys'
-export * from './listItems'
-export * from './createItem'
-`
-    expect(index).toBe(expectedIndex)
-
-    const expectedKeys = `export function getItemsKey() {
-  return ['items'] as const
-}
-`
-    expect(perOp['keys.ts']).toBe(expectedKeys)
-
-    const expectedListItems = `import { useQuery, useSuspenseQuery, queryOptions } from '@tanstack/react-query'
-import type { UseQueryOptions, UseSuspenseQueryOptions } from '@tanstack/react-query'
-import { client } from './lib'
-
-export function listItemsQueryKey() {
-  return ['items', '/items'] as const
-}
-
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
-}
-
-export function useListItems<
-  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
-) {
-  return useQuery<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
-}
-
-export function useSuspenseListItems<
-  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseSuspenseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
-) {
-  return useSuspenseQuery<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
-}
-`
-    expect(perOp['listItems.ts']).toBe(expectedListItems)
-
-    // Mutation file imports ONLY the mutation hook, helper and option type — no useQuery
-    // / queryOptions (selective per-file imports proves the import scoping).
-    const expectedCreateItem = `import { useMutation, mutationOptions } from '@tanstack/react-query'
-import type { UseMutationOptions } from '@tanstack/react-query'
-import { client } from './lib'
-
-export function createItemMutationKey() {
-  return ['items', '/items', 'POST'] as const
-}
-
-export function createItemMutationOptions<
-  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
->() {
-  return mutationOptions<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >({
-    mutationKey: createItemMutationKey(),
-    mutationFn: async ({ body, options }) => {
-      const { data, error } = await client.items.post(body, options)
-      if (error) throw error
-      return data
-    },
-  })
-}
-
-export function useCreateItem<
-  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
->(
-  mutationOptions?: Omit<
-    UseMutationOptions<
-      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-      TError,
-      {
-        body: Parameters<typeof client.items.post>[0]
-        options?: Parameters<typeof client.items.post>[1]
-      }
-    >,
-    'mutationKey' | 'mutationFn'
-  >,
-) {
-  return useMutation<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >({ ...mutationOptions, ...createItemMutationOptions<TError>() })
-}
-`
-    expect(perOp['createItem.ts']).toBe(expectedCreateItem)
-  })
-
-  it('packageName arg flows into emitted import (non-default package, non-split mode)', async () => {
+  it('packageName arg flows into emitted import (non-default package)', async () => {
     const cwd = process.cwd()
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-tq-pkg-'))
     process.chdir(dir)
@@ -1691,7 +1382,6 @@ export function useCreateItem<
           './lib',
           undefined,
           undefined,
-          false,
           '@example/custom-query',
         ),
       )
@@ -1855,9 +1545,7 @@ describe('vue-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) =>
-    makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['vue-query'], client, basePath, split)
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['vue-query'], client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()
@@ -2240,17 +1928,7 @@ describe('solid-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) =>
-    makeQueryHooks(
-      openAPI,
-      output,
-      importPath,
-      HOOK_CONFIGS['solid-query'],
-      client,
-      basePath,
-      split,
-    )
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['solid-query'], client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()
@@ -2677,17 +2355,7 @@ describe('svelte-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) =>
-    makeQueryHooks(
-      openAPI,
-      output,
-      importPath,
-      HOOK_CONFIGS['svelte-query'],
-      client,
-      basePath,
-      split,
-    )
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['svelte-query'], client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()
@@ -3098,17 +2766,7 @@ describe('angular-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) =>
-    makeQueryHooks(
-      openAPI,
-      output,
-      importPath,
-      HOOK_CONFIGS['angular-query'],
-      client,
-      basePath,
-      split,
-    )
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['angular-query'], client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()

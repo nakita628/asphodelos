@@ -34,7 +34,7 @@ function writeConfig(swrOutput: string) {
 export default defineConfig({
   input: 'openapi.yaml',
   output: 'app/index.ts',
-  swr: { split: true, output: '${swrOutput}', import: '../client' },
+  swr: { output: '${swrOutput}', import: '../client' },
 })
 `,
   )
@@ -63,7 +63,7 @@ beforeAll(async () => {
   rmSync(projectDir, { recursive: true, force: true })
   mkdirSync(projectDir, { recursive: true })
   writeFileSync(specPath, readFileSync(path.join(testRoot, 'specs', 'users.yaml'), 'utf8'))
-  writeConfig('hooks')
+  writeConfig('hooks/index.ts')
   // The plugin resolves the config and every output against the working directory, the way the
   // CLI does, so the dev server is started from inside the project.
   process.chdir(projectDir)
@@ -97,7 +97,7 @@ describe('asphodelosVite in a Vite dev server', () => {
 
     expect(existsSync(path.join(projectDir, 'app/index.ts'))).toBe(true)
     expect(existsSync(path.join(projectDir, 'app/modules/users/index.ts'))).toBe(true)
-    expect(existsSync(path.join(projectDir, 'hooks/listUsers.ts'))).toBe(true)
+    expect(readFileSync(path.join(projectDir, 'hooks/index.ts'), 'utf8')).toContain('useListUsers')
   }, 120_000)
 
   it('regenerates and reloads when the document changes', async () => {
@@ -117,19 +117,23 @@ describe('asphodelosVite in a Vite dev server', () => {
       ),
     )
 
-    expect(await waitFor(() => existsSync(path.join(projectDir, 'hooks/getHealth.ts')))).toBe(true)
+    expect(
+      await waitFor(() =>
+        readFileSync(path.join(projectDir, 'hooks/index.ts'), 'utf8').includes('useGetHealth'),
+      ),
+    ).toBe(true)
     expect(await waitFor(() => reloads.includes('full-reload'))).toBe(true)
     expect(existsSync(path.join(projectDir, 'app/modules/health/index.ts'))).toBe(true)
   }, 120_000)
 
   it('reloads an edited config and cleans up the output it no longer names', async () => {
-    writeConfig('swr')
+    writeConfig('swr/index.ts')
 
     expect(await waitFor(() => existsSync(path.join(projectDir, 'swr/index.ts')))).toBe(true)
     // The plugin logs a removal after it has happened, so the log line is the thing to wait for.
-    const removed = `🧹 removed ${path.join(projectDir, 'hooks/listUsers.ts')}`
+    const removed = `🧹 removed ${path.join(projectDir, 'hooks/index.ts')}`
     expect(await waitFor(() => logged.includes(removed))).toBe(true)
-    expect(existsSync(path.join(projectDir, 'hooks/listUsers.ts'))).toBe(false)
+    expect(existsSync(path.join(projectDir, 'hooks/index.ts'))).toBe(false)
     // The app entry holds the user's code, so a config edit never takes it away.
     expect(existsSync(path.join(projectDir, 'app/index.ts'))).toBe(true)
   }, 120_000)

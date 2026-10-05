@@ -8,7 +8,14 @@ import { parseConfig } from '../config/index.js'
 import { FormatOptions } from '../format/index.js'
 import { fileSystemLayer } from '../fsp/index.js'
 import { parseOpenAPI } from '../openapi/index.js'
-import { cleanSplitOutputs, isUserCodeJob, jobTargets, makeJob } from '../shared/index.js'
+import {
+  cleanSplitOutputs,
+  isInsideDirectory,
+  isUserCodeJob,
+  jobTargets,
+  makeJob,
+  outsideSources,
+} from '../shared/index.js'
 
 type ViteDevServer = {
   watcher: {
@@ -140,17 +147,14 @@ function isInputFile(filePath: string) {
 /**
  * Whether a change under `directory` is one to the documents the config reads.
  *
- * `path.relative` rather than `startsWith`: `/api` is a string prefix of `/api-old/spec.yaml`
+ * `isInsideDirectory` rather than `startsWith`: `/api` is a string prefix of `/api-old/spec.yaml`
  * without being its directory.
  */
 function isWatchedInput(directory: string, filePath: string) {
-  const relative = path.relative(directory, filePath)
   return (
-    relative !== '' &&
-    !relative.startsWith('..') &&
-    !path.isAbsolute(relative) &&
-    isInputFile(relative) &&
-    !relative.split(path.sep).slice(0, -1).some(isSkippedDirectory)
+    isInsideDirectory(directory, filePath) &&
+    isInputFile(filePath) &&
+    !path.relative(directory, filePath).split(path.sep).slice(0, -1).some(isSkippedDirectory)
   )
 }
 
@@ -172,16 +176,18 @@ function listFiles(target: string): Effect.Effect<readonly string[], never, File
 }
 
 /**
- * A digest of every document under the input directory, or `null` when the set cannot be read
- * reliably — which callers treat as "changed" and regenerate.
+ * A digest of every document the config reads, or `null` when the set cannot be read reliably —
+ * which callers treat as "changed" and regenerate.
  *
- * The whole directory rather than the file `input` names: a TypeSpec entry imports its siblings
- * and a `$ref` can point at one, so the named file is rarely the only one that matters.
+ * The whole input directory rather than the file `input` names: a TypeSpec entry imports its
+ * siblings and a `$ref` can point at one, so the named file is rarely the only one that matters.
+ * The files the document reads from `outside` the directory are part of the set as well.
  */
-function hashInputs(directory: string) {
+function hashInputs(directory: string, outside: readonly string[]) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const files = (yield* listFiles(directory)).filter(isInputFile).toSorted()
+    const inside = (yield* listFiles(directory)).filter(isInputFile)
+    const files = [...new Set([...inside, ...outside])].toSorted()
     if (files.length === 0) return null
     const contents = yield* Effect.all(
       files.map((file) => fs.readFileString(file).pipe(Effect.orElseSucceed(() => null))),
@@ -282,7 +288,7 @@ function removeStaleOutput(output: string, keep: ReadonlySet<string>) {
  * narrower than a recursive delete, because a path the config used to name may be shared with the
  * user:
  *
- * - outputs that merge into the user's code (`elysia`, `test`) are never removed;
+ * - the app entry and its `modules/`, which merge into the user's code, are never removed;
  * - a stale file is removed only when it is a `.ts` file;
  * - a stale split directory loses only its direct `.ts` children, never a subdirectory, and the
  *   directory itself stays;
@@ -366,6 +372,8 @@ export function asphodelosVite(): any {
     config: Config | null
     /** The directory the config's documents live in, which is what the watcher filters on. */
     inputDirectory: string | null
+    /** The files the document reads from outside that directory, as of the last pass. */
+    outside: readonly string[]
     /** The document digest the last pass generated from. */
     inputHash: string | null
     /** The jobs the last pass that got as far as writing ran. */
@@ -374,6 +382,7 @@ export function asphodelosVite(): any {
   } = {
     config: null,
     inputDirectory: null,
+    outside: [],
     inputHash: null,
     jobs: null,
     queue: Promise.resolve(),
@@ -393,12 +402,32 @@ export function asphodelosVite(): any {
     return queued
   }
 
+  /**
+   * Learns which files outside the input directory the document reads, and watches them.
+   *
+   * Generation is over by the time this runs and nothing here feeds it: the list only decides
+   * which edits bring the next pass about. A document that cannot be read keeps the list it had.
+   * The digest is taken again because it has to cover the same files the next comparison will.
+   */
+  const watchOutside = async (server: ViteDevServer) => {
+    const { config, inputDirectory } = state
+    if (!config || inputDirectory === null) return
+    const outside = await runWithFileSystem(
+      outsideSources(config.input).pipe(Effect.orElseSucceed(() => state.outside)),
+    )
+    if (outside.join('\n') === state.outside.join('\n')) return
+    state.outside = outside
+    if (outside.length > 0) server.watcher.add(outside)
+    state.inputHash = await runWithFileSystem(hashInputs(inputDirectory, outside))
+  }
+
   const runPass = async (server: ViteDevServer) => {
     const { config } = state
     if (!config) return
     console.log('🌸 asphodelos')
     const { logs, changed, jobs } = await runWithFileSystem(generate(config))
     for (const line of logs) console.log(line)
+    await watchOutside(server)
     if (!jobs) return
     const removed =
       state.jobs === null ? [] : await runWithFileSystem(removeStaleOutputs(state.jobs, jobs))
@@ -426,8 +455,11 @@ export function asphodelosVite(): any {
       inputPath,
       ...INPUT_EXTENSIONS.map((extension) => path.join(inputDirectory, `**/*${extension}`)),
     ])
+    // The outside list belongs to the document the previous config named; a document somewhere
+    // else starts from nothing until it has been read.
+    if (inputDirectory !== state.inputDirectory) state.outside = []
     state.inputDirectory = inputDirectory
-    state.inputHash = await runWithFileSystem(hashInputs(inputDirectory))
+    state.inputHash = await runWithFileSystem(hashInputs(inputDirectory, state.outside))
     await runPass(server)
   }
 
@@ -440,7 +472,7 @@ export function asphodelosVite(): any {
     const { inputDirectory, jobs } = state
     if (inputDirectory === null) return
     const [inputHash, outputsExist] = await runWithFileSystem(
-      Effect.all([hashInputs(inputDirectory), hasAllOutputs(jobs ?? [])]),
+      Effect.all([hashInputs(inputDirectory, state.outside), hasAllOutputs(jobs ?? [])]),
     )
     if (inputHash !== null && inputHash === state.inputHash && jobs !== null && outputsExist) {
       console.log('⏭️ asphodelos: input unchanged - skipped regeneration')
@@ -473,7 +505,10 @@ export function asphodelosVite(): any {
           queueConfigChange(server)
           return
         }
-        if (state.inputDirectory !== null && isWatchedInput(state.inputDirectory, changedPath)) {
+        if (
+          state.outside.includes(changedPath) ||
+          (state.inputDirectory !== null && isWatchedInput(state.inputDirectory, changedPath))
+        ) {
           queueInputChange(server)
         }
       })

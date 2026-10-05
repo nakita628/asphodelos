@@ -9,5 +9,5 @@
     // oxlint.config.ts reuses the package config by its `.ts` path.
     "allowImportingTsExtensions": true
   },
-  "include": ["*.ts", "hosts", "runtime", "scripts", "types"]
+  "include": ["*.ts", "hosts", "path-params", "query-params", "runtime", "scripts", "types"]
 }

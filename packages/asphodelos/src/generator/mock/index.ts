@@ -217,9 +217,9 @@ function authGuard(
  * The guard a path parameter answers 404 with, or `''` when there is nothing to guard.
  *
  * Emitted only when the operation declares a 404, for the same reason as the 401: a status the
- * document never mentioned is one the client was never told to expect. The sentinel value is
- * shared with the test generator, so a generated 404 test and the mock agree on which value
- * means "not there".
+ * document never mentioned is one the client was never told to expect. The sentinel is a value
+ * the schema accepts that no real record is likely to carry, so a client can ask for "not there"
+ * on purpose.
  */
 function notFoundGuard(
   operation: Operation,

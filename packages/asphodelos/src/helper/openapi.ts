@@ -196,6 +196,32 @@ function resolvePathItem(pathItem: PathItem, api: OpenAPI) {
   return target ?? pathItem
 }
 
+/**
+ * The operation with the parameters its path item declares for every operation under it.
+ *
+ * A parameter the operation declares itself, by name and location, replaces the path item's; the
+ * rest are inherited, ahead of the operation's own.
+ */
+function withPathItemParameters(
+  operation: Operation,
+  inherited: readonly (Parameter | Reference)[],
+  components: Components | undefined,
+) {
+  if (inherited.length === 0) return operation
+  const own = operation.parameters ?? []
+  const declared = new Set(
+    own
+      .map((p) => resolveParameter(p, components))
+      .filter((p): p is Parameter => p !== undefined)
+      .map((p) => `${p.in}:${p.name}`),
+  )
+  const added = inherited.filter((p) => {
+    const parameter = resolveParameter(p, components)
+    return parameter !== undefined && !declared.has(`${parameter.in}:${parameter.name}`)
+  })
+  return { ...operation, parameters: [...added, ...own] }
+}
+
 function walk(
   path: string,
   resource: string,
@@ -209,7 +235,10 @@ function walk(
     const operation = resolved[method]
     if (!operation) return []
     const resolvedOperation = renameOperationParams(
-      resolveOperation(operation, api.components),
+      resolveOperation(
+        withPathItemParameters(operation, resolved.parameters ?? [], api.components),
+        api.components,
+      ),
       renames,
     )
     return [[resource, makeRoute(method, normalizedPath, resolvedOperation)] as const]

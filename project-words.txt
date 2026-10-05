@@ -1,6 +1,6 @@
-# Words cspell does not know but this project uses on purpose. One per line, sorted, lowercase
-# unless the casing itself is the point. Adding a word is a one-line diff; adding a *typo* here
 # is how the check stops working, so keep it to terms that really recur.
+# unless the casing itself is the point. Adding a word is a one-line diff; adding a *typo* here
+# Words cspell does not know but this project uses on purpose. One per line, sorted, lowercase
 apidevtools
 asphodelos
 bogeychan
@@ -19,19 +19,26 @@ happydom
 healthz
 hekireki
 idents
+ienum
 injectively
+inull
 lowlink
 Mersenne
 Metavar
 msvc
 nakita
+numericsenum
 openssf
+paramref
 petstore
 pipefail
 prefault
 registrator
 rhysd
 sapegin
+schemaref
+sconst
+senum
 strongconnect
 tagless
 takibi

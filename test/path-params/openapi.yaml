@@ -1,0 +1,275 @@
+# Every parameter shape the generator supports, as a path parameter: one route each, so a shape that
+# rejects its own value fails on its own. Path values are always single and always required, which
+# is the axis `query-params` cannot cover.
+#
+# The second axis is constraints (`minimum`, `maxLength`, `pattern`, ...): a constraint on a numeric
+# parameter has to apply to the coerced value, not to the text of the segment.
+#
+# The last axis is how a parameter is declared rather than what it holds: several in one path, a
+# name that is not an identifier, a `$ref`, a declaration shared by every operation of a path item,
+# and one the operation overrides.
+openapi: 3.1.0
+info:
+  title: Path Parameter Matrix
+  version: 0.0.0
+paths:
+  # ---- numeric and boolean shapes ----
+  /integer/{value}:
+    get:
+      operationId: integerParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+  /int32/{value}:
+    get:
+      operationId: int32Param
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: integer, format: int32 } }
+      responses:
+        '200': { description: OK }
+  /int64/{value}:
+    get:
+      operationId: int64Param
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { description: OK }
+  /number/{value}:
+    get:
+      operationId: numberParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: number } }
+      responses:
+        '200': { description: OK }
+  /double/{value}:
+    get:
+      operationId: doubleParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: number, format: double } }
+      responses:
+        '200': { description: OK }
+  /boolean/{value}:
+    get:
+      operationId: booleanParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: boolean } }
+      responses:
+        '200': { description: OK }
+  # ---- string shapes ----
+  /string/{value}:
+    get:
+      operationId: stringParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  /email/{value}:
+    get:
+      operationId: emailParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, format: email } }
+      responses:
+        '200': { description: OK }
+  /uuid/{value}:
+    get:
+      operationId: uuidParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: OK }
+  /hostname/{value}:
+    get:
+      operationId: hostnameParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, format: hostname } }
+      responses:
+        '200': { description: OK }
+  /ipv4/{value}:
+    get:
+      operationId: ipv4Param
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, format: ipv4 } }
+      responses:
+        '200': { description: OK }
+  /date/{value}:
+    get:
+      operationId: dateParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK }
+  /datetime/{value}:
+    get:
+      operationId: datetimeParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, format: date-time } }
+      responses:
+        '200': { description: OK }
+  /byte/{value}:
+    get:
+      operationId: byteParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, format: byte } }
+      responses:
+        '200': { description: OK }
+  /password/{value}:
+    get:
+      operationId: passwordParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, format: password } }
+      responses:
+        '200': { description: OK }
+  # ---- literals ----
+  /senum/{value}:
+    get:
+      operationId: senumParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, enum: [asc, desc] } }
+      responses:
+        '200': { description: OK }
+  /sconst/{value}:
+    get:
+      operationId: sconstParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, const: fixed } }
+      responses:
+        '200': { description: OK }
+  # A string enum whose members look like numbers and booleans must stay text.
+  /numericsenum/{value}:
+    get:
+      operationId: numericsenumParam
+      parameters:
+        - {
+            name: value,
+            in: path,
+            required: true,
+            schema: { type: string, enum: ['1', '02', 'true'] },
+          }
+      responses:
+        '200': { description: OK }
+  # ---- constraints ----
+  /range/{value}:
+    get:
+      operationId: rangeParam
+      parameters:
+        - {
+            name: value,
+            in: path,
+            required: true,
+            schema: { type: integer, minimum: 1, maximum: 10 },
+          }
+      responses:
+        '200': { description: OK }
+  /exclusive/{value}:
+    get:
+      operationId: exclusiveParam
+      parameters:
+        - {
+            name: value,
+            in: path,
+            required: true,
+            schema: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1 },
+          }
+      responses:
+        '200': { description: OK }
+  /multiple/{value}:
+    get:
+      operationId: multipleParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: integer, multipleOf: 5 } }
+      responses:
+        '200': { description: OK }
+  /length/{value}:
+    get:
+      operationId: lengthParam
+      parameters:
+        - {
+            name: value,
+            in: path,
+            required: true,
+            schema: { type: string, minLength: 2, maxLength: 4 },
+          }
+      responses:
+        '200': { description: OK }
+  /pattern/{value}:
+    get:
+      operationId: patternParam
+      parameters:
+        - {
+            name: value,
+            in: path,
+            required: true,
+            schema: { type: string, pattern: '^[a-z]+-\d{1,3}$' },
+          }
+      responses:
+        '200': { description: OK }
+  # ---- declaration forms ----
+  /orgs/{orgId}/repos/{repoId}/issues/{issueId}:
+    get:
+      operationId: multiParam
+      parameters:
+        - { name: orgId, in: path, required: true, schema: { type: integer } }
+        - { name: repoId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: issueId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { description: OK }
+  # Neither name is a JavaScript identifier.
+  /named/{user-id}/{post_id}:
+    get:
+      operationId: namedParam
+      parameters:
+        - { name: user-id, in: path, required: true, schema: { type: integer } }
+        - { name: post_id, in: path, required: true, schema: { type: boolean } }
+      responses:
+        '200': { description: OK }
+  /paramref/{id}:
+    get:
+      operationId: paramrefParam
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200': { description: OK }
+  /schemaref/{value}:
+    get:
+      operationId: schemarefParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { $ref: '#/components/schemas/Count' } }
+      responses:
+        '200': { description: OK }
+  # Declared once on the path item, inherited by every operation under it.
+  /shared/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: sharedGetParam
+      responses:
+        '200': { description: OK }
+    delete:
+      operationId: sharedDeleteParam
+      responses:
+        '200': { description: OK }
+  # The operation's own declaration replaces the path item's for the same name.
+  /override/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: overrideParam
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: OK }
+  # ---- limitations ----
+  # The generated schema names a numeric enum; Elysia's path reader hands the segment over as text.
+  /ienum/{value}:
+    get:
+      operationId: ienumParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: integer, enum: [1, 2] } }
+      responses:
+        '200': { description: OK }
+components:
+  schemas:
+    Count: { type: integer, minimum: 0 }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: integer } }

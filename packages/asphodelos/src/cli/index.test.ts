@@ -3,19 +3,18 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import path from 'node:path'
 
 import * as NodeServices from '@effect/platform-node/NodeServices'
-import { Console, Effect, Exit } from 'effect'
+import { Console, Effect, Exit, Stdio } from 'effect'
 
 import { asphodelos } from './index.js'
 
 /**
  * The command as a caller meets it: an argument list in, an exit status and printed output out.
  *
- * Parsing, validation, `--help`, `--version` and completions belong to `effect/unstable/cli`, so
- * nothing here re-tests them in the abstract — the cases assert what this command does with them:
- * which combinations it refuses, which mode each one selects, and what reaches the disk.
+ * Parsing, validation, `--help`, `--version` and completions belong to `effect/cli`, so nothing
+ * here re-tests them in the abstract — the cases assert what this command does with them: which
+ * combinations it refuses, which mode each one selects, and what reaches the disk.
  */
 const PKG_ROOT = path.resolve(import.meta.dir, '../..')
-const ENTRY_URL = new URL('../index.ts', import.meta.url).href
 const ANSI = new RegExp(`${String.fromCodePoint(27)}\\[[0-9;]*m`, 'gu')
 
 const workdirs: string[] = []
@@ -44,7 +43,12 @@ const configSource = (
 export default defineConfig(${body})
 `
 
-/** Runs the command to completion and answers with what a caller would have seen. */
+/**
+ * Runs the command to completion and answers with what a caller would have seen.
+ *
+ * The same command and platform services as `dist/cli.mjs`, with the `Console` swapped for a
+ * recorder and the arguments supplied through the `Stdio` service rather than the process.
+ */
 async function run(argv: readonly string[]) {
   const stdout: string[] = []
   const stderr: string[] = []
@@ -57,8 +61,9 @@ async function run(argv: readonly string[]) {
     },
   })
   const exit = await Effect.runPromiseExit(
-    asphodelos(argv, ENTRY_URL).pipe(
+    asphodelos().pipe(
       Effect.provideService(Console.Console, recorder),
+      Effect.provide(Stdio.layerTest({ args: Effect.succeed(argv) })),
       Effect.provide(NodeServices.layer),
     ),
   )
@@ -83,13 +88,35 @@ describe('asphodelos --help / --version', () => {
     const result = await run(['--help'])
 
     expect(result.ok).toBe(true)
-    expect(result.stdout).toContain('Generate Elysia code from OpenAPI or TypeSpec')
-    expect(result.stdout).toContain('--output, -o')
-    expect(result.stdout).toContain('--config, -c')
-    expect(result.stdout).toContain('--watch, -w')
+    expect(result.stdout).toContain('Asphodelos is a code generator from OpenAPI to Elysia')
+    const flags = result.stdout
+      .slice(result.stdout.indexOf('FLAGS\n'), result.stdout.indexOf('GLOBAL FLAGS'))
+      .split('\n')
+      .filter((line) => line.startsWith('  --'))
+      .map((line) => line.trim().replaceAll(/ {2,}/gu, '  '))
+    expect(flags).toStrictEqual([
+      '--output, -o output.ts  TypeScript file the generated app is written to',
+      '--config, -c file  Config file to run (default: ./asphodelos.config.ts)',
+      '--watch, -w  Rerun the config on every change to its documents or itself',
+    ])
     // The examples are the command's own documentation of what it accepts.
     expect(result.stdout).toContain('asphodelos openapi.yaml -o src/index.ts')
     expect(result.stdout).toContain('asphodelos --watch')
+  })
+
+  // The README quotes the help block; a flag that changes here has to change there.
+  it('is what the README prints in its CLI reference', async () => {
+    project()
+    const readme = readFileSync(path.join(PKG_ROOT, 'README.md'), 'utf-8')
+    const marker = '`asphodelos --help`:\n\n```text\n'
+    const opening = readme.indexOf(marker)
+    expect(opening).toBeGreaterThan(-1)
+    const body = opening + marker.length
+    const block = readme.slice(body, readme.indexOf('\n```', body))
+
+    const result = await run(['--help'])
+
+    expect(result.stdout.trimEnd()).toBe(block)
   })
 
   it('answers with the version from the package manifest', async () => {
@@ -130,6 +157,7 @@ describe('asphodelos <input> -o <output> — one-shot', () => {
     const result = await run(['openapi.txt', '-o', 'src/index.ts'])
 
     expect(result.ok).toBe(false)
+    expect(result.stderr).toContain('an OpenAPI (.yaml, .json) or TypeSpec (.tsp) document')
     expect(existsSync(path.join(dir, 'src'))).toBe(false)
   })
 
@@ -138,12 +166,20 @@ describe('asphodelos <input> -o <output> — one-shot', () => {
     const result = await run(['openapi.yaml', '-o', 'src/index.js'])
 
     expect(result.ok).toBe(false)
+    expect(result.stderr).toContain('a TypeScript file path ending in .ts')
     expect(existsSync(path.join(dir, 'src'))).toBe(false)
   })
 
   it('rejects an input that is not there', async () => {
     project()
     expect((await run(['missing.yaml', '-o', 'src/index.ts'])).ok).toBe(false)
+  })
+
+  it('rejects an unknown flag', async () => {
+    project()
+    const result = await run(['openapi.yaml', '-o', 'src/index.ts', '--nope'])
+
+    expect(result.ok).toBe(false)
   })
 
   it('refuses each half of the pair without the other', async () => {
@@ -158,6 +194,15 @@ describe('asphodelos <input> -o <output> — one-shot', () => {
     expect(withoutOutput.stdout).toContain('USAGE')
     expect(withoutInput.ok).toBe(false)
     expect(withoutInput.stderr).toContain('-o <output.ts> requires an <input> document.')
+  })
+
+  it('surfaces a parse failure from the input document', async () => {
+    const dir = project()
+    writeFileSync(path.join(dir, 'openapi.yaml'), 'openapi: [not a document\n')
+    const result = await run(['openapi.yaml', '-o', 'src/index.ts'])
+
+    expect(result.ok).toBe(false)
+    expect(existsSync(path.join(dir, 'src'))).toBe(false)
   })
 })
 
@@ -213,7 +258,67 @@ describe('asphodelos — config mode', () => {
     const result = await run([])
 
     expect(result.ok).toBe(false)
+    expect(result.stderr).toContain('Invalid config: input: must be .yaml | .json | .tsp')
+    // A config that is present and wrong names the field; the usage block would only bury it.
+    expect(result.stdout).not.toContain('USAGE')
     expect(existsSync(path.join(dir, 'src'))).toBe(false)
+  })
+
+  it('rejects a config that points two generators at one output path', async () => {
+    const dir = project(
+      configSource(`{
+  input: 'openapi.yaml',
+  output: 'src/api.ts',
+  // @ts-expect-error deliberately invalid: the path is also the app entry
+  types: { output: 'src/api.ts' },
+}`),
+    )
+    const result = await run([])
+
+    expect(result.ok).toBe(false)
+    expect(result.stderr).toContain(
+      'types.output and output both write to src/api.ts. Give each generator its own output path.',
+    )
+    expect(existsSync(path.join(dir, 'src'))).toBe(false)
+  })
+
+  it('reports a config module with no default export', async () => {
+    project('export const notDefault = 1\n')
+    const result = await run([])
+
+    expect(result.ok).toBe(false)
+    expect(result.stderr).toContain('Config must export default object')
+  })
+
+  it('removes split files for entries the document no longer names', async () => {
+    const dir = project(
+      configSource(`{
+  input: 'openapi.yaml',
+  output: 'src/index.ts',
+  components: { schemas: { output: 'src/schemas', split: true } },
+}`),
+    )
+    writeFileSync(
+      path.join(dir, 'openapi.yaml'),
+      `${SPEC}components:
+  schemas:
+    Item: { type: object, properties: { id: { type: string } } }
+    Gone: { type: object, properties: { id: { type: string } } }
+`,
+    )
+    expect((await run([])).ok).toBe(true)
+    expect(existsSync(path.join(dir, 'src/schemas/gone.ts'))).toBe(true)
+
+    writeFileSync(
+      path.join(dir, 'openapi.yaml'),
+      `${SPEC}components:
+  schemas:
+    Item: { type: object, properties: { id: { type: string } } }
+`,
+    )
+    expect((await run([])).ok).toBe(true)
+    expect(existsSync(path.join(dir, 'src/schemas/item.ts'))).toBe(true)
+    expect(existsSync(path.join(dir, 'src/schemas/gone.ts'))).toBe(false)
   })
 
   it('shows the usage block when there is no config and none was asked for', async () => {

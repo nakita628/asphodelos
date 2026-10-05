@@ -201,29 +201,6 @@ describe('makeJob — every job actually runs', () => {
     expect(run.read('src/types.ts')).toContain('export type App')
   })
 
-  it('test (single file): writes one suite importing the assembled app', async () => {
-    const run = await runJobs({ test: { output: 'src/app.test.ts' } })
-    expect(run.names).toContain('test')
-    const suite = run.read('src/app.test.ts')
-    expect(suite).toContain("from 'bun:test'")
-    expect(suite).toContain("from './index'")
-  })
-
-  it('test (split): co-locates a suite in each module directory', async () => {
-    const run = await runJobs({ test: { split: true } })
-    const job = makeJob(
-      OPENAPI,
-      Effect.runSync(parseConfig({ input: 'a.yaml', test: { split: true } })),
-    )
-    expect(job.find((j) => j.name === 'test')?.split).toBe(true)
-    expect(run.exists('src/modules/items/index.test.ts')).toBe(true)
-  })
-
-  it('test: pathAlias rewrites the app import in the generated suite', async () => {
-    const run = await runJobs({ test: { output: 'src/app.test.ts', pathAlias: '@/src' } })
-    expect(run.read('src/app.test.ts')).toContain("from '@/src/index'")
-  })
-
   it('mock: writes a faker-backed server at the configured output', async () => {
     const run = await runJobs({ mock: { output: 'src/mock.ts' }, port: '5000' })
     expect(run.names).toContain('mock')
@@ -252,12 +229,12 @@ describe('makeJob — every job actually runs', () => {
     }
   })
 
-  it('hook libraries: split writes one file per operation plus a barrel', async () => {
+  it('hook libraries: a directory output is written as its index.ts', async () => {
     const run = await runJobs({
-      swr: { split: true, output: 'src/swr', import: './lib' },
+      swr: { output: 'src/swr', import: './lib' },
     })
-    expect(run.exists('src/swr/listItems.ts')).toBe(true)
     expect(run.exists('src/swr/index.ts')).toBe(true)
+    expect(run.read('src/swr/index.ts')).toContain('useListItems')
   })
 
   it('every job answers with the log line the CLI prints', async () => {

@@ -3,7 +3,6 @@ import path from 'node:path'
 import { Effect } from 'effect'
 
 import { emit } from '../emit/index.js'
-import { GenerateError } from '../error/index.js'
 import type { OpenAPI, Operation } from '../openapi/index.js'
 import { capitalize, pascalCase, resourcePrefix, toSafeIdentifier } from '../utils/index.js'
 import { edenChain } from './eden.js'
@@ -814,7 +813,7 @@ export function makeQueryHooks(
   config: QueryHookConfig,
   client: string,
   basePath?: string,
-  split = false,
+  schemasImport = './components/schemas',
 ) {
   return Effect.gen(function* () {
     const prefix = basePath && basePath !== '/' ? basePath : ''
@@ -856,38 +855,6 @@ export function makeQueryHooks(
     }
     if (ops.length === 0) return 'No operations found'
 
-    if (split) {
-      const prefixKeys = makePrefixKeyCodes(openAPI, prefix)
-      const keysCode = prefixKeys.length > 0 ? `${prefixKeys.join('\n\n')}\n` : ''
-      if (keysCode && ops.some((op) => op.funcName === 'keys')) {
-        return yield* new GenerateError({
-          message:
-            "Operation file name 'keys.ts' collides with the aggregated cache-key file. Rename the operation (operationId) that resolves to 'keys'.",
-        })
-      }
-      for (const op of ops) {
-        const header = makeHeader(config, client, importPath, op.deps)
-        const typeImport = op.fetchType
-          ? `import type { ${op.fetchType} } from '../components/schemas'\n`
-          : ''
-        const file = path.join(output, `${op.funcName}.ts`)
-        // Written one at a time on purpose: emit() creates the directory before writing, and the
-        // failure reported is the first one.
-        yield* emit(`${typeImport}${header}${op.code}\n`, output, file)
-      }
-      if (keysCode) {
-        yield* emit(keysCode, output, path.join(output, 'keys.ts'))
-      }
-      const exportLines = [
-        ...(keysCode ? [`export * from './keys'`] : []),
-        ...ops.map((op) => `export * from './${op.funcName}'`),
-      ]
-      const barrel = `${exportLines.join('\n')}\n`
-      const indexFile = path.join(output, 'index.ts')
-      yield* emit(barrel, output, indexFile)
-      return `Generated split ${config.label} code → ${output}/`
-    }
-
     const aggregate = ops.reduce<OpDeps>(
       (acc, op) => ({
         isQuery: acc.isQuery || op.deps.isQuery,
@@ -897,9 +864,18 @@ export function makeQueryHooks(
       { isQuery: false, isInfinite: false, isMutation: false },
     )
     const header = makeHeader(config, client, importPath, aggregate)
+    // A fetch hook types its data by the component the response names, which lives in the
+    // generated schemas module rather than behind the Eden client.
+    const fetchTypes = [
+      ...new Set(ops.map((op) => op.fetchType).filter((name) => name !== undefined)),
+    ].toSorted()
+    const typeImport =
+      fetchTypes.length > 0
+        ? `import type { ${fetchTypes.join(', ')} } from '${schemasImport}'\n`
+        : ''
     const prefixKeys = makePrefixKeyCodes(openAPI, prefix)
     const body = `${[...prefixKeys, ...ops.map((op) => op.code)].join('\n\n')}\n`
-    yield* emit(`${header}${body}`, path.dirname(output), output)
+    yield* emit(`${typeImport}${header}${body}`, path.dirname(output), output)
     return `Generated ${config.label} code written to ${output}`
   })
 }

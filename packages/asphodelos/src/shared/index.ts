@@ -1,8 +1,10 @@
 import path, { posix } from 'node:path'
 
-import { Effect } from 'effect'
+import SwaggerParser from '@apidevtools/swagger-parser'
+import { Effect, FileSystem } from 'effect'
 
-import type { Config } from '../config/index.js'
+import { HOOK_KINDS } from '../config/index.js'
+import type { COMPONENT_KINDS, Config } from '../config/index.js'
 import {
   callbacks,
   components,
@@ -20,9 +22,9 @@ import {
   responses,
   schemas,
   securitySchemes,
-  test,
   types,
 } from '../core/index.js'
+import { GenerateError } from '../error/index.js'
 import { readdir, unlink } from '../fsp/index.js'
 import type { OpenAPI } from '../openapi/index.js'
 
@@ -83,20 +85,6 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
           run: (output: string) => types(openAPI, output, config.prefix),
         }
       : undefined,
-    config.test
-      ? {
-          name: 'test',
-          output: config.test.split ? `${baseDir}/modules` : config.test.output,
-          split: config.test.split,
-          run: (output: string) =>
-            test(openAPI, config.test?.split === true ? undefined : output, {
-              appOutput: config.output ?? 'src/index.ts',
-              split: config.test?.split === true,
-              pathAlias: config.test?.pathAlias,
-              prefix: config.prefix,
-            }),
-        }
-      : undefined,
     config.mock
       ? {
           name: 'mock',
@@ -112,28 +100,22 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
             }),
         }
       : undefined,
-    ...(
-      [
-        'swr',
-        'tanstack-query',
-        'preact-query',
-        'vue-query',
-        'svelte-query',
-        'solid-query',
-        'angular-query',
-      ] as const
-    ).map((library) => {
+    ...HOOK_KINDS.map((library) => {
       const cfg = config[library]
       return cfg
         ? {
             name: library,
             output: cfg.output,
-            split: cfg.split,
+            split: false,
             run: (output: string) =>
               hooks(openAPI, output, cfg.import, library, {
                 client: cfg.client,
                 basePath: config.prefix,
-                split: cfg.split,
+                // Where the schemas end up: the single components file, the per-type target, or
+                // the default beside the app entry — the same answer the app generator gives.
+                schemas: componentsOutput
+                  ? { output: componentsOutput }
+                  : (componentTargets.schemas ?? { output: `${baseDir}/components/schemas.ts` }),
               }),
           }
         : undefined
@@ -147,12 +129,17 @@ function perTypeComponentJobs(
   baseDir: string,
   readonly: boolean | undefined,
 ) {
+  // Each section the document has is written, to the target the config names or to
+  // `components/<section>.ts` beside the app entry; the kinds keep their declaration order.
+  const target = (kind: (typeof COMPONENT_KINDS)[number]) => ({
+    name: kind,
+    output: componentTargets[kind]?.output ?? `${baseDir}/components/${kind}.ts`,
+    split: componentTargets[kind]?.split ?? false,
+  })
   return [
     openAPI.components?.schemas
       ? {
-          name: 'schemas',
-          output: componentTargets.schemas?.output ?? `${baseDir}/components/schemas.ts`,
-          split: componentTargets.schemas?.split ?? false,
+          ...target('schemas'),
           run: (output: string) =>
             schemas(
               openAPI.components?.schemas,
@@ -166,9 +153,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.responses
       ? {
-          name: 'responses',
-          output: componentTargets.responses?.output ?? `${baseDir}/components/responses.ts`,
-          split: componentTargets.responses?.split ?? false,
+          ...target('responses'),
           run: (output: string) =>
             responses(
               openAPI.components?.responses,
@@ -182,9 +167,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.parameters
       ? {
-          name: 'parameters',
-          output: componentTargets.parameters?.output ?? `${baseDir}/components/parameters.ts`,
-          split: componentTargets.parameters?.split ?? false,
+          ...target('parameters'),
           run: (output: string) =>
             parameters(
               openAPI.components?.parameters,
@@ -198,9 +181,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.examples
       ? {
-          name: 'examples',
-          output: componentTargets.examples?.output ?? `${baseDir}/components/examples.ts`,
-          split: componentTargets.examples?.split ?? false,
+          ...target('examples'),
           run: (output: string) =>
             examples(
               openAPI.components?.examples,
@@ -212,10 +193,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.requestBodies
       ? {
-          name: 'requestBodies',
-          output:
-            componentTargets.requestBodies?.output ?? `${baseDir}/components/requestBodies.ts`,
-          split: componentTargets.requestBodies?.split ?? false,
+          ...target('requestBodies'),
           run: (output: string) =>
             requestBodies(
               openAPI.components?.requestBodies,
@@ -229,9 +207,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.headers
       ? {
-          name: 'headers',
-          output: componentTargets.headers?.output ?? `${baseDir}/components/headers.ts`,
-          split: componentTargets.headers?.split ?? false,
+          ...target('headers'),
           run: (output: string) =>
             headers(
               openAPI.components?.headers,
@@ -245,10 +221,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.securitySchemes
       ? {
-          name: 'securitySchemes',
-          output:
-            componentTargets.securitySchemes?.output ?? `${baseDir}/components/securitySchemes.ts`,
-          split: componentTargets.securitySchemes?.split ?? false,
+          ...target('securitySchemes'),
           run: (output: string) =>
             securitySchemes(
               openAPI.components?.securitySchemes,
@@ -260,9 +233,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.links
       ? {
-          name: 'links',
-          output: componentTargets.links?.output ?? `${baseDir}/components/links.ts`,
-          split: componentTargets.links?.split ?? false,
+          ...target('links'),
           run: (output: string) =>
             links(
               openAPI.components?.links,
@@ -274,9 +245,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.callbacks
       ? {
-          name: 'callbacks',
-          output: componentTargets.callbacks?.output ?? `${baseDir}/components/callbacks.ts`,
-          split: componentTargets.callbacks?.split ?? false,
+          ...target('callbacks'),
           run: (output: string) =>
             callbacks(
               openAPI.components?.callbacks,
@@ -288,9 +257,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.pathItems
       ? {
-          name: 'pathItems',
-          output: componentTargets.pathItems?.output ?? `${baseDir}/components/pathItems.ts`,
-          split: componentTargets.pathItems?.split ?? false,
+          ...target('pathItems'),
           run: (output: string) =>
             pathItems(
               openAPI.components?.pathItems,
@@ -302,9 +269,7 @@ function perTypeComponentJobs(
       : undefined,
     openAPI.components?.mediaTypes
       ? {
-          name: 'mediaTypes',
-          output: componentTargets.mediaTypes?.output ?? `${baseDir}/components/mediaTypes.ts`,
-          split: componentTargets.mediaTypes?.split ?? false,
+          ...target('mediaTypes'),
           run: (output: string) =>
             mediaTypes(
               openAPI.components?.mediaTypes,
@@ -323,16 +288,14 @@ function perTypeComponentJobs(
 type JobTarget = { readonly name: string; readonly output: string; readonly split: boolean }
 
 /**
- * Generators that merge into what is already at their output rather than overwrite it.
+ * Whether a job merges into what is already at its output rather than overwrite it.
  *
- * `elysia` and `test` read the file back and keep whatever the user wrote there (`mergeSource`),
- * so what they write holds the user's code as much as the generator's. Nothing that deletes — the
- * split clean below, the Vite plugin's stale-output cleanup — may touch one.
+ * `elysia` reads the app entry and the modules back and keeps whatever the user wrote there
+ * (`mergeSource`), so what it writes holds the user's code as much as the generator's. Nothing
+ * that deletes — the split clean below, the Vite plugin's stale-output cleanup — may touch it.
  */
-const USER_CODE_JOBS: ReadonlySet<string> = new Set(['elysia', 'test'])
-
 export function isUserCodeJob(job: { readonly name: string }) {
-  return USER_CODE_JOBS.has(job.name)
+  return job.name === 'elysia'
 }
 
 /**
@@ -344,6 +307,17 @@ export function isUserCodeJob(job: { readonly name: string }) {
 export function jobTargets(job: JobTarget): readonly string[] {
   const output = path.resolve(process.cwd(), job.output)
   return job.name === 'elysia' ? [output, path.join(path.dirname(output), 'modules')] : [output]
+}
+
+/**
+ * Whether `filePath` sits under `directory`, at any depth.
+ *
+ * Asked of the path segments rather than the string: `/app/spec-old/a.yaml` starts with
+ * `/app/spec` and is not inside it.
+ */
+export function isInsideDirectory(directory: string, filePath: string) {
+  const relative = path.relative(directory, filePath)
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
 }
 
 function cleanSplitDirectory(directory: string, keep: ReadonlySet<string>) {
@@ -391,5 +365,80 @@ export function cleanSplitOutputs(jobs: readonly JobTarget[]) {
       { concurrency: 'unbounded' },
     )
     return removed.flat()
+  })
+}
+
+const TYPESPEC_IMPORT = /^\s*import\s+"(?<specifier>\.{1,2}\/[^"]*)"/gmu
+
+/**
+ * The `.tsp` files reachable from `file` through relative imports, `file` included.
+ *
+ * Read off the source text rather than asked of the compiler: a compile is the expensive part of
+ * a pass, and the only thing wanted here is which files an edit could come from. An import of a
+ * directory is its `main.tsp`, as it is to the compiler. A file that cannot be read is still
+ * named — it is where the fix will be written.
+ */
+function typeSpecSources(
+  file: string,
+  seen: ReadonlySet<string>,
+): Effect.Effect<ReadonlySet<string>, never, FileSystem.FileSystem> {
+  return Effect.gen(function* () {
+    if (seen.has(file)) return seen
+    const fs = yield* FileSystem.FileSystem
+    const info = yield* fs.stat(file).pipe(Effect.orElseSucceed(() => null))
+    if (info?.type === 'Directory') return yield* typeSpecSources(path.join(file, 'main.tsp'), seen)
+    const source = file.endsWith('.tsp')
+      ? yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => ''))
+      : ''
+    const imports = [...source.matchAll(TYPESPEC_IMPORT)]
+      .map((match) => match.groups?.specifier)
+      .filter((specifier) => specifier !== undefined)
+      .map((specifier) => path.resolve(path.dirname(file), specifier))
+    return yield* Effect.reduce(
+      imports,
+      (): ReadonlySet<string> => new Set([...seen, file]),
+      (found, imported) => typeSpecSources(imported, found),
+    )
+  })
+}
+
+/**
+ * The files the document at `input` reads from that sit outside its own directory.
+ *
+ * For a watcher, and only for a watcher. A `$ref` or a TypeSpec `import` can reach a file
+ * anywhere on disk, so watching the directory `input` sits in misses some of the edits that
+ * change the output; these are the files it misses.
+ *
+ * Nothing here feeds generation. `parseOpenAPI` still reads the document with `bundle`, which is
+ * what folds a split document into one; this asks `resolve`, which stops after reading the files
+ * `bundle` would go on to fold. The two read the same files, so the list is the one `bundle`
+ * works from, without paying for a document nobody uses — and an edit to one of them reruns the
+ * pass, where `bundle` picks the new contents up.
+ *
+ * Nothing under `node_modules` is named: a library the document imports is not something the
+ * user edits. Fails when the document cannot be read, so the caller can keep the list it already
+ * has rather than trust a partial one.
+ */
+export function outsideSources(input: string) {
+  return Effect.gen(function* () {
+    const files = input.endsWith('.tsp')
+      ? [...(yield* typeSpecSources(path.resolve(input), new Set()))]
+      : yield* Effect.tryPromise({
+          try: async () => {
+            const references = await SwaggerParser.resolve(input)
+            return references.paths('file')
+          },
+          catch: (error) =>
+            new GenerateError({ message: error instanceof Error ? error.message : String(error) }),
+        })
+    const inputDirectory = path.dirname(path.resolve(input))
+    return [...new Set(files.map((file) => path.resolve(file)))]
+      .filter(
+        (file) =>
+          file !== path.resolve(input) &&
+          !isInsideDirectory(inputDirectory, file) &&
+          !file.split(path.sep).includes('node_modules'),
+      )
+      .toSorted()
   })
 }

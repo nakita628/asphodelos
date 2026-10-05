@@ -4,3 +4,4 @@ coverage
 .DS_Store
 tmp-*
 test/__generated__
+test/*/__generated__

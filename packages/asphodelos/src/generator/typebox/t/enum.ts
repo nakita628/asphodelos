@@ -1,5 +1,5 @@
 import { isRecord } from '../../../guard/index.js'
-import { commonOpts, enumErrorCallback, options } from '../../../helper/typebox.js'
+import { commonOpts, enumErrorCallback, options, raw } from '../../../helper/typebox.js'
 import type { Schema } from '../../../openapi/index.js'
 import { filterDefined } from '../../../utils/index.js'
 
@@ -38,7 +38,15 @@ export function _enum(schema: Schema) {
   }
   if (values.every(isUnionEnumValue)) {
     const list = JSON.stringify(values)
-    return opts ? `t.UnionEnum(${list},${opts})` : `t.UnionEnum(${list})`
+    // Elysia's `t.UnionEnum` puts the first member in as `default` unless told otherwise, and
+    // the request validator then fills an absent optional parameter with it. A document that
+    // declares no default gets `default: undefined`, which is the same key saying "none".
+    const unionOpts = options([
+      ...filterDefined([enumErrorCallback(schema)]),
+      ...commonOpts(schema),
+      ...(schema.default === undefined ? [['default', raw('undefined')] as const] : []),
+    ])
+    return `t.UnionEnum(${list},${unionOpts})`
   }
   return opts
     ? `t.Union([${values.map(literalSchema).join(',')}],${opts})`

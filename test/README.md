@@ -17,6 +17,13 @@ here rather than in someone's project — and the packaged Vite plugin inside a 
 (`runtime/vite-plugin.test.ts`): it generates on start, regenerates on a document edit, and reloads
 an edited config.
 
+Two self-contained suites, `query-params/` and `path-params/`, send every parameter shape the
+generator supports through a real Elysia app built on the generated models: a query string or a
+path segment in, the JavaScript type and value that reached the handler out. HTTP carries every
+parameter as text, so a schema Elysia cannot read back into its type rejects its own input, and
+that is what these catch. Each holds the requests that are accepted, the ones that are rejected,
+and compile-time assertions about the generated types.
+
 ## Layout
 
 ```text
@@ -25,8 +32,10 @@ specs/            the OpenAPI documents the cases generate from
 hosts/            the Elysia app and Eden client the generated hooks talk to
 runtime/          tests that execute the generated hooks, and the Vite plugin in a dev server
 types/            compile-time assertions about the generics
-scripts/          generate.ts, typecheck.ts, pretest.ts
-__generated__/    output; gitignored, refreshed before every run
+query-params/     a self-contained case: document, config, echo app and tests, in one directory
+path-params/      the same for path parameters
+scripts/          cases.ts, generate.ts, typecheck.ts, pretest.ts
+__generated__/    output; gitignored, refreshed before every run (a root-level case has its own)
 ```
 
 ## Coverage per library

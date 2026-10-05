@@ -1,8 +1,34 @@
-import { resolve } from 'node:path'
+import { posix, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { Effect, FileSystem, Schema, SchemaIssue, SchemaTransformation } from 'effect'
 import type { FormatConfig } from 'oxfmt'
+
+/** OpenAPI 3.x Components Object kinds, in declaration / config-field order. */
+export const COMPONENT_KINDS = [
+  'schemas',
+  'responses',
+  'parameters',
+  'examples',
+  'requestBodies',
+  'headers',
+  'securitySchemes',
+  'links',
+  'callbacks',
+  'pathItems',
+  'mediaTypes',
+] as const
+
+/** The client libraries a hooks file can be generated for, in config-field order. */
+export const HOOK_KINDS = [
+  'swr',
+  'tanstack-query',
+  'preact-query',
+  'solid-query',
+  'vue-query',
+  'svelte-query',
+  'angular-query',
+] as const
 
 /**
  * The config file is missing, is not a module with a default export, or does not validate.
@@ -17,8 +43,15 @@ import type { FormatConfig } from 'oxfmt'
  */
 // oxlint-disable-next-line unicorn/throw-new-error -- `Schema.TaggedError()` is the class factory, not a throw
 export class ConfigError extends Schema.TaggedError<ConfigError>()('ConfigError', {
-  message: Schema.String,
-  notFound: Schema.optionalKey(Schema.Boolean),
+  message: Schema.String.annotate({
+    description: 'The sentence printed to the caller, naming the field that is wrong.',
+    examples: ['Invalid config: eden.import: must be a module specifier'],
+  }),
+  notFound: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description: 'There is no config file at all, as opposed to one that does not validate.',
+    }),
+  ),
 }) {}
 
 /**
@@ -37,7 +70,11 @@ const TypeScriptPathSchema = Schema.declare<`${string}.ts`>(
 const InputSchema = Schema.declare<`${string}.yaml` | `${string}.json` | `${string}.tsp`>(
   Schema.is(Schema.TemplateLiteral([Schema.String, Schema.Literals(['.yaml', '.json', '.tsp'])])),
   { message: 'must be .yaml | .json | .tsp' },
-)
+).annotate({
+  title: 'Input document',
+  description: 'OpenAPI or TypeSpec entry document that every generator reads.',
+  examples: ['openapi.yaml', './spec/openapi.json', './spec/main.tsp'],
+})
 
 /** Milliseconds, bounded so a mock cannot be configured to hang a request. */
 const DelayMsSchema = Schema.Number.check(
@@ -69,12 +106,40 @@ const FileOutputSchema = Schema.String.pipe(
       encode: (v: string) => v,
     }),
   ),
+).annotate({
+  title: 'Output file',
+  description:
+    'Single file that receives every generated entry. A directory path is normalized to `<dir>/index.ts`.',
+  examples: ['./src/swr.ts', './src/swr'],
+})
+
+const ImportSchema = Schema.String.check(
+  Schema.isPattern(/^[^\s'"`\\]+$/u, {
+    message: 'must be a module specifier, with no whitespace or quotes',
+  }),
+).annotate({
+  title: 'Import specifier',
+  description: 'Module specifier the generated file imports from.',
+  examples: ['@packages/schemas', '../lib', '.'],
+})
+
+const ClientSchema = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z_$][A-Za-z0-9_$]*$/u, {
+    message: 'must be a JavaScript identifier',
+  }),
 )
+  .pipe(Schema.withDecodingDefault(Effect.succeed('client')))
+  .annotate({
+    title: 'Client export name',
+    description:
+      'Named export to import from `import` as the Eden Treaty client, `client` when left out.',
+    examples: ['client', 'apiClient'],
+  })
 
 /**
- * Every output target is the same two-branch union: `split: true` writes one file per entry into
- * a directory, anything else writes a single file. Only those two fields differ, so the rest is
- * written once and spread into both branches.
+ * Every component target is the same two-branch union: `split: true` writes one file per entry
+ * into a directory, anything else writes a single file. Only those two fields differ, so the rest
+ * is written once and spread into both branches.
  *
  * `Schema.Union` resolves members in order and each member pins `split` to a literal, so a member
  * is only reachable through its own discriminant — the failure reported is the one inside the
@@ -83,118 +148,266 @@ const FileOutputSchema = Schema.String.pipe(
 function splitUnion<Fields extends Schema.Struct.Fields>(shared: Fields) {
   return Schema.Union([
     Schema.Struct({
-      split: Schema.Literal(true),
+      split: Schema.Literal(true).annotate({
+        description: 'Write one file per entry into `output` rather than a single file.',
+      }),
       output: Schema.String.check(
         Schema.isPattern(/^(?!.*\.ts$).+/u, {
           message: 'split mode requires directory, not .ts file',
         }),
-      ),
+      ).annotate({
+        title: 'Output directory',
+        description: 'Directory that takes one file per entry and an `index.ts` barrel.',
+        examples: ['./src/components/schemas'],
+      }),
       ...shared,
     }),
     Schema.Struct({
-      split: Schema.Literal(false).pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+      split: Schema.Literal(false)
+        .pipe(Schema.withDecodingDefault(Effect.succeed(false)))
+        .annotate({ description: 'Write a single file (default).' }),
       output: FileOutputSchema,
       ...shared,
     }),
   ])
 }
 
-const OutputSchema = splitUnion({ import: Schema.optionalKey(Schema.String) })
+const OutputSchema = splitUnion({ import: Schema.optionalKey(ImportSchema) })
 
 const ExportTypesOutputSchema = splitUnion({
-  import: Schema.optionalKey(Schema.String),
-  exportTypes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  import: Schema.optionalKey(ImportSchema),
+  exportTypes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
+    description: 'Also export the TypeScript type inferred from each generated schema.',
+  }),
 })
 
-const HooksSchema = splitUnion({
-  import: Schema.String,
-  client: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed('client'))),
+const HooksSchema = Schema.Struct({
+  output: FileOutputSchema,
+  import: ImportSchema.annotate({
+    description: 'Module specifier the generated file imports the Eden Treaty client from.',
+  }),
+  client: ClientSchema,
+  split: Schema.optionalKey(
+    Schema.Never.annotate({
+      message:
+        'split was removed: the hooks are always generated into a single file. Set output to a .ts file path and delete the directory the previous run wrote.',
+    }),
+  ),
 })
 
 const ComponentsSchema = Schema.Struct({
-  output: Schema.optionalKey(TypeScriptPathSchema),
-  schemas: Schema.optionalKey(ExportTypesOutputSchema),
-  responses: Schema.optionalKey(ExportTypesOutputSchema),
-  parameters: Schema.optionalKey(ExportTypesOutputSchema),
-  examples: Schema.optionalKey(OutputSchema),
-  requestBodies: Schema.optionalKey(ExportTypesOutputSchema),
-  headers: Schema.optionalKey(ExportTypesOutputSchema),
-  securitySchemes: Schema.optionalKey(OutputSchema),
-  links: Schema.optionalKey(OutputSchema),
-  callbacks: Schema.optionalKey(OutputSchema),
-  pathItems: Schema.optionalKey(OutputSchema),
-  mediaTypes: Schema.optionalKey(ExportTypesOutputSchema),
-}).check(
-  // A single `output` bundles every section into one file; a per-type entry routes one section
-  // somewhere else. Both at once has no meaning, and silently picking a winner would write a
-  // file the config never asked for.
-  Schema.makeFilter(({ output, ...perType }) =>
-    output === undefined || Object.keys(perType).length === 0
-      ? undefined
-      : "output cannot be combined with per-type component outputs. Use either a single 'output' or per-type configs.",
+  output: Schema.optionalKey(
+    TypeScriptPathSchema.annotate({
+      title: 'Single-file components output',
+      description:
+        'Every component section in one file. Mutually exclusive with the per-type fields below.',
+      examples: ['./src/components/index.ts'],
+    }),
   ),
-)
+  schemas: Schema.optionalKey(
+    ExportTypesOutputSchema.annotate({
+      title: 'Schemas output',
+      description: 'Destination for `components.schemas`.',
+    }),
+  ),
+  responses: Schema.optionalKey(
+    ExportTypesOutputSchema.annotate({
+      title: 'Responses output',
+      description: 'Destination for `components.responses`.',
+    }),
+  ),
+  parameters: Schema.optionalKey(
+    ExportTypesOutputSchema.annotate({
+      title: 'Parameters output',
+      description: 'Destination for `components.parameters`.',
+    }),
+  ),
+  examples: Schema.optionalKey(
+    OutputSchema.annotate({
+      title: 'Examples output',
+      description: 'Destination for `components.examples`.',
+    }),
+  ),
+  requestBodies: Schema.optionalKey(
+    ExportTypesOutputSchema.annotate({
+      title: 'Request bodies output',
+      description: 'Destination for `components.requestBodies`.',
+    }),
+  ),
+  headers: Schema.optionalKey(
+    ExportTypesOutputSchema.annotate({
+      title: 'Headers output',
+      description: 'Destination for `components.headers`.',
+    }),
+  ),
+  securitySchemes: Schema.optionalKey(
+    OutputSchema.annotate({
+      title: 'Security schemes output',
+      description: 'Destination for `components.securitySchemes`.',
+    }),
+  ),
+  links: Schema.optionalKey(
+    OutputSchema.annotate({
+      title: 'Links output',
+      description: 'Destination for `components.links`.',
+    }),
+  ),
+  callbacks: Schema.optionalKey(
+    OutputSchema.annotate({
+      title: 'Callbacks output',
+      description: 'Destination for `components.callbacks`.',
+    }),
+  ),
+  pathItems: Schema.optionalKey(
+    OutputSchema.annotate({
+      title: 'Path items output',
+      description: 'Destination for `components.pathItems`.',
+    }),
+  ),
+  mediaTypes: Schema.optionalKey(
+    ExportTypesOutputSchema.annotate({
+      title: 'Media types output',
+      description: 'Destination for `components.mediaTypes`.',
+    }),
+  ),
+})
+  .check(
+    // A single `output` bundles every section into one file; a per-type entry routes one section
+    // somewhere else. Both at once has no meaning, and silently picking a winner would write a
+    // file the config never asked for.
+    Schema.makeFilter(({ output, ...perType }) =>
+      output === undefined || Object.keys(perType).length === 0
+        ? undefined
+        : "output cannot be combined with per-type component outputs. Use either a single 'output' or per-type configs.",
+    ),
+  )
+  .annotate({
+    title: 'Components outputs',
+    description:
+      'Where `components.*` is written: one file for every section, or a target per section. Left out, each section the document has goes to `components/<section>.ts` beside the app entry.',
+  })
 
 const ConfigSchema = Schema.Struct({
   input: InputSchema,
-  output: Schema.optionalKey(TypeScriptPathSchema),
-  prefix: Schema.optionalKey(Schema.String),
+  output: Schema.optionalKey(
+    TypeScriptPathSchema.annotate({
+      title: 'App entry',
+      description:
+        'The Elysia app entry; its directory takes `modules/` and the default `components/`. `src/index.ts` when left out.',
+      examples: ['./src/index.ts', './server/index.ts'],
+    }),
+  ),
+  prefix: Schema.optionalKey(
+    Schema.String.check(
+      Schema.isPattern(/^\/[^\s'"`\\]*$/u, {
+        message: "must start with '/' and contain no whitespace or quotes",
+      }),
+    ).annotate({
+      title: 'Prefix',
+      description:
+        'Prefix the generated app is mounted on, emitted as `new Elysia({ prefix })`. Elysia wants the leading slash.',
+      examples: ['/api', '/api/v1'],
+    }),
+  ),
   format: Schema.optionalKey(
     Schema.declare<FormatConfig>((u): u is FormatConfig => typeof u === 'object' && u !== null, {
       message: 'must be an oxfmt config object',
+    }).annotate({
+      title: 'Formatter options',
+      description:
+        'oxfmt `FormatConfig` applied to every generated file. Defaults to printWidth 100, single quotes, no semicolons.',
+      examples: [{ printWidth: 80, semi: true }],
     }),
   ),
-  port: Schema.optionalKey(Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed('3000')))),
-  pathAlias: Schema.optionalKey(
-    Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  port: Schema.optionalKey(
+    Schema.String.check(Schema.isPattern(/^\d{1,5}$/u, { message: 'must be a port number' }))
+      .pipe(Schema.withDecodingDefault(Effect.succeed('3000')))
+      .annotate({
+        title: 'Port',
+        description: 'Port the app entry listens on when it is run directly, `3000` when left out.',
+        examples: ['3000', '8080'],
+      }),
   ),
-  integration: Schema.optionalKey(Schema.Boolean),
-  readonly: Schema.optionalKey(Schema.Boolean),
+  pathAlias: Schema.optionalKey(
+    Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
+      description: 'Import between the generated files through `@/` rather than relative paths.',
+    }),
+  ),
+  integration: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description: 'Leave `.listen()` out of the app entry: a host framework owns the server.',
+    }),
+  ),
+  readonly: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description: 'Wrap every top-level generated schema in `t.Readonly(...)`.',
+    }),
+  ),
   components: Schema.optionalKey(ComponentsSchema),
   eden: Schema.optionalKey(
     Schema.Struct({
-      output: Schema.String,
-      import: Schema.String,
-      client: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed('client'))),
+      output: FileOutputSchema,
+      import: ImportSchema.annotate({
+        description: 'Module specifier the generated file imports the Eden Treaty client from.',
+      }),
+      client: ClientSchema,
       docs: Schema.optionalKey(
-        Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+        Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
+          description: 'Emit the operation summary and description as JSDoc.',
+        }),
       ),
+    }).annotate({
+      title: 'Eden wrappers output',
+      description: 'Typed function wrappers around an Eden Treaty client, one per operation.',
+      examples: [{ output: './src/eden.ts', import: './lib', client: 'client', docs: false }],
     }),
   ),
-  types: Schema.optionalKey(Schema.Struct({ output: TypeScriptPathSchema })),
+  types: Schema.optionalKey(
+    Schema.Struct({
+      output: TypeScriptPathSchema.annotate({
+        title: 'Output file',
+        description: 'The `.ts` file the `App` type is written to.',
+        examples: ['./src/types.ts'],
+      }),
+    }).annotate({
+      title: 'App type output',
+      description: 'A self-contained `export type App` for `treaty<App>(...)` clients.',
+      examples: [{ output: './src/types.ts' }],
+    }),
+  ),
   test: Schema.optionalKey(
-    Schema.Union([
-      Schema.Struct({
-        split: Schema.Literal(true),
-        pathAlias: Schema.optionalKey(Schema.String),
-      }),
-      Schema.Struct({
-        split: Schema.Literal(false).pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-        output: FileOutputSchema,
-        pathAlias: Schema.optionalKey(Schema.String),
-      }),
-    ]),
+    Schema.Never.annotate({
+      message:
+        'test was removed: asphodelos no longer generates tests. Delete the block and the files the previous run wrote.',
+    }),
   ),
   mock: Schema.optionalKey(
     Schema.Struct({
       output: FileOutputSchema,
-      // Defaults to true in the generator: a document that bothered to write an example is
-      // saying what a realistic response looks like, and faker cannot improve on that. `'all'`
-      // also uses the scalar example of every schema and property.
-      useExamples: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Literal('all')])),
-      // Re-seeds faker at the start of every handler, so each route answers the same body on
-      // every request — stable enough for snapshot tests.
-      seed: Schema.optionalKey(Schema.Union([SeedSchema, Schema.NonEmptyArray(SeedSchema)])),
-      // Passed straight through to `@faker-js/faker/locale/<locale>`; the pattern is what keeps
-      // it from breaking out of the import specifier.
+      useExamples: Schema.optionalKey(
+        Schema.Union([Schema.Boolean, Schema.Literal('all')]).annotate({
+          description:
+            "Answer with the response examples the document writes (default: true), or with `'all'` also the scalar example of every schema and property. `false` uses faker alone.",
+        }),
+      ),
+      seed: Schema.optionalKey(
+        Schema.Union([SeedSchema, Schema.NonEmptyArray(SeedSchema)]).annotate({
+          description:
+            'Re-seeds faker at the start of every handler, so each route answers the same body on every request.',
+          examples: [42, [1, 2, 3]],
+        }),
+      ),
       locale: Schema.optionalKey(
         Schema.String.check(
           Schema.isPattern(/^[A-Za-z_]{1,40}$/u, {
             message: "must be a faker locale code such as 'ja', 'en' or 'zh_CN'",
           }),
-        ),
+        ).annotate({
+          title: 'Faker locale',
+          description: 'Passed straight through to `@faker-js/faker/locale/<locale>`.',
+          examples: ['en', 'ja', 'zh_CN'],
+        }),
       ),
-      // A fixed number of milliseconds, a range to pick from, or `false` for no delay at all.
       delay: Schema.optionalKey(
         Schema.Union([
           DelayMsSchema,
@@ -204,26 +417,123 @@ const ConfigSchema = Schema.Struct({
               min <= max ? undefined : 'delay.min must be <= delay.max',
             ),
           ),
-        ]),
+        ]).annotate({
+          description:
+            'A fixed number of milliseconds, a range to pick from, or `false` for no delay at all.',
+          examples: [200, { min: 100, max: 800 }, false],
+        }),
       ),
-      arrayMin: Schema.optionalKey(ArrayLengthSchema),
-      arrayMax: Schema.optionalKey(ArrayLengthSchema),
-    }).check(
-      Schema.makeFilter(({ arrayMin, arrayMax }) =>
-        arrayMin === undefined || arrayMax === undefined || arrayMin <= arrayMax
-          ? undefined
-          : 'arrayMin must be <= arrayMax. Swap the values or remove one.',
+      arrayMin: Schema.optionalKey(
+        ArrayLengthSchema.annotate({
+          description: 'Fewest items a generated array holds when the schema sets no `minItems`.',
+        }),
       ),
-    ),
+      arrayMax: Schema.optionalKey(
+        ArrayLengthSchema.annotate({
+          description: 'Most items a generated array holds when the schema sets no `maxItems`.',
+        }),
+      ),
+    })
+      .check(
+        Schema.makeFilter(({ arrayMin, arrayMax }) =>
+          arrayMin === undefined || arrayMax === undefined || arrayMin <= arrayMax
+            ? undefined
+            : 'arrayMin must be <= arrayMax. Swap the values or remove one.',
+        ),
+      )
+      .annotate({
+        title: 'Mock server output',
+        description: 'A standalone Elysia server answering every operation with a faker body.',
+        examples: [{ output: './src/mock.ts', useExamples: true, seed: 42, delay: false }],
+      }),
   ),
-  swr: Schema.optionalKey(HooksSchema),
-  'tanstack-query': Schema.optionalKey(HooksSchema),
-  'preact-query': Schema.optionalKey(HooksSchema),
-  'solid-query': Schema.optionalKey(HooksSchema),
-  'vue-query': Schema.optionalKey(HooksSchema),
-  'svelte-query': Schema.optionalKey(HooksSchema),
-  'angular-query': Schema.optionalKey(HooksSchema),
+  swr: Schema.optionalKey(
+    HooksSchema.annotate({
+      title: 'SWR hooks output',
+      description: 'Generates `useSWR` / `useSWRMutation` hooks per operation.',
+      examples: [{ output: './src/swr.ts', import: '../lib', client: 'client' }],
+    }),
+  ),
+  'tanstack-query': Schema.optionalKey(
+    HooksSchema.annotate({
+      title: 'TanStack Query hooks output',
+      description: 'Generates `@tanstack/react-query` hooks per operation.',
+      examples: [{ output: './src/tanstack-query.ts', import: '../lib', client: 'client' }],
+    }),
+  ),
+  'preact-query': Schema.optionalKey(
+    HooksSchema.annotate({
+      title: 'Preact Query hooks output',
+      description: 'Generates `@tanstack/preact-query` hooks per operation.',
+      examples: [{ output: './src/preact-query.ts', import: '../lib', client: 'client' }],
+    }),
+  ),
+  'solid-query': Schema.optionalKey(
+    HooksSchema.annotate({
+      title: 'Solid Query hooks output',
+      description: 'Generates `@tanstack/solid-query` hooks per operation.',
+      examples: [{ output: './src/solid-query.ts', import: '../lib', client: 'client' }],
+    }),
+  ),
+  'vue-query': Schema.optionalKey(
+    HooksSchema.annotate({
+      title: 'Vue Query hooks output',
+      description: 'Generates `@tanstack/vue-query` hooks per operation.',
+      examples: [{ output: './src/vue-query.ts', import: '../lib', client: 'client' }],
+    }),
+  ),
+  'svelte-query': Schema.optionalKey(
+    HooksSchema.annotate({
+      title: 'Svelte Query hooks output',
+      description: 'Generates `@tanstack/svelte-query` hooks per operation.',
+      examples: [{ output: './src/svelte-query.ts', import: '../lib', client: 'client' }],
+    }),
+  ),
+  'angular-query': Schema.optionalKey(
+    HooksSchema.annotate({
+      title: 'Angular Query hooks output',
+      description: 'Generates `@tanstack/angular-query-experimental` hooks per operation.',
+      examples: [{ output: './src/angular-query.ts', import: '../lib', client: 'client' }],
+    }),
+  ),
 })
+  .check(
+    // Two generators aimed at one path would take turns overwriting it; the second one named is
+    // reported, with the first it collides with. The app entry stands for `src/index.ts` when it
+    // is left out, so a generator pointed there collides with it as well.
+    Schema.makeFilter(
+      (v) => {
+        const declared: readonly (readonly [string, string | undefined])[] = [
+          ['output', v.output ?? 'src/index.ts'],
+          ['components.output', v.components?.output],
+          ...COMPONENT_KINDS.map(
+            (kind) => [`components.${kind}.output`, v.components?.[kind]?.output] as const,
+          ),
+          ['eden.output', v.eden?.output],
+          ['types.output', v.types?.output],
+          ['mock.output', v.mock?.output],
+          ...HOOK_KINDS.map((kind) => [`${kind}.output`, v[kind]?.output] as const),
+        ]
+        const seen = new Map<string, string>()
+        for (const [field, output] of declared) {
+          if (output === undefined) continue
+          const key = posix.normalize(output).replace(/\/+$/u, '')
+          const first = seen.get(key)
+          if (first !== undefined) {
+            return `${field} and ${first} both write to ${output}. Give each generator its own output path.`
+          }
+          seen.set(key, field)
+        }
+        return true
+      },
+      { message: 'every generator needs its own output path' },
+    ),
+  )
+  .annotate({
+    title: 'asphodelos config',
+    description:
+      'Everything `asphodelos` generates from one OpenAPI or TypeSpec document. Only `input` is required; the app entry is always written, and each remaining field opts one generator in.',
+  })
 
 export type Config = typeof ConfigSchema.Type
 
@@ -332,6 +642,133 @@ export function readConfig(configPath?: string, reload = false) {
   })
 }
 
-export function defineConfig(config: typeof ConfigSchema.Encoded) {
+type ConfigInput = typeof ConfigSchema.Encoded
+
+type HookKind = (typeof HOOK_KINDS)[number]
+
+type ComponentKind = (typeof COMPONENT_KINDS)[number]
+
+type OptionOf<S> = S extends unknown ? keyof S : never
+
+type ValueOf<S, K> = S extends unknown ? (K extends keyof S ? S[K] : never) : never
+
+/**
+ * `T` with every key the schema does not know replaced by a sentence.
+ *
+ * The schema strips an unknown key at run time; here, while the config is typed, a typo is
+ * reported on the key itself rather than accepted and ignored.
+ */
+type Known<T, S> = T extends readonly unknown[]
+  ? T
+  : T extends object
+    ? {
+        readonly [K in keyof T]: K extends OptionOf<NonNullable<S>>
+          ? Known<T[K], ValueOf<NonNullable<S>, K>>
+          : 'is not an option'
+      }
+    : T
+
+type Replaced<V, P, M, S> = {
+  readonly [Q in keyof V]: Q extends P
+    ? M
+    : Q extends OptionOf<NonNullable<S>>
+      ? Known<V[Q], ValueOf<NonNullable<S>, Q>>
+      : 'is not an option'
+}
+
+/**
+ * The `output` of a generator block, read without a conditional on the block itself.
+ *
+ * `T` is inferred from the argument through the mapped type below, and TypeScript leaves a
+ * conditional on such an inferred property unresolved — `V extends { output: infer O }` never
+ * answers for a block with more than one field. An indexed access does answer, and a block
+ * without an `output` reads as `unknown`, which no literal output is.
+ */
+type OutputOf<V> = (V & { readonly output?: unknown })['output']
+
+/** Every `[field, output]` pair the config declares, the app entry included. */
+type Outputs<T> = {
+  readonly [K in keyof T]: K extends 'output'
+    ? readonly ['output', T[K]]
+    : K extends 'components'
+      ? {
+          readonly [P in keyof T[K]]: P extends 'output'
+            ? readonly ['components.output', T[K][P]]
+            : readonly [`components.${P & string}`, OutputOf<T[K][P]>]
+        }[keyof T[K]]
+      : readonly [K, OutputOf<T[K]>]
+}[keyof T]
+
+type Sharing<T, F, O> = string extends O
+  ? never
+  : Extract<Exclude<Outputs<T>, readonly [F, unknown]>, readonly [unknown, O]>
+
+type Shared<T, F, O> = [Sharing<T, F, O>] extends [never]
+  ? never
+  : `is also the output of ${Sharing<T, F, O>[0] & string}: every generator needs its own output path`
+
+type SplitOf<V> = (V & { readonly split?: unknown })['split']
+
+type Collided<T, F, V, S> = [Shared<T, F, OutputOf<V>>] extends [never]
+  ? Known<V, S>
+  : Replaced<V, 'output', Shared<T, F, OutputOf<V>>, S>
+
+type Written<T, F, V, S> = [SplitOf<V>] extends [true]
+  ? [OutputOf<V>] extends [`${string}.ts`]
+    ? Replaced<V, 'output', 'split mode requires a directory, not a .ts file', S>
+    : Collided<T, F, V, S>
+  : Collided<T, F, V, S>
+
+type Hooked<T, F, V, S> = [SplitOf<V>] extends [boolean]
+  ? Replaced<
+      V,
+      'split',
+      'was removed: the hooks are always generated into a single file, so output names a .ts file',
+      S
+    >
+  : Written<T, F, V, S>
+
+type Single<T, O> = [Shared<T, 'output', O>] extends [never] ? O : Shared<T, 'output', O>
+
+type Mounted<P> = P extends `/${string}` ? P : string extends P ? P : "must start with '/'"
+
+type Composed<T, V, S> = {
+  readonly [P in keyof V]: P extends ComponentKind
+    ? [OutputOf<V>] extends [string]
+      ? 'components.output and the outputs of each type are mutually exclusive'
+      : Written<T, `components.${P}`, V[P], ValueOf<NonNullable<S>, P>>
+    : P extends 'output'
+      ? [Shared<T, 'components.output', V[P]>] extends [never]
+        ? V[P]
+        : Shared<T, 'components.output', V[P]>
+      : P extends OptionOf<NonNullable<S>>
+        ? Known<V[P], ValueOf<NonNullable<S>, P>>
+        : 'is not an option'
+}
+
+/**
+ * The config as `defineConfig` checks it while it is typed.
+ *
+ * Every rule `parseConfig` applies at run time that can be told from the literal is told here,
+ * on the field it concerns: an unknown key, a `.ts` output in split mode, an output two
+ * generators share, a prefix without its slash, and the options that were removed.
+ */
+type Checked<T> = {
+  readonly [K in keyof T]: K extends keyof ConfigInput
+    ? K extends 'test'
+      ? 'is not an option: asphodelos no longer generates tests'
+      : K extends HookKind
+        ? Hooked<T, K, T[K], ConfigInput[K]>
+        : K extends 'output'
+          ? Single<T, T[K]>
+          : K extends 'prefix'
+            ? Mounted<T[K]>
+            : K extends 'components'
+              ? Composed<T, T[K], ConfigInput[K]>
+              : Written<T, K, T[K], ConfigInput[K]>
+    : 'is not an option'
+}
+
+export function defineConfig<const T extends ConfigInput>(config: Checked<T>) {
   return config
 }

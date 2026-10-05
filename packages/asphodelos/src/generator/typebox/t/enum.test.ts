@@ -9,12 +9,12 @@ describe('_enum', () => {
 
   it('emits t.UnionEnum for all-string multi-value enum (preserves literal union type)', () => {
     expect(_enum({ enum: ['available', 'pending', 'sold'] })).toBe(
-      't.UnionEnum(["available","pending","sold"])',
+      't.UnionEnum(["available","pending","sold"],{default:undefined})',
     )
   })
 
   it('handles all-numeric enum values via t.UnionEnum (t.NumericEnum is string-keyed)', () => {
-    expect(_enum({ enum: [1, 2, 3] })).toBe('t.UnionEnum([1,2,3])')
+    expect(_enum({ enum: [1, 2, 3] })).toBe('t.UnionEnum([1,2,3],{default:undefined})')
   })
 
   it('handles string + null enum values via t.Union (t.UnionEnum rejects null)', () => {
@@ -48,6 +48,8 @@ describe('_enum', () => {
         enum: ['a', 'b'],
         'x-error-message': 'invalid choice',
       }),
-    ).toBe('t.UnionEnum(["a","b"],{error:"invalid choice","x-error-message":"invalid choice"})')
+    ).toBe(
+      't.UnionEnum(["a","b"],{error:"invalid choice","x-error-message":"invalid choice",default:undefined})',
+    )
   })
 })

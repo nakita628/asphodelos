@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { spawn } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
+import { listCases } from './cases.ts'
 // Regenerates `__generated__` first, as the test preload does: the output is gitignored, so on a
 // clean checkout (CI) there is nothing to typecheck until it is generated, and anywhere else the
 // check would otherwise measure the last build instead of this one.
@@ -10,7 +10,7 @@ import path from 'node:path'
 import './pretest.ts'
 
 /**
- * Runs `tsc -p cases/<name>` for every case.
+ * Runs `tsc -p` for every case, under `cases/` and at the root.
  *
  * This is what compiles the generated hooks against the real `@tanstack/*` and `swr` type
  * definitions. A hook whose generics are wrong compiles fine in isolation and fails here, which
@@ -20,13 +20,11 @@ import './pretest.ts'
 const testRoot = path.resolve(import.meta.dir, '..')
 const tsc = path.resolve(testRoot, 'node_modules', '.bin', 'tsc')
 
-const cases = readdirSync(path.join(testRoot, 'cases'))
-  .filter((name) => existsSync(path.join(testRoot, 'cases', name, 'tsconfig.json')))
-  .toSorted()
+const cases = listCases(testRoot)
 
-function typecheck(name: string) {
+function typecheck({ name, dir }: { readonly name: string; readonly dir: string }) {
   return new Promise<{ name: string; ok: boolean; output: string }>((resolve) => {
-    const child = spawn(tsc, ['-p', path.join(testRoot, 'cases', name)], { cwd: testRoot })
+    const child = spawn(tsc, ['-p', dir], { cwd: testRoot })
     const chunks: Buffer[] = []
     child.stdout.on('data', (chunk: Buffer) => {
       chunks.push(chunk)
