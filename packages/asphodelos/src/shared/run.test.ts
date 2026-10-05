@@ -459,7 +459,8 @@ describe('makeJob — every job actually runs', () => {
     const run = await runJobs({ client: { output: 'src/client.ts' }, ...config })
     for (const library of libraries) {
       expect(run.names).toContain(library)
-      expect(run.exists(`src/${library}.ts`)).toBe(true)
+      // Every library's file imports the generated client beside it, under its one export name.
+      expect(run.read(`src/${library}.ts`)).toContain("import { client } from './client'")
     }
   })
 
