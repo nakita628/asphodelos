@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { Effect } from 'effect'
@@ -66,10 +66,14 @@ const OPENAPI = {
   },
 } as unknown as OpenAPI
 
-/** Decodes a config and runs every job it produces, inside a fresh directory. */
-async function runJobs(config: Record<string, unknown>) {
+/**
+ * Decodes a config and runs every job it produces, inside a fresh directory — one `seed` may
+ * first fill with what a project would already hold.
+ */
+async function runJobs(config: Record<string, unknown>, seed?: (dir: string) => void) {
   const dir = mkdtempSync(path.join(PKG_ROOT, 'tmp-jobs-'))
   workdirs.push(dir)
+  seed?.(dir)
   const cwd = process.cwd()
   process.chdir(dir)
   try {
@@ -199,7 +203,8 @@ describe('makeJob — every job actually runs', () => {
     expect(code).toContain("treaty<typeof app>('http://localhost:4000')")
   })
 
-  // A file that names no import reads the generated client, from wherever it is written.
+  // A file that names no import reads the generated client, from wherever it is written. Beside
+  // the app entry the client has no barrel — the `index.ts` there is the entry.
   it('client: eden and the hooks import the generated client when they name no import', async () => {
     const run = await runJobs({
       client: { output: 'src/client.ts' },
@@ -208,6 +213,46 @@ describe('makeJob — every job actually runs', () => {
     })
     expect(run.read('src/api/eden.ts')).toContain("import { client } from '../client'")
     expect(run.read('src/swr.ts')).toContain("import { client } from './client'")
+    expect(run.read('src/index.ts')).not.toContain('export * from')
+  })
+
+  // A client in a directory of its own is re-exported by the `index.ts` beside it, and the files
+  // elsewhere import that directory; a file beside the client imports the client itself.
+  it('client: a barrel beside the client re-exports it, and the other files import the directory', async () => {
+    const run = await runJobs({
+      client: { output: 'src/lib/client.ts' },
+      eden: { output: 'src/lib/eden.ts' },
+      swr: { output: 'src/hooks/swr.ts' },
+    })
+    expect(run.read('src/lib/index.ts')).toBe("export * from './client'\n")
+    expect(run.read('src/lib/eden.ts')).toContain("import { client } from './client'")
+    expect(run.read('src/hooks/swr.ts')).toContain("import { client } from '../lib'")
+  })
+
+  // The barrel is written through the formatter like every generated file, so what was there is
+  // kept as the formatter spells it.
+  it('client: a barrel that is there already keeps its exports and gains the client once', async () => {
+    const run = await runJobs({ client: { output: 'src/lib/client.ts' } }, (dir) => {
+      mkdirSync(path.join(dir, 'src/lib'), { recursive: true })
+      writeFileSync(path.join(dir, 'src/lib/index.ts'), "export * from './env';\n")
+    })
+    expect(run.read('src/lib/index.ts')).toBe("export * from './env'\nexport * from './client'\n")
+    const again = await runJobs({ client: { output: 'src/lib/client.ts' } }, (dir) => {
+      mkdirSync(path.join(dir, 'src/lib'), { recursive: true })
+      writeFileSync(path.join(dir, 'src/lib/index.ts'), 'export * from "./client"\n')
+    })
+    expect(again.read('src/lib/index.ts')).toBe('export * from "./client"\n')
+  })
+
+  // The `index.ts` beside the client is left alone when another generator writes it.
+  it('client: no barrel where another generator writes the index.ts beside the client', async () => {
+    const run = await runJobs({
+      client: { output: 'src/lib/client.ts' },
+      eden: { output: 'src/lib/index.ts' },
+      swr: { output: 'src/swr.ts' },
+    })
+    expect(run.read('src/lib/index.ts')).not.toContain('export * from')
+    expect(run.read('src/swr.ts')).toContain("import { client } from './lib/client'")
   })
 
   // `@/` stands for the app entry's directory; every import between generated files under it
@@ -222,8 +267,8 @@ describe('makeJob — every job actually runs', () => {
       swr: { output: 'web/swr.ts' },
     })
     expect(run.read('src/lib/client.ts')).toContain("import type { app } from '@/index'")
-    expect(run.read('src/hooks.ts')).toContain("import { client } from '@/lib/client'")
-    expect(run.read('web/swr.ts')).toContain("import { client } from '@/lib/client'")
+    expect(run.read('src/hooks.ts')).toContain("import { client } from '@/lib'")
+    expect(run.read('web/swr.ts')).toContain("import { client } from '@/lib'")
     expect(run.read('src/modules/items/index.ts')).toContain("from '@/components/schemas'")
   })
 
@@ -231,11 +276,11 @@ describe('makeJob — every job actually runs', () => {
     const run = await runJobs({
       output: 'server/index.ts',
       pathAlias: '~/',
-      client: { output: 'web/client.ts' },
-      swr: { output: 'web/hooks/swr.ts' },
+      client: { output: 'web/lib/client.ts' },
+      swr: { output: 'web/swr.ts' },
     })
-    expect(run.read('web/client.ts')).toContain("import type { app } from '~/index'")
-    expect(run.read('web/hooks/swr.ts')).toContain("import { client } from '../client'")
+    expect(run.read('web/lib/client.ts')).toContain("import type { app } from '~/index'")
+    expect(run.read('web/swr.ts')).toContain("import { client } from './lib'")
   })
 
   it('types: writes the self-contained App type', async () => {

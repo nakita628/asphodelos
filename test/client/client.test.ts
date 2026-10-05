@@ -25,6 +25,8 @@ import type { app } from '../hosts/users-app.js'
  */
 const generated = path.join(import.meta.dir, '__generated__', 'src')
 
+const clientFile = path.join(generated, 'lib', 'client.ts')
+
 type Client = ReturnType<typeof treaty<typeof app>>
 
 /** Loads a generated module, as Bun does: through the alias its imports name. */
@@ -74,12 +76,13 @@ afterAll(() => {
 describe('the generated client', () => {
   // The alias is the config's `pathAlias`; tsconfig.json maps it, and this file compiling against
   // the generated one is what shows the two agree.
-  it('imports the app entry through the alias, and the hooks import the client through it', () => {
-    expect(readFileSync(path.join(generated, 'client.ts'), 'utf8')).toContain(
-      "import type { app } from '@/index'",
+  it('imports the app entry through the alias, and the hooks import its barrel through it', () => {
+    expect(readFileSync(clientFile, 'utf8')).toContain("import type { app } from '@/index'")
+    expect(readFileSync(path.join(generated, 'lib', 'index.ts'), 'utf8')).toBe(
+      "export * from './client'\n",
     )
     expect(readFileSync(path.join(generated, 'hooks.ts'), 'utf8')).toContain(
-      "import { client } from '@/client'",
+      "import { client } from '@/lib'",
     )
   })
 
@@ -89,7 +92,7 @@ describe('the generated client', () => {
   it("in a browser, sends its requests to the page's own origin", async () => {
     process.env[ENV] = 'http://localhost:1'
     setWindowUrl(server.origin)
-    const client = await load('client.ts')
+    const client = await load('lib/client.ts')
     const { data, error } = await client.users.get()
     expect(error).toBeNull()
     expect(data).toStrictEqual([
@@ -102,11 +105,11 @@ describe('the generated client', () => {
   // without a window is read from a copy of the file, with the browser's globals set aside.
   it('without a window, sends its requests to the base URL', async () => {
     process.env[ENV] = server.origin
-    const copy = path.join(generated, 'client.server.ts')
-    copyFileSync(path.join(generated, 'client.ts'), copy)
+    const copy = path.join(generated, 'lib', 'client.server.ts')
+    copyFileSync(clientFile, copy)
     suspendHappyDom()
     try {
-      const client = await load(path.basename(copy))
+      const client = await load(path.relative(generated, copy))
       const { data, error } = await client.users({ id: '2' }).get()
       expect(error).toBeNull()
       expect(data).toStrictEqual({ id: '2', name: 'Bob' })
@@ -116,8 +119,8 @@ describe('the generated client', () => {
     }
   })
 
-  // The hooks import the client as `@/client`, a value import Bun has to resolve, through the
-  // `paths` of the nearest tsconfig.
+  // The hooks import the client's barrel as `@/lib`, a value import Bun has to resolve, through
+  // the `paths` of the nearest tsconfig.
   it('the hooks load, resolving their import of the client through the alias', async () => {
     const hooks: unknown = await import(path.join(generated, 'hooks.ts'))
     expect(

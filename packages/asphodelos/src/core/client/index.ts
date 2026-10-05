@@ -3,6 +3,7 @@ import path from 'node:path'
 import { Effect } from 'effect'
 
 import { emit } from '../../emit/index.js'
+import { readFile } from '../../fsp/index.js'
 
 /** What the client is created with; see `client.baseUrl` in the config. */
 export type BaseUrl =
@@ -53,6 +54,8 @@ export function client(
     /** The URL an environment variable left unset falls back to. */
     readonly fallback: string
     readonly sameOrigin: boolean
+    /** The `index.ts` beside the client that re-exports it, when the client is to have one. */
+    readonly barrel?: string
   },
 ) {
   return Effect.gen(function* () {
@@ -68,6 +71,19 @@ export function client(
       `export const client = treaty<typeof app>(${options.sameOrigin ? 'origin' : url})`,
     ].join('\n\n')
     yield* emit(`${code}\n`, path.dirname(output), output)
+    if (options.barrel !== undefined) {
+      // A barrel that is there already keeps what it exports and gains the client.
+      const line = `export * from './${path.basename(output, '.ts')}'`
+      const existing = (yield* readFile(options.barrel)) ?? ''
+      const lines = existing.split('\n').map((text) => text.trim().replace(/;$/u, ''))
+      if (!lines.some((text) => text.replaceAll('"', "'") === line)) {
+        yield* emit(
+          `${existing.trimEnd()}\n${line}\n`,
+          path.dirname(options.barrel),
+          options.barrel,
+        )
+      }
+    }
     return `Generated client written to ${output}`
   })
 }

@@ -3,8 +3,8 @@ import path, { posix } from 'node:path'
 import SwaggerParser from '@apidevtools/swagger-parser'
 import { Effect, FileSystem } from 'effect'
 
-import { HOOK_KINDS } from '../config/index.js'
-import type { COMPONENT_KINDS, Config } from '../config/index.js'
+import { COMPONENT_KINDS, HOOK_KINDS } from '../config/index.js'
+import type { Config } from '../config/index.js'
 import {
   callbacks,
   client,
@@ -34,15 +34,18 @@ import type { OpenAPI } from '../openapi/index.js'
  *
  * Through the alias when the config names one and `target` sits under the app entry's directory —
  * `@/` stands for that directory, so `src/client.ts` is `@/client` from anywhere — and relative to
- * `from` otherwise. The extension goes; `index` stays, so an entry is named rather than left to
- * directory resolution.
+ * `from` otherwise. The extension goes. A barrel is imported by its directory; any other file
+ * keeps its `index`, so an entry is named rather than left to directory resolution.
  */
 function importSpecifier(
   from: string,
   target: string,
   alias: { readonly prefix: string; readonly directory: string } | undefined,
+  kind: 'file' | 'barrel' = 'file',
 ) {
-  const module = posix.normalize(target).replace(/\.ts$/u, '')
+  const module = posix
+    .normalize(target)
+    .replace(kind === 'barrel' ? /(?:\/index)?\.ts$/u : /\.ts$/u, '')
   if (alias !== undefined) {
     const inside = posix.relative(alias.directory, module)
     if (inside !== '' && !inside.startsWith('..')) return `${alias.prefix}/${inside}`
@@ -92,9 +95,31 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
   // The address the app entry listens on: what the client is created with when the config names
   // no base URL, and what an environment variable left unset falls back to.
   const localhost = `http://localhost:${config.port ?? '3000'}`
+  // A client that is not an `index.ts` is re-exported by the `index.ts` beside it, and imported
+  // through it — unless that file is what another generator writes.
+  const clientBarrel = (() => {
+    if (clientConfig === undefined || posix.basename(clientConfig.output) === 'index.ts') {
+      return undefined
+    }
+    const barrel = posix.join(posix.dirname(clientConfig.output), 'index.ts')
+    const written = [
+      appOutput,
+      config.components?.output,
+      ...COMPONENT_KINDS.map((kind) => config.components?.[kind]?.output),
+      edenConfig?.output,
+      config.types?.output,
+      config.mock?.output,
+      ...HOOK_KINDS.map((kind) => config[kind]?.output),
+    ]
+    return written.some((file) => file !== undefined && posix.normalize(file) === barrel)
+      ? undefined
+      : barrel
+  })()
   // The module a generated file imports the client from: the one it names, or the file the
-  // top-level `client` generates, reached from where the generated file is written. `parseConfig`
-  // requires one of the two, so a file with neither is a wiring error, not a config error.
+  // top-level `client` generates, reached from where the generated file is written. A file beside
+  // the client imports the client itself: the barrel is for the others, and may come to re-export
+  // the file that would import it. `parseConfig` requires an import or a client, so a file with
+  // neither is a wiring error, not a config error.
   const clientImport = (field: string, output: string, named: string | undefined) => {
     if (named !== undefined) return Effect.succeed(named)
     if (clientConfig === undefined) {
@@ -104,7 +129,12 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
         }),
       )
     }
-    return Effect.succeed(importSpecifier(output, clientConfig.output, pathAlias))
+    const isBeside = posix.dirname(posix.normalize(output)) === posix.dirname(clientConfig.output)
+    return Effect.succeed(
+      isBeside || clientBarrel === undefined
+        ? importSpecifier(output, clientConfig.output, pathAlias)
+        : importSpecifier(output, clientBarrel, pathAlias, 'barrel'),
+    )
   }
   // `output` (single-file mode) and the per-type targets are mutually exclusive
   // (enforced in parseConfig); split them so the per-type map keeps the shape the
@@ -149,6 +179,7 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
               baseUrl: clientConfig.baseUrl ?? localhost,
               fallback: localhost,
               sameOrigin: clientConfig.sameOrigin === true,
+              barrel: clientBarrel,
             }),
         }
       : undefined,

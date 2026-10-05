@@ -231,7 +231,7 @@ export default defineConfig({
   input: 'openapi.yaml',
   output: 'src/index.ts',
   client: {
-    output: 'src/client.ts',
+    output: 'src/lib/client.ts',
     baseUrl: 'http://localhost:3000', // or { env: 'VITE_API_URL' }, or { env: 'API_URL', import: '@/env' }
     sameOrigin: true, // in a browser, the page's own origin; baseUrl is for code without a window
   },
@@ -239,27 +239,20 @@ export default defineConfig({
 ```
 
 ```ts
-// src/client.ts
+// src/lib/client.ts
 import { treaty } from '@elysiajs/eden'
-import type { app } from './index'
+import type { app } from '../index'
 
 const origin = typeof window === 'undefined' ? 'http://localhost:3000' : window.location.origin
 
 export const client = treaty<typeof app>(origin)
 ```
 
-The app is imported for its type only, so a browser bundle never pulls the server in. `baseUrl` left
-out is `http://localhost:<port>`, the address the app entry listens on. `{ env, source }` reads an
-environment variable when the client is created, from `import.meta.env` unless `source` says
-`process.env`, with that address in its place when the variable is not set; `{ env, import, name }`
-reads a property of an environment a module exports.
-
-`sameOrigin` is for an app a host framework such as TanStack Start or Next.js serves beside its
-pages (`integration: true`): the API shares the page's origin, so there is no CORS to configure, and
-`baseUrl` is what a server render or a loader uses. It needs the DOM lib. With `pathAlias: '@/'`
-the generated files under the app entry's directory import each other through the alias, the
-client as `@/client` and the entry as `@/index`. `eden` and the hooks import this client unless
-they name an `import` of their own; `@elysiajs/eden` has to be installed in the project.
+The `index.ts` beside the client re-exports it, so it is imported as `./lib`; `eden` and the hooks
+do so unless they name an `import` of their own. `baseUrl` left out is `http://localhost:<port>`.
+`sameOrigin` suits an app a host framework such as TanStack Start or Next.js serves beside its
+pages, where the API shares the origin and CORS has nothing to allow. The project needs
+`@elysiajs/eden`.
 
 ### Wrapper Functions
 
@@ -486,7 +479,7 @@ export default defineConfig({
   },
 
   client: {
-    output: 'src/client.ts',
+    output: 'src/lib/client.ts', // re-exported by src/lib/index.ts
     baseUrl: 'http://localhost:3000', // `http://localhost:<port>` when left out
     // baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
     // baseUrl: { env: 'API_URL', import: '@/env', name: 'env' },
