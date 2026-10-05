@@ -16,7 +16,6 @@
     "*.test.ts",
     "apps/eden/__generated__/**/*",
     "apps/react/__generated__/**/*",
-    "../happydom.ts",
     "../hosts/users-app.ts",
     "../hosts/users-server.ts"
   ]

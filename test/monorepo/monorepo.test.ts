@@ -6,8 +6,6 @@ import path from 'node:path'
 
 import { QueryClient } from '@tanstack/react-query'
 
-import { resumeHappyDom, suspendHappyDom } from '../happydom.js'
-
 /**
  * The generated client and hooks across three packages, the way a workspace lays them out: the
  * app in apps/elysia, the client in apps/eden, the hooks in apps/react. Generation runs once, from
@@ -54,6 +52,12 @@ afterAll(() => {
   server.child?.kill()
 })
 
+/** Points happy-dom's window at `url`, as if the page had been served from there. */
+function setWindowUrl(url: string) {
+  const happyDOM = Reflect.get(globalThis, 'happyDOM') as { setURL: (url: string) => void }
+  happyDOM.setURL(url)
+}
+
 describe('a client in a package of its own', () => {
   it('imports the app by the name of its package, and is re-exported by the index.ts beside it', () => {
     expect(read('eden/__generated__/src/client.ts')).toContain(
@@ -70,27 +74,21 @@ describe('a client in a package of its own', () => {
 
   // `@repo/eden` is resolved through the tsconfig beside the generated files, as Bun resolves a
   // workspace package; the client reads the base URL from the environment, so the request lands
-  // on the host app. The browser's globals are set aside: happy-dom's fetch would refuse the
-  // server as another origin, and this client is the one for code without a window.
+  // on the host app. The suite runs under happy-dom, whose fetch keeps to the page's origin, so
+  // the window is pointed at the server first.
   it('the hooks, loaded through the package names, fetch from the server', async () => {
     process.env[ENV] = server.origin
-    suspendHappyDom()
-    try {
-      const hooks = (await import(
-        path.join(apps, 'react', '__generated__', 'src', 'hooks.ts')
-      )) as {
-        readonly getUsersQueryOptions: () => {
-          readonly queryKey: readonly unknown[]
-          readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<unknown>
-        }
+    setWindowUrl(server.origin)
+    const hooks = (await import(path.join(apps, 'react', '__generated__', 'src', 'hooks.ts'))) as {
+      readonly getUsersQueryOptions: () => {
+        readonly queryKey: readonly unknown[]
+        readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<unknown>
       }
-      const users = await new QueryClient().query(hooks.getUsersQueryOptions())
-      expect(users).toStrictEqual([
-        { id: '1', name: 'Alice' },
-        { id: '2', name: 'Bob' },
-      ])
-    } finally {
-      resumeHappyDom()
     }
+    const users = await new QueryClient().query(hooks.getUsersQueryOptions())
+    expect(users).toStrictEqual([
+      { id: '1', name: 'Alice' },
+      { id: '2', name: 'Bob' },
+    ])
   })
 })

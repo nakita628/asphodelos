@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { Effect } from 'effect'
+import { Effect, Result } from 'effect'
 
 import { parseConfig } from '../config/index.js'
 import type { OpenAPI } from '../openapi/index.js'
@@ -81,12 +81,17 @@ async function runJobs(config: Record<string, unknown>, seed?: (dir: string) => 
   try {
     const decoded = Effect.runSync(parseConfig({ input: 'openapi.yaml', ...config }))
     const jobs = makeJob(OPENAPI, decoded)
-    const logs = await runGenerator(
+    // Every job runs to its end before a failure is reported: the jobs write relative to the
+    // working directory, and one still writing after it is restored would land in the package.
+    const results = await runGenerator(
       Effect.all(
         jobs.map((job) => job.run(job.output)),
-        { concurrency: 'unbounded' },
+        { concurrency: 'unbounded', mode: 'result' },
       ),
     )
+    const failed = results.find((result) => Result.isFailure(result))
+    if (failed) throw failed.failure
+    const logs = results.map((result) => Result.getOrThrow(result))
     return {
       dir,
       logs,
