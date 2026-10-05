@@ -183,12 +183,16 @@ export const plugin: unknown = asphodelosVite()
 export default defineConfig({
   input: 'openapi.yaml',
   output: 'src/index.ts',
-  swr: { output: 'src/hooks.ts', import: './client' },
+  client: { output: 'src/client.ts' },
+  swr: { output: 'src/hooks.ts' },
 })
 `,
     )
     run(cli, [], project)
     if (!existsSync(join(project, 'src/hooks.ts'))) throw new Error('the config run wrote nothing')
+    if (!readFileSync(join(project, 'src/hooks.ts'), 'utf8').includes("from './client'")) {
+      throw new Error('the hooks do not import the generated client')
+    }
   })
 
   step('the Vite plugin generates in a dev server', () => {
@@ -210,7 +214,9 @@ while (!existsSync('src/hooks.ts') && Date.now() < deadline) {
   await new Promise((resolve) => setTimeout(resolve, 100))
 }
 await server.close()
-if (!existsSync('src/index.ts') || !existsSync('src/hooks.ts')) process.exit(1)
+if (!existsSync('src/index.ts') || !existsSync('src/client.ts') || !existsSync('src/hooks.ts')) {
+  process.exit(1)
+}
 `,
     )
     run('node', ['vite-smoke.mjs'], project)

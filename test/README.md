@@ -34,6 +34,8 @@ runtime/          tests that execute the generated hooks, and the Vite plugin in
 types/            compile-time assertions about the generics
 query-params/     a self-contained case: document, config, echo app and tests, in one directory
 path-params/      the same for path parameters
+client/           the generated Eden Treaty client, under a path alias, driven over HTTP against
+                  hosts/users-server.ts in a process of its own
 scripts/          cases.ts, generate.ts, typecheck.ts, pretest.ts
 __generated__/    output; gitignored, refreshed before every run (a root-level case has its own)
 ```

@@ -123,18 +123,20 @@ const ImportSchema = Schema.String.check(
   examples: ['@packages/schemas', '../lib', '.'],
 })
 
-const ClientSchema = Schema.String.check(
-  Schema.isPattern(/^[A-Za-z_$][A-Za-z0-9_$]*$/u, {
-    message: 'must be a JavaScript identifier',
-  }),
-)
-  .pipe(Schema.withDecodingDefault(Effect.succeed('client')))
-  .annotate({
+// No decoding default: whether the name was given is what the check against a top-level `client`
+// reads, and the generators take `client` for a name left out.
+const ClientSchema = Schema.optionalKey(
+  Schema.String.check(
+    Schema.isPattern(/^[A-Za-z_$][A-Za-z0-9_$]*$/u, {
+      message: 'must be a JavaScript identifier',
+    }),
+  ).annotate({
     title: 'Client export name',
     description:
-      'Named export to import from `import` as the Eden Treaty client, `client` when left out.',
+      'Named export to import from `import` as the Eden Treaty client, `client` when left out. Not taken with the top-level `client` block: the generated client is exported as `client`.',
     examples: ['client', 'apiClient'],
-  })
+  }),
+)
 
 /**
  * Every component target is the same two-branch union: `split: true` writes one file per entry
@@ -181,11 +183,110 @@ const ExportTypesOutputSchema = splitUnion({
   }),
 })
 
+/**
+ * What the generated client is created with.
+ *
+ * A URL written into the file, an environment variable read when the client is created, or a
+ * property of an environment a module exports. The member that names a module stands first: the
+ * other would accept the object as well and leave `import` out.
+ */
+const BaseUrlSchema = Schema.Union([
+  Schema.String.check(
+    Schema.isPattern(/^[^\s'"`\\]+$/u, { message: 'must be a URL, with no whitespace or quotes' }),
+  ).annotate({
+    title: 'URL',
+    description: 'The origin the client sends its requests to, written into the file as it stands.',
+    examples: ['http://localhost:3000', 'https://api.example.com'],
+  }),
+  Schema.Struct({
+    env: Schema.String.check(
+      Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u, {
+        message: 'must be the name of an environment variable',
+      }),
+    ).annotate({
+      title: 'Environment variable',
+      description: 'The property of the imported environment the base URL is read from.',
+      examples: ['API_URL'],
+    }),
+    import: ImportSchema.annotate({
+      title: 'Import specifier',
+      description:
+        'The module that exports the environment, written into the client file as it stands. One that validates what it exports hands out a value that is there, so nothing stands in for it.',
+      examples: ['@/env', '../env'],
+    }),
+    name: Schema.String.check(
+      Schema.isPattern(/^[A-Za-z_$][A-Za-z0-9_$]*$/u, {
+        message: 'must be a JavaScript identifier',
+      }),
+    )
+      .pipe(Schema.withDecodingDefault(Effect.succeed('env')))
+      .annotate({
+        title: 'Environment export name',
+        description:
+          'Named export to import from `import` as the environment, `env` when left out.',
+        examples: ['env'],
+      }),
+  }),
+  Schema.Struct({
+    env: Schema.String.check(
+      Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u, {
+        message: 'must be the name of an environment variable',
+      }),
+    ).annotate({
+      title: 'Environment variable',
+      description:
+        'The variable the base URL is read from when the client is created, with `http://localhost:<port>` in its place when it is not set.',
+      examples: ['VITE_API_URL', 'API_URL'],
+    }),
+    source: Schema.Literals(['import.meta.env', 'process.env'])
+      .pipe(Schema.withDecodingDefault(Effect.succeed('import.meta.env')))
+      .annotate({
+        title: 'Where the variable is read from',
+        description:
+          '`import.meta.env` for code a bundler such as Vite builds, `process.env` for code Node.js or Bun runs.',
+        examples: ['import.meta.env', 'process.env'],
+      }),
+  }),
+]).annotate({
+  title: 'Base URL',
+  description:
+    'What the client is created with, `treaty<typeof app>(baseUrl)`: a URL written into the file, an environment variable read when the client is created, or a property of an environment a module exports. `http://localhost:<port>` when left out, the address the app entry listens on.',
+  examples: [
+    'http://localhost:3000',
+    { env: 'VITE_API_URL', source: 'import.meta.env' },
+    { env: 'API_URL', import: '@/env', name: 'env' },
+  ],
+})
+
+const ClientOutputSchema = Schema.Struct({
+  output: TypeScriptPathSchema.annotate({
+    title: 'Client output file',
+    description: 'The `.ts` file the client is written to.',
+    examples: ['./src/client.ts'],
+  }),
+  baseUrl: Schema.optionalKey(BaseUrlSchema),
+  sameOrigin: Schema.optionalKey(
+    Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
+      title: 'Same origin in the browser',
+      description:
+        "In a browser the client sends its requests to the page's own origin, `window.location.origin`, and `baseUrl` is for code that runs without a window: a server render, a loader, a script. For an app a host framework such as TanStack Start or Next.js serves beside its pages, where the API shares the origin and CORS has nothing to allow. Needs the DOM lib.",
+    }),
+  ),
+}).annotate({
+  title: 'Eden Treaty client',
+  description:
+    'The Eden Treaty client of the generated app, `treaty<typeof app>(baseUrl)`, typed by a type-only import of the app entry so the server never reaches a browser bundle. `eden` and the hooks import it unless they name an `import` of their own. Needs `@elysiajs/eden` in the project.',
+  examples: [{ output: './src/client.ts', baseUrl: 'http://localhost:3000', sameOrigin: true }],
+})
+
 const HooksSchema = Schema.Struct({
   output: FileOutputSchema,
-  import: ImportSchema.annotate({
-    description: 'Module specifier the generated file imports the Eden Treaty client from.',
-  }),
+  import: Schema.optionalKey(
+    ImportSchema.annotate({
+      description:
+        'Module specifier the generated file imports the Eden Treaty client from. Left out, it is the file the top-level `client` generates.',
+    }),
+  ),
   client: ClientSchema,
   split: Schema.optionalKey(
     Schema.Never.annotate({
@@ -329,8 +430,15 @@ const ConfigSchema = Schema.Struct({
       }),
   ),
   pathAlias: Schema.optionalKey(
-    Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
-      description: 'Import between the generated files through `@/` rather than relative paths.',
+    Schema.String.check(
+      Schema.isPattern(/^[^\s'"`\\]+$/u, {
+        message: 'must be an import prefix, with no whitespace or quotes',
+      }),
+    ).annotate({
+      title: 'Path alias',
+      description:
+        'Import prefix the generated files use for each other instead of relative paths. It stands for the app entry\'s directory, so with `@/` and `src/index.ts` the entry is `@/index` and `src/client.ts` is `@/client`; a file outside that directory is still imported relatively. Map it in tsconfig: `"paths": { "@/*": ["./src/*"] }`.',
+      examples: ['@/', '~/'],
     }),
   ),
   integration: Schema.optionalKey(
@@ -344,22 +452,26 @@ const ConfigSchema = Schema.Struct({
     }),
   ),
   components: Schema.optionalKey(ComponentsSchema),
+  client: Schema.optionalKey(ClientOutputSchema),
   eden: Schema.optionalKey(
     Schema.Struct({
       output: FileOutputSchema,
-      import: ImportSchema.annotate({
-        description: 'Module specifier the generated file imports the Eden Treaty client from.',
-      }),
+      import: Schema.optionalKey(
+        ImportSchema.annotate({
+          description:
+            'Module specifier the generated file imports the Eden Treaty client from. Left out, it is the file the top-level `client` generates.',
+        }),
+      ),
       client: ClientSchema,
       docs: Schema.optionalKey(
-        Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
-          description: 'Emit the operation summary and description as JSDoc.',
+        Schema.Never.annotate({
+          message: 'docs was removed: the wrappers carry no JSDoc. Delete the option.',
         }),
       ),
     }).annotate({
       title: 'Eden wrappers output',
-      description: 'Typed function wrappers around an Eden Treaty client, one per operation.',
-      examples: [{ output: './src/eden.ts', import: './lib', client: 'client', docs: false }],
+      description: 'Typed function wrappers around the Eden Treaty client, one per operation.',
+      examples: [{ output: './src/eden.ts', import: './lib', client: 'client' }],
     }),
   ),
   types: Schema.optionalKey(
@@ -509,6 +621,7 @@ const ConfigSchema = Schema.Struct({
           ...COMPONENT_KINDS.map(
             (kind) => [`components.${kind}.output`, v.components?.[kind]?.output] as const,
           ),
+          ['client.output', v.client?.output],
           ['eden.output', v.eden?.output],
           ['types.output', v.types?.output],
           ['mock.output', v.mock?.output],
@@ -527,6 +640,31 @@ const ConfigSchema = Schema.Struct({
         return true
       },
       { message: 'every generator needs its own output path' },
+    ),
+    // A file that calls the client has to be told where it is: by its own `import`, or by the
+    // top-level `client` block that generates it. That client is exported as `client`, so with
+    // the block there is no name to give — a block that names one is written for another client.
+    Schema.makeFilter(
+      (v) => {
+        const consumers: readonly (readonly [string, { import?: string; client?: string }])[] = [
+          ...(v.eden ? [['eden', v.eden] as const] : []),
+          ...HOOK_KINDS.flatMap((kind) => {
+            const block = v[kind]
+            return block ? [[kind, block] as const] : []
+          }),
+        ]
+        for (const [field, block] of consumers) {
+          if (v.client === undefined) {
+            if (block.import === undefined) {
+              return `${field}.import is required unless a top-level client is generated: name the module that exports the Eden Treaty client, or add client: { output }.`
+            }
+          } else if (block.client !== undefined) {
+            return `${field}.client is not taken with a top-level client: the generated client is exported as \`client\`. Delete the name.`
+          }
+        }
+        return true
+      },
+      { message: 'every file that calls the client needs to know where it is' },
     ),
   )
   .annotate({
@@ -728,6 +866,25 @@ type Hooked<T, F, V, S> = [SplitOf<V>] extends [boolean]
     >
   : Written<T, F, V, S>
 
+/**
+ * A block that calls the client, checked against the top-level `client`: with the block there is
+ * no client name to give, since the generated client is exported as `client`.
+ */
+type Consuming<T, V, S, Else> = 'client' extends keyof T
+  ? 'client' extends keyof V
+    ? Replaced<
+        V,
+        'client',
+        'is not taken with a top-level client: the generated client is exported as `client`',
+        S
+      >
+    : Else
+  : Else
+
+type Documented<T, F, V, S> = 'docs' extends keyof V
+  ? Replaced<V, 'docs', 'was removed: the wrappers carry no JSDoc', S>
+  : Written<T, F, V, S>
+
 type Single<T, O> = [Shared<T, 'output', O>] extends [never] ? O : Shared<T, 'output', O>
 
 type Mounted<P> = P extends `/${string}` ? P : string extends P ? P : "must start with '/'"
@@ -751,21 +908,24 @@ type Composed<T, V, S> = {
  *
  * Every rule `parseConfig` applies at run time that can be told from the literal is told here,
  * on the field it concerns: an unknown key, a `.ts` output in split mode, an output two
- * generators share, a prefix without its slash, and the options that were removed.
+ * generators share, a prefix without its slash, a client name beside a generated client, and the
+ * options that were removed.
  */
 type Checked<T> = {
   readonly [K in keyof T]: K extends keyof ConfigInput
     ? K extends 'test'
       ? 'is not an option: asphodelos no longer generates tests'
       : K extends HookKind
-        ? Hooked<T, K, T[K], ConfigInput[K]>
-        : K extends 'output'
-          ? Single<T, T[K]>
-          : K extends 'prefix'
-            ? Mounted<T[K]>
-            : K extends 'components'
-              ? Composed<T, T[K], ConfigInput[K]>
-              : Written<T, K, T[K], ConfigInput[K]>
+        ? Consuming<T, T[K], ConfigInput[K], Hooked<T, K, T[K], ConfigInput[K]>>
+        : K extends 'eden'
+          ? Consuming<T, T[K], ConfigInput[K], Documented<T, K, T[K], ConfigInput[K]>>
+          : K extends 'output'
+            ? Single<T, T[K]>
+            : K extends 'prefix'
+              ? Mounted<T[K]>
+              : K extends 'components'
+                ? Composed<T, T[K], ConfigInput[K]>
+                : Written<T, K, T[K], ConfigInput[K]>
     : 'is not an option'
 }
 

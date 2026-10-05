@@ -7,6 +7,7 @@ import { HOOK_KINDS } from '../config/index.js'
 import type { COMPONENT_KINDS, Config } from '../config/index.js'
 import {
   callbacks,
+  client,
   components,
   eden,
   elysia,
@@ -28,22 +29,83 @@ import { GenerateError } from '../error/index.js'
 import { readdir, unlink } from '../fsp/index.js'
 import type { OpenAPI } from '../openapi/index.js'
 
-function edenJob(
+/**
+ * The specifier `from` imports the generated file `target` by.
+ *
+ * Through the alias when the config names one and `target` sits under the app entry's directory —
+ * `@/` stands for that directory, so `src/client.ts` is `@/client` from anywhere — and relative to
+ * `from` otherwise. The extension goes; `index` stays, so an entry is named rather than left to
+ * directory resolution.
+ */
+function importSpecifier(
+  from: string,
+  target: string,
+  alias: { readonly prefix: string; readonly directory: string } | undefined,
+) {
+  const module = posix.normalize(target).replace(/\.ts$/u, '')
+  if (alias !== undefined) {
+    const inside = posix.relative(alias.directory, module)
+    if (inside !== '' && !inside.startsWith('..')) return `${alias.prefix}/${inside}`
+  }
+  const relative = posix.relative(posix.dirname(posix.normalize(from)), module)
+  return relative.startsWith('.') ? relative : `./${relative}`
+}
+
+/** The `eden` job's run: the wrappers, importing the client from where `importPath` answers. */
+function edenRun(
   openAPI: OpenAPI,
+  output: string,
+  importPath: Effect.Effect<string, GenerateError>,
   edenConfig: NonNullable<Config['eden']>,
   prefix: string | undefined,
 ) {
-  return {
-    name: 'eden',
-    output: edenConfig.output,
-    split: false,
-    run: (output: string) =>
-      eden(openAPI, output, edenConfig.import, edenConfig.client, prefix, edenConfig.docs),
-  }
+  return Effect.gen(function* () {
+    const specifier = yield* importPath
+    return yield* eden(openAPI, output, specifier, edenConfig.client ?? 'client', prefix)
+  })
+}
+
+/** A hooks job's run: one library's hooks, importing the client from where `importPath` answers. */
+function hooksRun(
+  openAPI: OpenAPI,
+  output: string,
+  importPath: Effect.Effect<string, GenerateError>,
+  library: (typeof HOOK_KINDS)[number],
+  options: Parameters<typeof hooks>[4],
+) {
+  return Effect.gen(function* () {
+    const specifier = yield* importPath
+    return yield* hooks(openAPI, output, specifier, library, options)
+  })
 }
 
 export function makeJob(openAPI: OpenAPI, config: Config) {
-  const baseDir = posix.normalize(posix.dirname(config.output ?? 'src/index.ts'))
+  const { client: clientConfig, eden: edenConfig } = config
+  const appOutput = config.output ?? 'src/index.ts'
+  const baseDir = posix.normalize(posix.dirname(appOutput))
+  // The alias names the app entry's directory; a trailing slash is the way it is usually
+  // written (`@/`) and not part of the prefix a specifier is built from.
+  const pathAlias =
+    config.pathAlias === undefined
+      ? undefined
+      : { prefix: config.pathAlias.replace(/\/+$/u, ''), directory: baseDir }
+  // The address the app entry listens on: what the client is created with when the config names
+  // no base URL, and what an environment variable left unset falls back to.
+  const localhost = `http://localhost:${config.port ?? '3000'}`
+  // The module a generated file imports the client from: the one it names, or the file the
+  // top-level `client` generates, reached from where the generated file is written. `parseConfig`
+  // requires one of the two, so a file with neither is a wiring error, not a config error.
+  const clientImport = (field: string, output: string, named: string | undefined) => {
+    if (named !== undefined) return Effect.succeed(named)
+    if (clientConfig === undefined) {
+      return Effect.fail(
+        new GenerateError({
+          message: `${field}.import is required unless a top-level client is generated`,
+        }),
+      )
+    }
+    return Effect.succeed(importSpecifier(output, clientConfig.output, pathAlias))
+  }
   // `output` (single-file mode) and the per-type targets are mutually exclusive
   // (enforced in parseConfig); split them so the per-type map keeps the shape the
   // component generators expect.
@@ -70,13 +132,41 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
           port: config.port,
           integration: config.integration === true,
           readonly: config.readonly === true,
-          pathAlias: config.pathAlias === true ? `@/${baseDir.replace(/^\.?\/?/u, '')}` : undefined,
+          pathAlias: pathAlias?.prefix,
           components: componentTargets,
           componentsOutput,
         }),
     },
     ...componentJobs,
-    config.eden ? edenJob(openAPI, config.eden, config.prefix) : undefined,
+    clientConfig
+      ? {
+          name: 'client',
+          output: clientConfig.output,
+          split: false,
+          run: (output: string) =>
+            client(output, {
+              appImport: importSpecifier(output, appOutput, pathAlias),
+              baseUrl: clientConfig.baseUrl ?? localhost,
+              fallback: localhost,
+              sameOrigin: clientConfig.sameOrigin === true,
+            }),
+        }
+      : undefined,
+    edenConfig
+      ? {
+          name: 'eden',
+          output: edenConfig.output,
+          split: false,
+          run: (output: string) =>
+            edenRun(
+              openAPI,
+              output,
+              clientImport('eden', output, edenConfig.import),
+              edenConfig,
+              config.prefix,
+            ),
+        }
+      : undefined,
     config.types
       ? {
           name: 'types',
@@ -108,8 +198,8 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
             output: cfg.output,
             split: false,
             run: (output: string) =>
-              hooks(openAPI, output, cfg.import, library, {
-                client: cfg.client,
+              hooksRun(openAPI, output, clientImport(library, output, cfg.import), library, {
+                client: cfg.client ?? 'client',
                 basePath: config.prefix,
                 // Where the schemas end up: the single components file, the per-type target, or
                 // the default beside the app entry — the same answer the app generator gives.

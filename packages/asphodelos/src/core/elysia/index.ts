@@ -34,6 +34,7 @@ export function elysia(
     port?: string
     integration?: boolean
     readonly?: boolean
+    /** The import prefix standing for the app entry's directory, `@` for `@/`, when there is one. */
     pathAlias?: string
     components?: {
       readonly [k: string]: {
@@ -72,7 +73,9 @@ export function elysia(
         const target = path.resolve(process.cwd(), cfg.output)
         return makeModuleSpec(fromFile, { output: target, split: cfg.split })
       }
-      return options.pathAlias ? `${options.pathAlias}/schemas` : '../../components/schemas'
+      return options.pathAlias
+        ? `${options.pathAlias}/components/schemas`
+        : '../../components/schemas'
     })()
 
     function writeResource(resource: string) {

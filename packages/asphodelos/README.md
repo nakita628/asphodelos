@@ -222,18 +222,56 @@ export default defineConfig({
 })
 ```
 
+### Generated Client
+
+Generate the Treaty client itself, typed by the app entry.
+
+```ts
+export default defineConfig({
+  input: 'openapi.yaml',
+  output: 'src/index.ts',
+  client: {
+    output: 'src/client.ts',
+    baseUrl: 'http://localhost:3000', // or { env: 'VITE_API_URL' }, or { env: 'API_URL', import: '@/env' }
+    sameOrigin: true, // in a browser, the page's own origin; baseUrl is for code without a window
+  },
+})
+```
+
+```ts
+// src/client.ts
+import { treaty } from '@elysiajs/eden'
+import type { app } from './index'
+
+const origin = typeof window === 'undefined' ? 'http://localhost:3000' : window.location.origin
+
+export const client = treaty<typeof app>(origin)
+```
+
+The app is imported for its type only, so a browser bundle never pulls the server in. `baseUrl` left
+out is `http://localhost:<port>`, the address the app entry listens on. `{ env, source }` reads an
+environment variable when the client is created, from `import.meta.env` unless `source` says
+`process.env`, with that address in its place when the variable is not set; `{ env, import, name }`
+reads a property of an environment a module exports.
+
+`sameOrigin` is for an app a host framework such as TanStack Start or Next.js serves beside its
+pages (`integration: true`): the API shares the page's origin, so there is no CORS to configure, and
+`baseUrl` is what a server render or a loader uses. It needs the DOM lib. With `pathAlias: '@/'`
+the generated files under the app entry's directory import each other through the alias, the
+client as `@/client` and the entry as `@/index`. `eden` and the hooks import this client unless
+they name an `import` of their own; `@elysiajs/eden` has to be installed in the project.
+
 ### Wrapper Functions
 
-Generate one wrapper per operation over a Treaty client you supply.
+Generate one wrapper per operation over a Treaty client.
 
 ```ts
 export default defineConfig({
   input: 'openapi.yaml',
   eden: {
     output: 'src/eden.ts',
-    import: './lib', // module exporting `client` = treaty<App>(...)
+    import: './lib', // module exporting `client` = treaty<App>(...); left out: the generated client
     client: 'client',
-    docs: true, // JSDoc above each wrapper
   },
 })
 ```
@@ -254,7 +292,8 @@ export default defineConfig({
 ```
 
 The hooks are written into one file. `import` names the module that exports your Eden Treaty
-client, and `client` its export name (`client` when left out).
+client, and `client` its export name (`client` when left out). Leave `import` out to import the
+client the top-level `client` block generates.
 
 Every operation is named by its method and path: a GET on `/users/{id}` becomes `useUsersId`, with
 `getUsersIdQueryKey` and `getUsersIdQueryOptions` beside it; a POST on `/users` becomes
@@ -355,8 +394,11 @@ it, and the CLI checks it again when it runs:
   it, so an entry that leaves the document does not leave an orphaned file behind. Subdirectories,
   other files and the single-file outputs of other generators are left alone.
 - `prefix` must start with `/`. `import` must be a module specifier, `client` an identifier.
+- `eden` and the hooks need an `import`, unless a top-level `client` is generated for them to
+  import. The generated client is exported as `client`, so beside it `client` is not an option
+  there, whether or not the block names an `import` of its own.
 - The hooks (`swr`, `tanstack-query`, …) are always one file; `split` is no longer an option
-  there, and neither is the `test` generator.
+  there, and neither is the `test` generator or `eden.docs`.
 
 ```ts
 import { defineConfig } from 'asphodelos'
@@ -368,7 +410,7 @@ export default defineConfig({
   prefix: '/api/v3', // new Elysia({ prefix })
   port: '3000',
   integration: false, // true: no .listen(), a host framework owns the server
-  pathAlias: false, // true: `@/` imports between generated files
+  // pathAlias: '@/', // import prefix for the app entry's directory: `@/index`, `@/client`
   readonly: false, // wrap top-level schemas in t.Readonly(...)
   // format: {}, // oxfmt FormatConfig
 
@@ -443,11 +485,18 @@ export default defineConfig({
     output: 'src/types.ts',
   },
 
+  client: {
+    output: 'src/client.ts',
+    baseUrl: 'http://localhost:3000', // `http://localhost:<port>` when left out
+    // baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
+    // baseUrl: { env: 'API_URL', import: '@/env', name: 'env' },
+    sameOrigin: false, // true: a browser uses window.location.origin, baseUrl is for the rest
+  },
+
   eden: {
     output: 'src/eden.ts',
-    import: './lib',
+    import: './lib', // left out: the generated client
     client: 'client',
-    docs: false,
   },
 
   mock: {

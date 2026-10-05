@@ -188,11 +188,54 @@ describe('makeJob — every job actually runs', () => {
     expect(eden).toContain('listItems')
   })
 
-  it('eden: docs: true prepends JSDoc to each wrapper', async () => {
+  // The client imports the app entry for its type and is created with the address the entry
+  // listens on, so a config with nothing but `client: { output }` yields a client that works
+  // against `bun run src/index.ts`.
+  it('client: writes a treaty client typed by the app entry, aimed at the configured port', async () => {
+    const run = await runJobs({ client: { output: 'src/lib/client.ts' }, port: '4000' })
+    expect(run.names).toContain('client')
+    const code = run.read('src/lib/client.ts')
+    expect(code).toContain("import type { app } from '../index'")
+    expect(code).toContain("treaty<typeof app>('http://localhost:4000')")
+  })
+
+  // A file that names no import reads the generated client, from wherever it is written.
+  it('client: eden and the hooks import the generated client when they name no import', async () => {
     const run = await runJobs({
-      eden: { output: 'src/eden.ts', import: './lib', docs: true },
+      client: { output: 'src/client.ts' },
+      eden: { output: 'src/api/eden.ts' },
+      swr: { output: 'src/swr.ts' },
     })
-    expect(run.read('src/eden.ts')).toContain('/**')
+    expect(run.read('src/api/eden.ts')).toContain("import { client } from '../client'")
+    expect(run.read('src/swr.ts')).toContain("import { client } from './client'")
+  })
+
+  // `@/` stands for the app entry's directory; every import between generated files under it
+  // goes through the alias, the module's import of the schemas included. A file outside that
+  // directory is imported relatively, since the alias does not reach it.
+  it('pathAlias: the generated files under the app directory import each other through it', async () => {
+    const run = await runJobs({
+      output: 'src/index.ts',
+      pathAlias: '@/',
+      client: { output: 'src/lib/client.ts' },
+      'tanstack-query': { output: 'src/hooks.ts' },
+      swr: { output: 'web/swr.ts' },
+    })
+    expect(run.read('src/lib/client.ts')).toContain("import type { app } from '@/index'")
+    expect(run.read('src/hooks.ts')).toContain("import { client } from '@/lib/client'")
+    expect(run.read('web/swr.ts')).toContain("import { client } from '@/lib/client'")
+    expect(run.read('src/modules/items/index.ts')).toContain("from '@/components/schemas'")
+  })
+
+  it('pathAlias: a client outside the app directory is imported relatively', async () => {
+    const run = await runJobs({
+      output: 'server/index.ts',
+      pathAlias: '~/',
+      client: { output: 'web/client.ts' },
+      swr: { output: 'web/hooks/swr.ts' },
+    })
+    expect(run.read('web/client.ts')).toContain("import type { app } from '~/index'")
+    expect(run.read('web/hooks/swr.ts')).toContain("import { client } from '../client'")
   })
 
   it('types: writes the self-contained App type', async () => {
@@ -234,7 +277,7 @@ describe('makeJob — every job actually runs', () => {
       swr: { output: 'src/swr', import: './lib' },
     })
     expect(run.exists('src/swr/index.ts')).toBe(true)
-    expect(run.read('src/swr/index.ts')).toContain('useListItems')
+    expect(run.read('src/swr/index.ts')).toContain('useGetItems')
   })
 
   it('every job answers with the log line the CLI prints', async () => {

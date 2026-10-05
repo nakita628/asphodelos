@@ -1,3 +1,4 @@
+export * from './client/index.js'
 export * from './components/index.js'
 export * from './eden/index.js'
 export * from './elysia/index.js'

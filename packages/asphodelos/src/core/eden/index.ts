@@ -7,30 +7,11 @@ import { edenChain, HTTP_METHODS, resolveOperationId } from '../../helper/index.
 import type { OpenAPI, Operation } from '../../openapi/index.js'
 import { toSafeIdentifier } from '../../utils/index.js'
 
-export function makeJsDocs(
-  method: (typeof HTTP_METHODS)[number],
-  pathStr: string,
-  operation: Operation,
-) {
-  const blocks: string[][] = []
-  if (operation.summary) blocks.push([operation.summary])
-  if (operation.description) blocks.push(operation.description.split('\n'))
-  blocks.push([`${method.toUpperCase()} ${pathStr}`])
-  const tagLines: string[] = []
-  if (operation.deprecated) tagLines.push('@deprecated')
-  if (tagLines.length > 0) blocks.push(tagLines)
-  const body = blocks
-    .map((lines) => lines.map((l) => (l === '' ? ' *' : ` * ${l}`)).join('\n'))
-    .join('\n *\n')
-  return `/**\n${body}\n */`
-}
-
 function makeOperation(
   pathStr: string,
   method: (typeof HTTP_METHODS)[number],
   operation: Operation,
   client: string,
-  docs: boolean,
 ) {
   const funcName = toSafeIdentifier(resolveOperationId(operation, method, pathStr))
   const { callExpr, methodHostTypeExpr, paramArgs } = edenChain(pathStr, client, method)
@@ -38,8 +19,7 @@ function makeOperation(
     ...paramArgs.map((p) => `${p.name}: ${p.typeExpr}`),
     `...args: Parameters<${methodHostTypeExpr}>`,
   ]
-  const fn = `export async function ${funcName}(${sigParts.join(', ')}) {\n  return ${callExpr}(...args)\n}`
-  return docs ? `${makeJsDocs(method, pathStr, operation)}\n${fn}` : fn
+  return `export async function ${funcName}(${sigParts.join(', ')}) {\n  return ${callExpr}(...args)\n}`
 }
 
 export function eden(
@@ -48,7 +28,6 @@ export function eden(
   importPath: string,
   client: string,
   basePath?: string,
-  docs = false,
 ) {
   return Effect.gen(function* () {
     const prefix = basePath && basePath !== '/' ? basePath : ''
@@ -58,7 +37,7 @@ export function eden(
       for (const method of HTTP_METHODS) {
         const operation = pathItem[method]
         if (!operation) continue
-        operations.push(makeOperation(`${prefix}${pathStr}`, method, operation, client, docs))
+        operations.push(makeOperation(`${prefix}${pathStr}`, method, operation, client))
       }
     }
     if (operations.length === 0) return 'No operations found'

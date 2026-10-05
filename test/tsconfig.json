@@ -9,5 +9,17 @@
     // oxlint.config.ts reuses the package config by its `.ts` path.
     "allowImportingTsExtensions": true
   },
-  "include": ["*.ts", "hosts", "path-params", "query-params", "runtime", "scripts", "types"]
+  "include": [
+    "*.ts",
+    "client",
+    "hosts",
+    "path-params",
+    "query-params",
+    "runtime",
+    "scripts",
+    "types"
+  ],
+  // The client case's generated app is a scaffold whose handlers are not written; its own
+  // tsconfig says why it is not compiled.
+  "exclude": ["client/__generated__"]
 }
