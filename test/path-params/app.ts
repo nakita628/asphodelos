@@ -1,5 +1,6 @@
 import { Elysia } from 'elysia'
 
+import { AllofModel } from './__generated__/modules/allof/model.js'
 import { BooleanModel } from './__generated__/modules/boolean/model.js'
 import { ByteModel } from './__generated__/modules/byte/model.js'
 import { DateModel } from './__generated__/modules/date/model.js'
@@ -13,11 +14,14 @@ import { Int32Model } from './__generated__/modules/int32/model.js'
 import { Int64Model } from './__generated__/modules/int64/model.js'
 import { IntegerModel } from './__generated__/modules/integer/model.js'
 import { Ipv4Model } from './__generated__/modules/ipv4/model.js'
+import { LabelModel } from './__generated__/modules/label/model.js'
 import { LengthModel } from './__generated__/modules/length/model.js'
+import { MatrixModel } from './__generated__/modules/matrix/model.js'
 import { MultipleModel } from './__generated__/modules/multiple/model.js'
 import { NamedModel } from './__generated__/modules/named/model.js'
 import { NumberModel } from './__generated__/modules/number/model.js'
 import { NumericsenumModel } from './__generated__/modules/numericsenum/model.js'
+import { OneofModel } from './__generated__/modules/oneof/model.js'
 import { OrgsModel } from './__generated__/modules/orgs/model.js'
 import { OverrideModel } from './__generated__/modules/override/model.js'
 import { ParamrefModel } from './__generated__/modules/paramref/model.js'
@@ -28,7 +32,10 @@ import { SchemarefModel } from './__generated__/modules/schemaref/model.js'
 import { SconstModel } from './__generated__/modules/sconst/model.js'
 import { SenumModel } from './__generated__/modules/senum/model.js'
 import { SharedModel } from './__generated__/modules/shared/model.js'
+import { SimplearrModel } from './__generated__/modules/simplearr/model.js'
 import { StringModel } from './__generated__/modules/string/model.js'
+import { TxemailModel } from './__generated__/modules/txemail/model.js'
+import { TxupperModel } from './__generated__/modules/txupper/model.js'
 import { UuidModel } from './__generated__/modules/uuid/model.js'
 
 type Echo = { valueType: string; valueText: string }
@@ -186,6 +193,27 @@ export const pathParamsApp = new Elysia()
   })
   .get('/override/:id', ({ params }) => echoValue(params.id), {
     params: OverrideModel.overrideParamParams,
+  })
+  .get('/txupper/:value', ({ params }) => echoValue(params.value), {
+    params: TxupperModel.txupperParamParams,
+  })
+  .get('/txemail/:value', ({ params }) => echoValue(params.value), {
+    params: TxemailModel.txemailParamParams,
+  })
+  .get('/allof/:value', ({ params }) => echoValue(params.value), {
+    params: AllofModel.allofParamParams,
+  })
+  .get('/oneof/:value', ({ params }) => echoValue(params.value), {
+    params: OneofModel.oneofParamParams,
+  })
+  .get('/label/:value', ({ params }) => echoValue(params.value), {
+    params: LabelModel.labelParamParams,
+  })
+  .get('/matrix/:value', ({ params }) => echoValue(params.value), {
+    params: MatrixModel.matrixParamParams,
+  })
+  .get('/simplearr/:value', ({ params }) => echoValue(params.value), {
+    params: SimplearrModel.simplearrParamParams,
   })
   .get('/ienum/:value', ({ params }) => echoValue(params.value), {
     params: IenumModel.ienumParamParams,

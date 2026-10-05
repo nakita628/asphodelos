@@ -233,6 +233,23 @@ describe('inherited: parameters declared on the path item', () => {
   })
 })
 
+describe('combinators: the text is read once', () => {
+  it.each([
+    // The merged bound applies to the coerced number, which Elysia validates on its own.
+    ['allof', '3', ['']],
+    ['allof', 'x', ['allof']],
+    ['oneof', 'x', ['oneof']],
+    ['anyof', 'x', ['anyof']],
+  ])('%s rejects %j', async (name, value, issues) => {
+    await rejects(`/combinators?${name}=${value}`, issues)
+  })
+
+  // The format still validates after the transform.
+  it('email_lower rejects what is not an email', async () => {
+    await rejects('/combinators?email_lower=nope', ['email_lower'])
+  })
+})
+
 // What the generated schema declares but Elysia's query reader does not turn into its value.
 // Pinned so the day Elysia reads them is noticed; a document that needs them today should declare
 // the parameter as a string and read it in the handler.
@@ -245,5 +262,30 @@ describe('limitations: what Elysia does not read from a query string (pinned)', 
   // `null` has no spelling in a query string: neither the word nor an empty value is read as it.
   it.each(['null', ''])('a nullable integer rejects %j', async (value) => {
     await rejects(`/limitations?inull=${value}`, ['inull'])
+  })
+
+  // `pipeDelimited` and `spaceDelimited` are not split: the whole value is one element that is
+  // not a number.
+  it.each([
+    ['pipes', '1|2'],
+    ['spaces', '1 2'],
+  ])('%s is not split on its separator', async (name, value) => {
+    await rejects(`/styles?${name}=${q(value)}`, ['0'])
+  })
+
+  // `deepObject` keys and an exploded object are not gathered into the object: they are unknown
+  // keys, dropped like any other.
+  it.each([`${q('deep[name]')}=bob&${q('deep[age]')}=5`, 'sort=asc&size=5'])(
+    '?%s is not read as an object',
+    async (query) => {
+      const { status, body } = await get(`/styles?${query}`)
+      expect(status).toBe(200)
+      expect(body).toStrictEqual({})
+    },
+  )
+
+  // An object that does not fit its schema is rejected by property.
+  it('a JSON-encoded object is validated by property', async () => {
+    await rejects(`/styles?deep=${q('{"name":"bob","age":"x"}')}`, ['age'])
   })
 })

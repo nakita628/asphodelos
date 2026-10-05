@@ -39,6 +39,7 @@ sapegin
 schemaref
 sconst
 senum
+simplearr
 strongconnect
 tagless
 takibi
@@ -46,6 +47,8 @@ textlint
 textlintrc
 topo
 tsgolint
+txemail
+txupper
 typebox
 uncapitalize
 unparseable

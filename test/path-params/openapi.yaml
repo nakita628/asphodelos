@@ -259,6 +259,80 @@ paths:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '200': { description: OK }
+  # ---- transforms ----
+  /txupper/{value}:
+    get:
+      operationId: txupperParam
+      parameters:
+        - { name: value, in: path, required: true, schema: { type: string, x-toUpperCase: true } }
+      responses:
+        '200': { description: OK }
+  /txemail/{value}:
+    get:
+      operationId: txemailParam
+      parameters:
+        - {
+            name: value,
+            in: path,
+            required: true,
+            schema: { type: string, format: email, x-toLowerCase: true },
+          }
+      responses:
+        '200': { description: OK }
+  # ---- combinators ----
+  /allof/{value}:
+    get:
+      operationId: allofParam
+      parameters:
+        - {
+            name: value,
+            in: path,
+            required: true,
+            schema: { allOf: [{ type: integer }, { minimum: 5 }] },
+          }
+      responses:
+        '200': { description: OK }
+  /oneof/{value}:
+    get:
+      operationId: oneofParam
+      parameters:
+        - {
+            name: value,
+            in: path,
+            required: true,
+            schema: { oneOf: [{ type: integer }, { type: string, enum: [all] }] },
+          }
+      responses:
+        '200': { description: OK }
+  # ---- serialization styles (limitations) ----
+  # A path segment is one value to Elysia: `label` and `matrix` prefixes are not stripped, and an
+  # array is not split on its commas.
+  /label/{value}:
+    get:
+      operationId: labelParam
+      parameters:
+        - { name: value, in: path, required: true, style: label, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+  /matrix/{value}:
+    get:
+      operationId: matrixParam
+      parameters:
+        - { name: value, in: path, required: true, style: matrix, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+  /simplearr/{value}:
+    get:
+      operationId: simplearrParam
+      parameters:
+        - {
+            name: value,
+            in: path,
+            required: true,
+            schema: { type: array, items: { type: integer } },
+          }
+      responses:
+        '200': { description: OK }
   # ---- limitations ----
   # The generated schema names a numeric enum; Elysia's path reader hands the segment over as text.
   /ienum/{value}:

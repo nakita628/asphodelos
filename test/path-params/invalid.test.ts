@@ -178,6 +178,21 @@ describe('declarations: $ref and path-item level', () => {
   })
 })
 
+describe('combinators: oneOf and allOf', () => {
+  it.each([
+    // The merged bound applies to the coerced number, which Elysia validates on its own.
+    ['allof', '3', ['']],
+    ['allof', 'x', ['value']],
+    ['oneof', 'x', ['value']],
+  ])('%s rejects %j', async (name, value, issues) => {
+    await rejects(`/${name}/${value}`, issues)
+  })
+
+  it('txemail rejects what is not an email, after the transform', async () => {
+    await rejects('/txemail/nope', ['value'])
+  })
+})
+
 // A path parameter is a segment: without one there is no route to match.
 describe('wire: routing', () => {
   it.each(['/integer/', '/integer/42/extra', '/nope/1'])('%s matches no route', async (url) => {
@@ -192,5 +207,21 @@ describe('limitations: what Elysia does not read from a path segment (pinned)', 
   // A numeric enum is matched against numbers, and the segment is text — so even a member fails.
   it.each(['1', '2', '3', 'x'])('a numeric enum rejects %j', async (value) => {
     await rejects(`/ienum/${value}`, ['value'])
+  })
+
+  // A segment is one value: a `label` or `matrix` prefix is not stripped, and an array is not
+  // split on its commas. The plain spelling is read as the scalar it looks like.
+  it.each([
+    ['/label/.5', ['value']],
+    [`/matrix/${q(';value=5')}`, ['value']],
+    ['/simplearr/1,2', ['value']],
+    ['/simplearr/1', ['value']],
+  ])('%s is not read by its style', async (url, issues) => {
+    await rejects(url, issues)
+  })
+
+  it.each(['label', 'matrix'])('%s reads the plain spelling as the scalar', async (name) => {
+    const { status } = await get(`/${name}/5`)
+    expect(status).toBe(200)
   })
 })

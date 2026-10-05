@@ -1,5 +1,6 @@
 import { Elysia } from 'elysia'
 
+import { CombinatorsModel } from './__generated__/modules/combinators/model.js'
 import { DefaultsModel } from './__generated__/modules/defaults/model.js'
 import { InheritedModel } from './__generated__/modules/inherited/model.js'
 import { LimitationsModel } from './__generated__/modules/limitations/model.js'
@@ -9,6 +10,7 @@ import { OptionalModel } from './__generated__/modules/optional/model.js'
 import { ParamsModel } from './__generated__/modules/params/model.js'
 import { RefsModel } from './__generated__/modules/refs/model.js'
 import { RequiredModel } from './__generated__/modules/required/model.js'
+import { StylesModel } from './__generated__/modules/styles/model.js'
 
 type Echo = { valueType: string; valueText: string }
 
@@ -35,15 +37,23 @@ function echoValue(value: unknown): Echo {
 }
 
 /**
- * Describes every validated parameter, by name. An array is described element by element, so a
- * test can tell `[1, 2]` from `['1', '2']` and from `'1,2'`. A key the schema left out stays out:
- * an absent optional parameter is absent here too.
+ * Describes every validated parameter, by name. An array is described element by element and an
+ * object key by key, so a test can tell `[1, 2]` from `['1', '2']` and from `'1,2'`. A key the
+ * schema left out stays out: an absent optional parameter is absent here too.
  */
-function echoFields(fields: object) {
-  const described: Record<string, Echo | Echo[]> = {}
+function echoFields(fields: Record<string, unknown>) {
+  const described: Record<string, Echo | Echo[] | Record<string, Echo>> = {}
   for (const [name, value] of Object.entries(fields)) {
     if (value === undefined) continue
-    described[name] = Array.isArray(value) ? value.map(echoValue) : echoValue(value)
+    if (Array.isArray(value)) {
+      described[name] = value.map(echoValue)
+    } else if (typeof value === 'object' && value !== null && !(value instanceof Date)) {
+      described[name] = Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [key, echoValue(item)]),
+      )
+    } else {
+      described[name] = echoValue(value)
+    }
   }
   return described
 }
@@ -106,6 +116,10 @@ export const queryParamsApp = new Elysia()
   .get('/refs', ({ query }) => echoFields(query), { query: RefsModel.queryRefsQuery })
   .get('/inherited', ({ query }) => echoFields(query), {
     query: InheritedModel.queryInheritedQuery,
+  })
+  .get('/styles', ({ query }) => echoFields(query), { query: StylesModel.queryStylesQuery })
+  .get('/combinators', ({ query }) => echoFields(query), {
+    query: CombinatorsModel.queryCombinatorsQuery,
   })
   .get('/limitations', ({ query }) => echoFields(query), {
     query: LimitationsModel.queryLimitationsQuery,

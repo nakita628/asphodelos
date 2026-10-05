@@ -209,6 +209,32 @@ describe('declarations: $ref and path-item level', () => {
   })
 })
 
+// The `x-*` extensions transform the segment before the handler sees it; paired with a format,
+// the transform runs and the format still validates.
+describe('transforms: x-* extensions', () => {
+  it.each([
+    ['txupper', 'abc', 'ABC'],
+    ['txemail', 'User@Example.COM', 'user@example.com'],
+  ])('%s reads %j as %j', async (name, value, valueText) => {
+    const { status, body } = await get(`/${name}/${q(value)}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ valueType: 'string', valueText })
+  })
+})
+
+// The segment is read once, around the whole schema.
+describe('combinators: oneOf and allOf', () => {
+  it.each([
+    ['allof', '7', { valueType: 'number', valueText: '7' }],
+    ['oneof', '5', { valueType: 'number', valueText: '5' }],
+    ['oneof', 'all', { valueType: 'string', valueText: 'all' }],
+  ])('%s accepts %j', async (name, value, echo) => {
+    const { status, body } = await get(`/${name}/${value}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual(echo)
+  })
+})
+
 // What Elysia reads beyond the plainest spelling. Pinned so a change in Elysia is noticed, not
 // endorsed: a server that wants to refuse these needs a `pattern` of its own.
 describe('leniency: what is read beyond the plainest spelling (pinned, not endorsed)', () => {

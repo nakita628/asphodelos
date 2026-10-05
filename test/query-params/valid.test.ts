@@ -18,6 +18,8 @@
 //   /limits      constraints
 //   /refs        a schema and a parameter behind $ref
 //   /inherited   parameters declared on the path item
+//   /styles      serializations other than form + explode, objects, allowEmptyValue
+//   /combinators allOf, oneOf, anyOf and the x-* transforms
 //   /limitations what the generated schema declares but Elysia does not read
 //
 // This file holds the requests that are accepted. Each answers 200, and the test asserts the type
@@ -359,6 +361,79 @@ describe('inherited: parameters declared on the path item', () => {
       tenant: { valueType: 'string', valueText: 'acme' },
       page: { valueType: 'string', valueText: 'x' },
     })
+  })
+})
+
+describe('styles: serializations other than form + explode', () => {
+  // `form` + `explode: false` is one value with commas, and Elysia reads it as the array.
+  it('csv accepts a comma-separated value', async () => {
+    const { status, body } = await get('/styles?csv=1,2')
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({
+      csv: [
+        { valueType: 'number', valueText: '1' },
+        { valueType: 'number', valueText: '2' },
+      ],
+    })
+  })
+
+  // `allowEmptyValue`: an empty value, with or without its `=`, is the empty string.
+  it.each(['empty=', 'empty'])('?%s is read as an empty string', async (query) => {
+    const { status, body } = await get(`/styles?${query}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ empty: { valueType: 'string', valueText: '' } })
+  })
+})
+
+// An object parameter is generated as `t.ObjectString`: Elysia reads it from one JSON-encoded
+// value, and types each property.
+describe('objects: a parameter that is an object', () => {
+  it.each(['deep', 'spread'])('%s is read from a JSON-encoded value', async (name) => {
+    const value = name === 'deep' ? '{"name":"bob","age":5}' : '{"sort":"asc","size":5}'
+    const { status, body } = await get(`/styles?${name}=${q(value)}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({
+      [name]:
+        name === 'deep'
+          ? {
+              name: { valueType: 'string', valueText: 'bob' },
+              age: { valueType: 'number', valueText: '5' },
+            }
+          : {
+              sort: { valueType: 'string', valueText: 'asc' },
+              size: { valueType: 'number', valueText: '5' },
+            },
+    })
+  })
+})
+
+// The text is read once, around the whole schema: a scalar `allOf` is one bounded integer, and a
+// `oneOf` / `anyOf` with an integer member coerces the member that fits.
+describe('combinators: the text is read once', () => {
+  it.each([
+    ['allof', '7', { valueType: 'number', valueText: '7' }],
+    ['oneof', '5', { valueType: 'number', valueText: '5' }],
+    ['oneof', 'all', { valueType: 'string', valueText: 'all' }],
+    ['anyof', '5', { valueType: 'number', valueText: '5' }],
+    ['anyof', 'true', { valueType: 'boolean', valueText: 'true' }],
+  ])('%s accepts %j', async (name, value, echo) => {
+    const { status, body } = await get(`/combinators?${name}=${value}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ [name]: echo })
+  })
+})
+
+// The `x-*` extensions transform the value before the handler sees it; paired with a format, the
+// transform runs and the format still validates.
+describe('transforms: x-* extensions', () => {
+  it.each([
+    ['trim', '  padded  ', 'padded'],
+    ['lower', 'MiXeD', 'mixed'],
+    ['email_lower', 'User@Example.COM', 'user@example.com'],
+  ])('%s reads %j as %j', async (name, value, valueText) => {
+    const { status, body } = await get(`/combinators?${name}=${q(value)}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ [name]: { valueType: 'string', valueText } })
   })
 })
 

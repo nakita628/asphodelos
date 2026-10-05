@@ -11,6 +11,8 @@
 # `/refs`      a schema behind `$ref`, and a parameter behind `$ref`.
 # `/inherited` a parameter declared on the path item, inherited by its operation, and one the
 #              operation overrides.
+# `/styles`     serializations other than `form` + `explode: true`, objects, `allowEmptyValue`.
+# `/combinators` `allOf`, `oneOf`, `anyOf` and the `x-*` transforms.
 # `/limitations` the shapes the generated schema declares but Elysia's query reader does not
 #              turn into their value: a numeric `enum`, and `null`.
 openapi: 3.1.0
@@ -171,6 +173,68 @@ paths:
       parameters:
         # The operation's own declaration replaces the path item's for the same name.
         - { name: page, in: query, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  # Serializations other than the default `form` + `explode: true`, and parameters that are an
+  # object. Elysia reads a repeated key and a comma-separated value as an array, and an object only
+  # as one JSON-encoded value; `pipeDelimited`, `spaceDelimited`, `deepObject` and an exploded
+  # object are not read.
+  /styles:
+    get:
+      operationId: queryStyles
+      parameters:
+        - {
+            name: csv,
+            in: query,
+            style: form,
+            explode: false,
+            schema: { type: array, items: { type: integer } },
+          }
+        - {
+            name: pipes,
+            in: query,
+            style: pipeDelimited,
+            explode: false,
+            schema: { type: array, items: { type: integer } },
+          }
+        - {
+            name: spaces,
+            in: query,
+            style: spaceDelimited,
+            explode: false,
+            schema: { type: array, items: { type: integer } },
+          }
+        - name: deep
+          in: query
+          style: deepObject
+          explode: true
+          schema: { type: object, properties: { name: { type: string }, age: { type: integer } } }
+        - name: spread
+          in: query
+          schema: { type: object, properties: { sort: { type: string }, size: { type: integer } } }
+        - { name: empty, in: query, allowEmptyValue: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  # `allOf`, `oneOf` and `anyOf` around a scalar, and the `x-*` transforms, alone and paired with a
+  # format. `not` is left out: Elysia cannot compile a query schema that holds one.
+  /combinators:
+    get:
+      operationId: queryCombinators
+      parameters:
+        - { name: allof, in: query, schema: { allOf: [{ type: integer }, { minimum: 5 }] } }
+        - {
+            name: oneof,
+            in: query,
+            schema: { oneOf: [{ type: integer }, { type: string, enum: [all] }] },
+          }
+        - { name: anyof, in: query, schema: { anyOf: [{ type: integer }, { type: boolean }] } }
+        - { name: trim, in: query, schema: { type: string, x-trim: true } }
+        - { name: lower, in: query, schema: { type: string, x-toLowerCase: true } }
+        - {
+            name: email_lower,
+            in: query,
+            schema: { type: string, format: email, x-toLowerCase: true },
+          }
       responses:
         '200': { description: OK }
   /limitations:
