@@ -9,6 +9,7 @@ bunfig
 bunx
 cidrv
 codegen
+combinators
 dedup
 Docable
 elysia
