@@ -272,9 +272,9 @@ describe('parseConfig', () => {
       expect(config['tanstack-query']?.client).toBeUndefined()
     })
 
-    // The generated client is exported as `client`, so beside it a name points at nothing —
-    // whether or not the block names an import of its own.
-    it('rejects a client name in eden or the hooks, with or without an import', () => {
+    // Beside a generated client there is one client to import, under one name, so a block that
+    // names an import or a client of its own is written for another client.
+    it('rejects an import or a client name in eden or the hooks beside a generated client', () => {
       expect(
         decodeError({
           input: 'a.yaml',
@@ -288,10 +288,19 @@ describe('parseConfig', () => {
         decodeError({
           input: 'a.yaml',
           client: { output: 'src/client.ts' },
+          'tanstack-query': { output: 'src/tanstack-query.ts', import: './lib' },
+        }).message,
+      ).toBe(
+        'Invalid config: tanstack-query.import is not taken with a top-level client: the file imports the client it generates. Delete the import.',
+      )
+      expect(
+        decodeError({
+          input: 'a.yaml',
+          client: { output: 'src/client.ts' },
           eden: { output: 'src/eden.ts', import: './lib', client: 'client' },
         }).message,
       ).toBe(
-        'Invalid config: eden.client is not taken with a top-level client: the generated client is exported as `client`. Delete the name.',
+        'Invalid config: eden.import is not taken with a top-level client: the file imports the client it generates. Delete the import.',
       )
     })
 
@@ -436,16 +445,18 @@ describe('defineConfig', () => {
     expect(config.input).toBe('openapi.yaml')
   })
 
-  // The runtime check has a type-level twin, so the name is refused as it is typed.
-  it('is a type error to name the client beside a generated one', () => {
+  // The runtime check has a type-level twin, so the import or the name is refused as it is typed.
+  it('is a type error to name an import or the client beside a generated one', () => {
     const config = defineConfig({
       input: 'openapi.yaml',
       client: { output: 'src/client.ts' },
       // @ts-expect-error -- `client` is not taken with a top-level client
       swr: { output: 'src/swr.ts', client: 'api' },
-      // @ts-expect-error -- `client` is not taken with a top-level client, import or not
-      eden: { output: 'src/eden.ts', import: './lib', client: 'client' },
+      // @ts-expect-error -- `import` is not taken with a top-level client
+      eden: { output: 'src/eden.ts', import: './lib' },
+      // @ts-expect-error -- `import` is not taken with a top-level client
       'tanstack-query': { output: 'src/tanstack-query.ts', import: './lib' },
+      'vue-query': { output: 'src/vue-query.ts' },
     })
     expect(config.input).toBe('openapi.yaml')
   })

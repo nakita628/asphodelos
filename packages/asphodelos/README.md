@@ -249,7 +249,7 @@ export const client = treaty<typeof app>(origin)
 ```
 
 The `index.ts` beside the client re-exports it, so it is imported as `./lib`; `eden` and the hooks
-do so unless they name an `import` of their own. `baseUrl` left out is `http://localhost:<port>`.
+import it from there. `baseUrl` left out is `http://localhost:<port>`.
 `sameOrigin` suits an app a host framework such as TanStack Start or Next.js serves beside its
 pages, where the API shares the origin and CORS has nothing to allow. The project needs
 `@elysiajs/eden`.
@@ -285,8 +285,8 @@ export default defineConfig({
 ```
 
 The hooks are written into one file. `import` names the module that exports your Eden Treaty
-client, and `client` its export name (`client` when left out). Leave `import` out to import the
-client the top-level `client` block generates.
+client, and `client` its export name (`client` when left out). With a top-level `client` block,
+both are left out: the hooks import the client it generates.
 
 Every operation is named by its method and path: a GET on `/users/{id}` becomes `useUsersId`, with
 `getUsersIdQueryKey` and `getUsersIdQueryOptions` beside it; a POST on `/users` becomes
@@ -387,9 +387,8 @@ it, and the CLI checks it again when it runs:
   it, so an entry that leaves the document does not leave an orphaned file behind. Subdirectories,
   other files and the single-file outputs of other generators are left alone.
 - `prefix` must start with `/`. `import` must be a module specifier, `client` an identifier.
-- `eden` and the hooks need an `import`, unless a top-level `client` is generated for them to
-  import. The generated client is exported as `client`, so beside it `client` is not an option
-  there, whether or not the block names an `import` of its own.
+- `eden` and the hooks need an `import`, unless a top-level `client` is generated: then they
+  import that client, and neither `import` nor `client` is an option there.
 - The hooks (`swr`, `tanstack-query`, …) are always one file; `split` is no longer an option
   there, and neither is the `test` generator or `eden.docs`.
 
@@ -486,10 +485,10 @@ export default defineConfig({
     sameOrigin: false, // true: a browser uses window.location.origin, baseUrl is for the rest
   },
 
+  // With the `client` block above, eden and the hooks import the generated client; without it,
+  // each names its own: `import: './lib'` (the module) and `client: 'client'` (its export).
   eden: {
     output: 'src/eden.ts',
-    import: './lib', // left out: the generated client
-    client: 'client',
   },
 
   mock: {
@@ -504,38 +503,24 @@ export default defineConfig({
 
   swr: {
     output: 'src/swr.ts',
-    import: '../lib',
-    client: 'client',
   },
   'tanstack-query': {
     output: 'src/tanstack-query.ts',
-    import: '../lib',
-    client: 'client',
   },
   'preact-query': {
     output: 'src/preact-query.ts',
-    import: '../lib',
-    client: 'client',
   },
   'solid-query': {
     output: 'src/solid-query.ts',
-    import: '../lib',
-    client: 'client',
   },
   'vue-query': {
     output: 'src/vue-query.ts',
-    import: '../lib',
-    client: 'client',
   },
   'svelte-query': {
     output: 'src/svelte-query.ts',
-    import: '../lib',
-    client: 'client',
   },
   'angular-query': {
     output: 'src/angular-query.ts',
-    import: '../lib',
-    client: 'client',
   },
 })
 ```

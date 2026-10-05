@@ -284,7 +284,7 @@ const HooksSchema = Schema.Struct({
   import: Schema.optionalKey(
     ImportSchema.annotate({
       description:
-        'Module specifier the generated file imports the Eden Treaty client from. Left out, it is the file the top-level `client` generates.',
+        'Module specifier the generated file imports the Eden Treaty client from. Not taken with the top-level `client` block, whose client the file imports.',
     }),
   ),
   client: ClientSchema,
@@ -459,7 +459,7 @@ const ConfigSchema = Schema.Struct({
       import: Schema.optionalKey(
         ImportSchema.annotate({
           description:
-            'Module specifier the generated file imports the Eden Treaty client from. Left out, it is the file the top-level `client` generates.',
+            'Module specifier the generated file imports the Eden Treaty client from. Not taken with the top-level `client` block, whose client the file imports.',
         }),
       ),
       client: ClientSchema,
@@ -642,8 +642,9 @@ const ConfigSchema = Schema.Struct({
       { message: 'every generator needs its own output path' },
     ),
     // A file that calls the client has to be told where it is: by its own `import`, or by the
-    // top-level `client` block that generates it. That client is exported as `client`, so with
-    // the block there is no name to give — a block that names one is written for another client.
+    // top-level `client` block that generates it. With the block, that client is the one every
+    // file imports, under its export name `client` — so neither an `import` nor a `client` is
+    // taken there; a block that names one is written for another client.
     Schema.makeFilter(
       (v) => {
         const consumers: readonly (readonly [string, { import?: string; client?: string }])[] = [
@@ -658,6 +659,8 @@ const ConfigSchema = Schema.Struct({
             if (block.import === undefined) {
               return `${field}.import is required unless a top-level client is generated: name the module that exports the Eden Treaty client, or add client: { output }.`
             }
+          } else if (block.import !== undefined) {
+            return `${field}.import is not taken with a top-level client: the file imports the client it generates. Delete the import.`
           } else if (block.client !== undefined) {
             return `${field}.client is not taken with a top-level client: the generated client is exported as \`client\`. Delete the name.`
           }
@@ -867,18 +870,26 @@ type Hooked<T, F, V, S> = [SplitOf<V>] extends [boolean]
   : Written<T, F, V, S>
 
 /**
- * A block that calls the client, checked against the top-level `client`: with the block there is
- * no client name to give, since the generated client is exported as `client`.
+ * A block that calls the client, checked against the top-level `client`: with the block, the
+ * generated client is the one the file imports, as `client`, so neither an `import` nor a
+ * `client` name is taken there.
  */
 type Consuming<T, V, S, Else> = 'client' extends keyof T
-  ? 'client' extends keyof V
+  ? 'import' extends keyof V
     ? Replaced<
         V,
-        'client',
-        'is not taken with a top-level client: the generated client is exported as `client`',
+        'import',
+        'is not taken with a top-level client: the file imports the client it generates',
         S
       >
-    : Else
+    : 'client' extends keyof V
+      ? Replaced<
+          V,
+          'client',
+          'is not taken with a top-level client: the generated client is exported as `client`',
+          S
+        >
+      : Else
   : Else
 
 type Documented<T, F, V, S> = 'docs' extends keyof V
@@ -908,8 +919,8 @@ type Composed<T, V, S> = {
  *
  * Every rule `parseConfig` applies at run time that can be told from the literal is told here,
  * on the field it concerns: an unknown key, a `.ts` output in split mode, an output two
- * generators share, a prefix without its slash, a client name beside a generated client, and the
- * options that were removed.
+ * generators share, a prefix without its slash, an import or a client name beside a generated
+ * client, and the options that were removed.
  */
 type Checked<T> = {
   readonly [K in keyof T]: K extends keyof ConfigInput
