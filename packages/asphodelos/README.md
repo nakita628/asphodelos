@@ -403,6 +403,9 @@ it, and the CLI checks it again when it runs:
 - A split directory belongs to the generator: every run empties its `.ts` files before refilling
   it, so an entry that leaves the document does not leave an orphaned file behind. Subdirectories,
   other files and the single-file outputs of other generators are left alone.
+- Imports between generated files are worked out: relative inside a package, through `pathAlias`
+  under the app entry's directory, and by the output's `package` from another package. A
+  section's `import` overrides that.
 - `prefix` must start with `/`. `import` must be a module specifier, `client` an identifier.
 - `eden` and the hooks need an `import`, unless a top-level `client` is generated: then they
   import that client, and neither `import` nor `client` is an option there.
@@ -425,68 +428,59 @@ export default defineConfig({
 
   // `exportTypes` adds `Static<typeof XSchema>` aliases.
   components: {
-    // output: 'src/components.ts', // single-file mode
+    // output: 'src/components.ts', // single-file mode; `package` names it for other packages
 
     schemas: {
       output: 'src/components/schemas',
       split: true,
-      import: '../schemas',
       exportTypes: true,
+      // package: '@repo/schemas', // what other packages import this section by
+      // import: '../schemas', // overrides how the generated files import it
     },
     responses: {
       output: 'src/components/responses',
       split: true,
-      import: '../responses',
       exportTypes: true,
     },
     parameters: {
       output: 'src/components/parameters',
       split: true,
-      import: '../parameters',
       exportTypes: true,
     },
     requestBodies: {
       output: 'src/components/requestBodies',
       split: true,
-      import: '../requestBodies',
       exportTypes: true,
     },
     headers: {
       output: 'src/components/headers',
       split: true,
-      import: '../headers',
       exportTypes: true,
     },
     mediaTypes: {
       output: 'src/components/mediaTypes',
       split: true,
-      import: '../mediaTypes',
       exportTypes: true,
     },
     examples: {
       output: 'src/components/examples',
       split: true,
-      import: '../examples',
     },
     securitySchemes: {
       output: 'src/components/securitySchemes',
       split: true,
-      import: '../securitySchemes',
     },
     links: {
       output: 'src/components/links',
       split: true,
-      import: '../links',
     },
     callbacks: {
       output: 'src/components/callbacks',
       split: true,
-      import: '../callbacks',
     },
     pathItems: {
       output: 'src/components/pathItems',
       split: true,
-      import: '../pathItems',
     },
   },
 

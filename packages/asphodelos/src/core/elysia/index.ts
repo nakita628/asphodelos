@@ -44,6 +44,8 @@ export function elysia(
       }
     }
     componentsOutput?: string
+    /** How the modules import the single-file components, when not relatively. */
+    componentsImport?: string
   } = {},
 ) {
   return Effect.gen(function* () {
@@ -64,6 +66,7 @@ export function elysia(
     const schemasImportFromModule = (() => {
       const fromFile = path.join(modulesDir, '_', 'index.ts')
       if (options.componentsOutput) {
+        if (options.componentsImport) return options.componentsImport
         const target = path.resolve(process.cwd(), options.componentsOutput)
         return makeModuleSpec(fromFile, { output: target, split: false })
       }

@@ -98,6 +98,33 @@ function packageImport(
 /** An import specifier, worked out against the filesystem. */
 type Import = Effect.Effect<string, GenerateError, FileSystem.FileSystem>
 
+/** Where a component kind is written, and how it is imported when not relatively. */
+type Target = {
+  readonly output: string
+  readonly split?: boolean
+  readonly import?: string
+  readonly package?: string
+}
+
+type Targets = { readonly [kind in (typeof COMPONENT_KINDS)[number]]?: Target }
+
+/**
+ * What a generated file at `from` sees of the other outputs: each component kind with its import
+ * settled where it is not relative, and the single-file components likewise.
+ */
+type View = { readonly targets: Targets; readonly componentsImport?: string }
+
+/** Runs `make` on what `input` works out against the filesystem. */
+function resolved<T, A, E>(
+  input: Effect.Effect<T, GenerateError, FileSystem.FileSystem>,
+  make: (value: T) => Effect.Effect<A, E, FileSystem.FileSystem>,
+) {
+  return Effect.gen(function* () {
+    const value = yield* input
+    return yield* make(value)
+  })
+}
+
 /** The `client` job's run: the client, importing the app entry from where `appImport` answers. */
 function clientRun(
   output: string,
@@ -124,17 +151,79 @@ function edenRun(
   })
 }
 
-/** A hooks job's run: one library's hooks, importing the client from where `importPath` answers. */
+/**
+ * A hooks job's run: one library's hooks, importing the client from where `importPath` answers
+ * and the schemas from where `view` says.
+ */
 function hooksRun(
   openAPI: OpenAPI,
   output: string,
   importPath: Import,
   library: (typeof HOOK_KINDS)[number],
-  options: Parameters<typeof hooks>[4],
+  view: Effect.Effect<View, never, FileSystem.FileSystem>,
+  componentsOutput: string | undefined,
+  options: Omit<Parameters<typeof hooks>[4], 'schemas'>,
 ) {
   return Effect.gen(function* () {
-    const specifier = yield* importPath
-    return yield* hooks(openAPI, output, specifier, library, options)
+    const [specifier, seen] = yield* Effect.all([importPath, view])
+    // Where the schemas end up: the single components file, or the schemas target — the same
+    // answer the app generator gives, from where the hooks are written.
+    const schemasTarget =
+      componentsOutput === undefined
+        ? seen.targets.schemas
+        : { output: componentsOutput, import: seen.componentsImport }
+    return yield* hooks(openAPI, output, specifier, library, { ...options, schemas: schemasTarget })
+  })
+}
+
+type Alias = { readonly prefix: string; readonly directory: string } | undefined
+
+/**
+ * How the file at `from` imports the component kind `target`: as the config says; by the package
+ * name across a package boundary; through the alias under the app entry's directory; and
+ * relatively otherwise — which the generators work out themselves, so it is left unsaid here. A
+ * kind in another package that names no package is imported relatively as well: which kinds a
+ * file imports depends on the document, so a name cannot be demanded ahead of it.
+ */
+function settleTarget(from: string, target: Target, pathAlias: Alias) {
+  return Effect.gen(function* () {
+    if (target.import !== undefined) return target
+    const [fromRoot, targetRoot] = yield* Effect.all([
+      packageRoot(path.dirname(path.resolve(process.cwd(), from))),
+      packageRoot(path.dirname(path.resolve(process.cwd(), target.output))),
+    ])
+    if (fromRoot !== targetRoot) {
+      return target.package === undefined ? target : { ...target, import: target.package }
+    }
+    if (pathAlias === undefined) return target
+    const specifier = importSpecifier(from, target.output, pathAlias, 'barrel')
+    return specifier.startsWith('.') ? target : { ...target, import: specifier }
+  })
+}
+
+/** What the file at `from` sees of every component kind, and of the single components file. */
+function viewFrom(
+  from: string,
+  options: {
+    readonly targetOf: (kind: (typeof COMPONENT_KINDS)[number]) => Target
+    readonly single: Target | undefined
+    readonly pathAlias: Alias
+  },
+): Effect.Effect<View, never, FileSystem.FileSystem> {
+  return Effect.gen(function* () {
+    const settled = yield* Effect.all(
+      COMPONENT_KINDS.map((kind) =>
+        settleTarget(from, options.targetOf(kind), options.pathAlias).pipe(
+          Effect.map((target) => [kind, target] as const),
+        ),
+      ),
+      { concurrency: 'unbounded' },
+    )
+    const single =
+      options.single === undefined
+        ? undefined
+        : yield* settleTarget(from, options.single, options.pathAlias)
+    return { targets: Object.fromEntries(settled), componentsImport: single?.import }
   })
 }
 
@@ -200,7 +289,24 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
   // `output` (single-file mode) and the per-type targets are mutually exclusive
   // (enforced in parseConfig); split them so the per-type map keeps the shape the
   // component generators expect.
-  const { output: componentsOutput, ...componentTargets } = config.components ?? {}
+  const {
+    output: componentsOutput,
+    package: componentsPackage,
+    ...componentTargets
+  } = config.components ?? {}
+  // Every kind has a place, the one the config names or `components/<kind>.ts` beside the app
+  // entry, so an import of a kind the config says nothing about is worked out the same way.
+  const targetOf = (kind: (typeof COMPONENT_KINDS)[number]): Target =>
+    componentTargets[kind] ?? { output: `${baseDir}/components/${kind}.ts` }
+  const view = (from: string) =>
+    viewFrom(from, {
+      targetOf,
+      single:
+        componentsOutput === undefined
+          ? undefined
+          : { output: componentsOutput, package: componentsPackage },
+      pathAlias,
+    })
   const componentJobs = componentsOutput
     ? [
         {
@@ -210,23 +316,26 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
           run: (output: string) => components(openAPI.components, output, config.readonly),
         },
       ]
-    : perTypeComponentJobs(openAPI, componentTargets, baseDir, config.readonly)
+    : perTypeComponentJobs(openAPI, componentTargets, baseDir, config.readonly, view)
   return [
     {
       name: 'elysia',
-      output: config.output ?? 'src/index.ts',
+      output: appOutput,
       split: false,
       run: (output: string) =>
-        elysia(openAPI, {
-          output,
-          prefix: config.prefix,
-          port: config.port,
-          integration: config.integration === true,
-          readonly: config.readonly === true,
-          pathAlias: pathAlias?.prefix,
-          components: componentTargets,
-          componentsOutput,
-        }),
+        resolved(view(`${baseDir}/modules/_/index.ts`), (seen) =>
+          elysia(openAPI, {
+            output,
+            prefix: config.prefix,
+            port: config.port,
+            integration: config.integration === true,
+            readonly: config.readonly === true,
+            pathAlias: pathAlias?.prefix,
+            components: seen.targets,
+            componentsOutput,
+            componentsImport: seen.componentsImport,
+          }),
+        ),
     },
     ...componentJobs,
     clientConfig
@@ -301,15 +410,15 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
             output: cfg.output,
             split: false,
             run: (output: string) =>
-              hooksRun(openAPI, output, clientImport(library, output, cfg.import), library, {
-                client: cfg.client ?? 'client',
-                basePath: config.prefix,
-                // Where the schemas end up: the single components file, the per-type target, or
-                // the default beside the app entry — the same answer the app generator gives.
-                schemas: componentsOutput
-                  ? { output: componentsOutput }
-                  : (componentTargets.schemas ?? { output: `${baseDir}/components/schemas.ts` }),
-              }),
+              hooksRun(
+                openAPI,
+                output,
+                clientImport(library, output, cfg.import),
+                library,
+                view(output),
+                componentsOutput,
+                { client: cfg.client ?? 'client', basePath: config.prefix },
+              ),
           }
         : undefined
     }),
@@ -318,9 +427,10 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
 
 function perTypeComponentJobs(
   openAPI: OpenAPI,
-  componentTargets: Omit<NonNullable<Config['components']>, 'output'>,
+  componentTargets: Omit<NonNullable<Config['components']>, 'output' | 'package'>,
   baseDir: string,
   readonly: boolean | undefined,
+  view: (from: string) => Effect.Effect<View, never, FileSystem.FileSystem>,
 ) {
   // Each section the document has is written, to the target the config names or to
   // `components/<section>.ts` beside the app entry; the kinds keep their declaration order.
@@ -329,18 +439,26 @@ function perTypeComponentJobs(
     output: componentTargets[kind]?.output ?? `${baseDir}/components/${kind}.ts`,
     split: componentTargets[kind]?.split ?? false,
   })
+  // What a kind's files see of the other kinds, from where they are written: the barrel's
+  // directory for a split kind, the file otherwise.
+  const seenFrom = (kind: (typeof COMPONENT_KINDS)[number]) => {
+    const { output, split } = target(kind)
+    return view(split ? `${output}/index.ts` : output)
+  }
   return [
     openAPI.components?.schemas
       ? {
           ...target('schemas'),
           run: (output: string) =>
-            schemas(
-              openAPI.components?.schemas,
-              output,
-              componentTargets.schemas?.split ?? false,
-              componentTargets.schemas?.exportTypes ?? false,
-              componentTargets,
-              readonly,
+            resolved(seenFrom('schemas'), ({ targets }) =>
+              schemas(
+                openAPI.components?.schemas,
+                output,
+                componentTargets.schemas?.split ?? false,
+                componentTargets.schemas?.exportTypes ?? false,
+                targets,
+                readonly,
+              ),
             ),
         }
       : undefined,
@@ -348,13 +466,15 @@ function perTypeComponentJobs(
       ? {
           ...target('responses'),
           run: (output: string) =>
-            responses(
-              openAPI.components?.responses,
-              output,
-              componentTargets.responses?.split ?? false,
-              componentTargets.responses?.exportTypes ?? false,
-              componentTargets,
-              readonly,
+            resolved(seenFrom('responses'), ({ targets }) =>
+              responses(
+                openAPI.components?.responses,
+                output,
+                componentTargets.responses?.split ?? false,
+                componentTargets.responses?.exportTypes ?? false,
+                targets,
+                readonly,
+              ),
             ),
         }
       : undefined,
@@ -362,13 +482,15 @@ function perTypeComponentJobs(
       ? {
           ...target('parameters'),
           run: (output: string) =>
-            parameters(
-              openAPI.components?.parameters,
-              output,
-              componentTargets.parameters?.split ?? false,
-              componentTargets.parameters?.exportTypes ?? false,
-              componentTargets,
-              readonly,
+            resolved(seenFrom('parameters'), ({ targets }) =>
+              parameters(
+                openAPI.components?.parameters,
+                output,
+                componentTargets.parameters?.split ?? false,
+                componentTargets.parameters?.exportTypes ?? false,
+                targets,
+                readonly,
+              ),
             ),
         }
       : undefined,
@@ -376,11 +498,13 @@ function perTypeComponentJobs(
       ? {
           ...target('examples'),
           run: (output: string) =>
-            examples(
-              openAPI.components?.examples,
-              output,
-              componentTargets.examples?.split ?? false,
-              componentTargets,
+            resolved(seenFrom('examples'), ({ targets }) =>
+              examples(
+                openAPI.components?.examples,
+                output,
+                componentTargets.examples?.split ?? false,
+                targets,
+              ),
             ),
         }
       : undefined,
@@ -388,13 +512,15 @@ function perTypeComponentJobs(
       ? {
           ...target('requestBodies'),
           run: (output: string) =>
-            requestBodies(
-              openAPI.components?.requestBodies,
-              output,
-              componentTargets.requestBodies?.split ?? false,
-              componentTargets.requestBodies?.exportTypes ?? false,
-              componentTargets,
-              readonly,
+            resolved(seenFrom('requestBodies'), ({ targets }) =>
+              requestBodies(
+                openAPI.components?.requestBodies,
+                output,
+                componentTargets.requestBodies?.split ?? false,
+                componentTargets.requestBodies?.exportTypes ?? false,
+                targets,
+                readonly,
+              ),
             ),
         }
       : undefined,
@@ -402,13 +528,15 @@ function perTypeComponentJobs(
       ? {
           ...target('headers'),
           run: (output: string) =>
-            headers(
-              openAPI.components?.headers,
-              output,
-              componentTargets.headers?.split ?? false,
-              componentTargets.headers?.exportTypes ?? false,
-              componentTargets,
-              readonly,
+            resolved(seenFrom('headers'), ({ targets }) =>
+              headers(
+                openAPI.components?.headers,
+                output,
+                componentTargets.headers?.split ?? false,
+                componentTargets.headers?.exportTypes ?? false,
+                targets,
+                readonly,
+              ),
             ),
         }
       : undefined,
@@ -416,11 +544,13 @@ function perTypeComponentJobs(
       ? {
           ...target('securitySchemes'),
           run: (output: string) =>
-            securitySchemes(
-              openAPI.components?.securitySchemes,
-              output,
-              componentTargets.securitySchemes?.split ?? false,
-              componentTargets,
+            resolved(seenFrom('securitySchemes'), ({ targets }) =>
+              securitySchemes(
+                openAPI.components?.securitySchemes,
+                output,
+                componentTargets.securitySchemes?.split ?? false,
+                targets,
+              ),
             ),
         }
       : undefined,
@@ -428,11 +558,13 @@ function perTypeComponentJobs(
       ? {
           ...target('links'),
           run: (output: string) =>
-            links(
-              openAPI.components?.links,
-              output,
-              componentTargets.links?.split ?? false,
-              componentTargets,
+            resolved(seenFrom('links'), ({ targets }) =>
+              links(
+                openAPI.components?.links,
+                output,
+                componentTargets.links?.split ?? false,
+                targets,
+              ),
             ),
         }
       : undefined,
@@ -440,11 +572,13 @@ function perTypeComponentJobs(
       ? {
           ...target('callbacks'),
           run: (output: string) =>
-            callbacks(
-              openAPI.components?.callbacks,
-              output,
-              componentTargets.callbacks?.split ?? false,
-              componentTargets,
+            resolved(seenFrom('callbacks'), ({ targets }) =>
+              callbacks(
+                openAPI.components?.callbacks,
+                output,
+                componentTargets.callbacks?.split ?? false,
+                targets,
+              ),
             ),
         }
       : undefined,
@@ -452,11 +586,13 @@ function perTypeComponentJobs(
       ? {
           ...target('pathItems'),
           run: (output: string) =>
-            pathItems(
-              openAPI.components?.pathItems,
-              output,
-              componentTargets.pathItems?.split ?? false,
-              componentTargets,
+            resolved(seenFrom('pathItems'), ({ targets }) =>
+              pathItems(
+                openAPI.components?.pathItems,
+                output,
+                componentTargets.pathItems?.split ?? false,
+                targets,
+              ),
             ),
         }
       : undefined,
@@ -464,13 +600,15 @@ function perTypeComponentJobs(
       ? {
           ...target('mediaTypes'),
           run: (output: string) =>
-            mediaTypes(
-              openAPI.components?.mediaTypes,
-              output,
-              componentTargets.mediaTypes?.split ?? false,
-              componentTargets.mediaTypes?.exportTypes ?? false,
-              componentTargets,
-              readonly,
+            resolved(seenFrom('mediaTypes'), ({ targets }) =>
+              mediaTypes(
+                openAPI.components?.mediaTypes,
+                output,
+                componentTargets.mediaTypes?.split ?? false,
+                componentTargets.mediaTypes?.exportTypes ?? false,
+                targets,
+                readonly,
+              ),
             ),
         }
       : undefined,

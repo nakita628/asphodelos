@@ -331,6 +331,73 @@ describe('makeJob — every job actually runs', () => {
     )
   })
 
+  // A component kind in a package of its own is imported by its package name from the modules and
+  // from the other kinds; a kind in the same package stays relative.
+  it('components: a kind in another package is imported by its package name', async () => {
+    const run = await runJobs(
+      {
+        output: 'src/index.ts',
+        components: {
+          schemas: { output: '../schemas/src/schemas.ts', package: '@repo/schemas' },
+          mediaTypes: { output: 'src/components/mediaTypes.ts' },
+        },
+      },
+      (dir) => {
+        packages(dir, ['apps/elysia', 'apps/schemas'])
+      },
+      'apps/elysia',
+    )
+    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain("from '@repo/schemas'")
+    expect(run.read('apps/elysia/src/components/mediaTypes.ts')).toContain("from '@repo/schemas'")
+  })
+
+  // Which kinds a file imports depends on the document, so a kind with no package name cannot be
+  // refused ahead of generation; it is imported relatively, as before.
+  it('components: a kind in another package with no package name is imported relatively', async () => {
+    const run = await runJobs(
+      {
+        output: 'src/index.ts',
+        components: { schemas: { output: '../schemas/src/schemas.ts' } },
+      },
+      (dir) => {
+        packages(dir, ['apps/elysia', 'apps/schemas'])
+      },
+      'apps/elysia',
+    )
+    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain(
+      "from '../../../../schemas/src/schemas'",
+    )
+  })
+
+  it('components: the single file in another package is imported by its package name', async () => {
+    const run = await runJobs(
+      {
+        output: 'src/index.ts',
+        components: { output: '../schemas/src/index.ts', package: '@repo/schemas' },
+      },
+      (dir) => {
+        packages(dir, ['apps/elysia', 'apps/schemas'])
+      },
+      'apps/elysia',
+    )
+    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain("from '@repo/schemas'")
+  })
+
+  // Component kinds the config places under the app entry's directory go through the alias too,
+  // from the modules and from each other.
+  it('pathAlias: component kinds under the app directory are imported through it', async () => {
+    const run = await runJobs({
+      output: 'src/index.ts',
+      pathAlias: '@/',
+      components: {
+        schemas: { output: 'src/components/schemas', split: true },
+        mediaTypes: { output: 'src/components/mediaTypes.ts' },
+      },
+    })
+    expect(run.read('src/modules/items/index.ts')).toContain("from '@/components/schemas'")
+    expect(run.read('src/components/mediaTypes.ts')).toContain("from '@/components/schemas'")
+  })
+
   // `@/` stands for the app entry's directory; every import between generated files under it
   // goes through the alias, the module's import of the schemas included. A file outside that
   // directory is imported relatively, since the alias does not reach it.

@@ -174,10 +174,25 @@ function splitUnion<Fields extends Schema.Struct.Fields>(shared: Fields) {
   ])
 }
 
-const OutputSchema = splitUnion({ import: Schema.optionalKey(ImportSchema) })
+/**
+ * The name the generated files in other packages import an output by: the package it is published
+ * as. Files in its own package import it relatively, or through the alias.
+ */
+const PackageSchema = ImportSchema.annotate({
+  title: 'Package name',
+  description:
+    'The name the generated files in other packages import this output by — the package it is published as, whose entry is this file or its barrel. Files in the same package import it relatively or through `pathAlias`. Left out, a file in another package is refused.',
+  examples: ['@repo/schemas'],
+})
+
+const OutputSchema = splitUnion({
+  import: Schema.optionalKey(ImportSchema),
+  package: Schema.optionalKey(PackageSchema),
+})
 
 const ExportTypesOutputSchema = splitUnion({
   import: Schema.optionalKey(ImportSchema),
+  package: Schema.optionalKey(PackageSchema),
   exportTypes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
     description: 'Also export the TypeScript type inferred from each generated schema.',
   }),
@@ -323,6 +338,7 @@ const ComponentsSchema = Schema.Struct({
       examples: ['./src/components/index.ts'],
     }),
   ),
+  package: Schema.optionalKey(PackageSchema),
   schemas: Schema.optionalKey(
     ExportTypesOutputSchema.annotate({
       title: 'Schemas output',
@@ -394,10 +410,16 @@ const ComponentsSchema = Schema.Struct({
     // A single `output` bundles every section into one file; a per-type entry routes one section
     // somewhere else. Both at once has no meaning, and silently picking a winner would write a
     // file the config never asked for.
-    Schema.makeFilter(({ output, ...perType }) =>
-      output === undefined || Object.keys(perType).length === 0
+    Schema.makeFilter((components) =>
+      components.output === undefined ||
+      COMPONENT_KINDS.every((kind) => components[kind] === undefined)
         ? undefined
         : "output cannot be combined with per-type component outputs. Use either a single 'output' or per-type configs.",
+    ),
+    Schema.makeFilter(({ output, package: name }) =>
+      name === undefined || output !== undefined
+        ? undefined
+        : 'package names the single-file output: set output, or name the package on each section.',
     ),
   )
   .annotate({

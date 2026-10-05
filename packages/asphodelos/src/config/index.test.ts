@@ -197,6 +197,32 @@ describe('parseConfig', () => {
     )
   })
 
+  describe('components package', () => {
+    it('takes the name a kind, or the single file, is imported by from other packages', () => {
+      const perKind = decode({
+        input: 'a.yaml',
+        components: { schemas: { output: '../schemas/src/schemas.ts', package: '@repo/schemas' } },
+      })
+      expect(perKind.components?.schemas?.package).toBe('@repo/schemas')
+      const single = decode({
+        input: 'a.yaml',
+        components: { output: '../schemas/src/index.ts', package: '@repo/schemas' },
+      })
+      expect(single.components?.package).toBe('@repo/schemas')
+    })
+
+    it('rejects a package on the components block without a single-file output', () => {
+      expect(
+        decodeError({
+          input: 'a.yaml',
+          components: { package: '@repo/schemas', schemas: { output: 'src/schemas.ts' } },
+        }).message,
+      ).toBe(
+        'Invalid config: components: package names the single-file output: set output, or name the package on each section.',
+      )
+    })
+  })
+
   describe('pathAlias', () => {
     it('is an import prefix, and rejects one with quotes or spaces', () => {
       expect(decode({ input: 'a.yaml', pathAlias: '@/' }).pathAlias).toBe('@/')
