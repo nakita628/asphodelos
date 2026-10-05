@@ -34,6 +34,7 @@ paramref
 petstore
 pipefail
 prefault
+refetches
 registrator
 rhysd
 sapegin

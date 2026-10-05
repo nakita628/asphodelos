@@ -5,8 +5,8 @@
     "../../__generated__/vue-query/hooks.ts",
     "../../hosts/users-app.ts",
     "../../hosts/users-client.ts",
+    "../../runtime/vue-query.test.ts",
     "../../types/vue-query.ts",
-    "../../types/infinite.ts",
     "../../types/assert.ts"
   ],
   "exclude": ["../../__generated__/vue-query/app/**"]

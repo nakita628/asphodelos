@@ -6,7 +6,6 @@
     "../../hosts/users-app.ts",
     "../../hosts/users-client.ts",
     "../../types/preact-query.ts",
-    "../../types/infinite.ts",
     "../../types/assert.ts"
   ],
   "exclude": ["../../__generated__/preact-query/app/**"]

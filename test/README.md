@@ -40,17 +40,17 @@ __generated__/    output; gitignored, refreshed before every run (a root-level c
 
 ## Coverage per library
 
-| Library          | Generated & typechecked | Generic assertions | Executed              |
-| ---------------- | ----------------------- | ------------------ | --------------------- |
-| `swr`            | ✅                      | ✅                 | ✅ React + happy-dom  |
-| `tanstack-query` | ✅                      | ✅                 | ✅ real `QueryClient` |
-| `preact-query`   | ✅                      | ✅                 | —                     |
-| `vue-query`      | ✅                      | ✅                 | —                     |
-| `solid-query`    | ✅                      | ✅                 | —                     |
-| `svelte-query`   | ✅                      | ✅                 | —                     |
-| `angular-query`  | ✅                      | ✅                 | —                     |
+| Library          | Generated & typechecked | Generic assertions | Executed                                 |
+| ---------------- | ----------------------- | ------------------ | ---------------------------------------- |
+| `swr`            | ✅                      | ✅                 | ✅ React + happy-dom                     |
+| `tanstack-query` | ✅                      | ✅                 | ✅ real `QueryClient`, React + happy-dom |
+| `preact-query`   | ✅                      | ✅                 | —                                        |
+| `vue-query`      | ✅                      | ✅                 | ✅ Vue app context                       |
+| `solid-query`    | ✅                      | ✅                 | —                                        |
+| `svelte-query`   | ✅                      | ✅                 | —                                        |
+| `angular-query`  | ✅                      | ✅                 | —                                        |
 
-The five that are not executed need a framework runtime this suite does not host; they are
+The four that are not executed need a framework runtime this suite does not host; they are
 compiled against the real library types, which is what catches a wrong generic.
 
 ## Running it

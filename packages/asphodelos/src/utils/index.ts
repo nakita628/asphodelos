@@ -116,3 +116,22 @@ export function safeStatusKey(status: string) {
 export function resourcePrefix(pathStr: string) {
   return pathStr.replace(/^\//u, '').split('/')[0] ?? ''
 }
+
+/**
+ * The identifier an operation goes by: its method followed by the words of its path, each
+ * capitalized. `('get', '/users/{id}')` is `getUsersId`; `('', '/users')` is `Users`, for a name
+ * that leaves the method out. Every character that is not a letter or digit breaks a word, and a
+ * trailing slash becomes `Index` so `/users/` and `/users` stay apart; the root path is `Index`.
+ */
+export function methodPath(method: string, pathStr: string) {
+  const hasTrailingSlash = pathStr !== '/' && pathStr.endsWith('/')
+  const words = pathStr
+    .replaceAll(/[^A-Za-z0-9]/gu, ' ')
+    .trim()
+    .split(/\s+/u)
+    .filter((word) => word !== '')
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join('')
+  const suffix = hasTrailingSlash ? 'Index' : ''
+  return words ? `${method}${words}${suffix}` : `${method}Index`
+}

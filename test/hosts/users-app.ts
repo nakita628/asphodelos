@@ -5,23 +5,26 @@ import { Elysia, t } from 'elysia'
  *
  * Hand-written rather than generated: the point of these tests is what the generated *client*
  * does, so the server has to be a fixed reference the client is measured against. Its routes
- * match specs/users.yaml.
+ * match specs/users.yaml, schemas included, so the Eden client types each request the way the
+ * document promises.
  *
  * `requestLog` is the side channel the tests read to tell "the hook did not fetch" apart from
- * "the hook fetched and the cache answered".
+ * "the hook fetched and the cache answered". `abortLog` records, for each slow request, whether
+ * it had been aborted by the time it answered.
  */
 export const requestLog: string[] = []
+
+export const abortLog: boolean[] = []
 
 const seed: readonly { id: string; name: string }[] = [
   { id: '1', name: 'Alice' },
   { id: '2', name: 'Bob' },
 ]
 
-const PAGES: readonly { items: string[]; nextPage?: number }[] = [
-  { items: ['a', 'b'], nextPage: 1 },
-  { items: ['c', 'd'], nextPage: 2 },
-  { items: ['e'] },
-]
+const PAGES: readonly (readonly string[])[] = [['a', 'b'], ['c', 'd'], ['e']]
+
+const User = t.Object({ id: t.String(), name: t.String() })
+const ApiError = t.Object({ error: t.String() })
 
 export const app = new Elysia()
   .get('/users', () => {
@@ -32,15 +35,14 @@ export const app = new Elysia()
     '/users',
     ({ body, status }) => {
       requestLog.push('POST /users')
-      if (body.name === '') return status(400, { message: 'name is required' })
+      if (body.name === '') return status(400, { error: 'name is required' })
       return status(201, { id: '99', name: body.name })
     },
     {
+      // The document's `minLength: 1` is checked by hand so the 400 is the host's own answer, the
+      // way the spec describes it, rather than Elysia's validation error.
       body: t.Object({ name: t.String() }),
-      response: {
-        201: t.Object({ id: t.String(), name: t.String() }),
-        400: t.Object({ message: t.String() }),
-      },
+      response: { 201: User, 400: ApiError },
     },
   )
   .get(
@@ -48,33 +50,41 @@ export const app = new Elysia()
     ({ params, status }) => {
       requestLog.push(`GET /users/${params.id}`)
       const found = seed.find((user) => user.id === params.id)
-      return found ?? status(404, { message: 'not found' })
+      return found ?? status(404, { error: 'Not Found' })
     },
     {
-      response: {
-        200: t.Object({ id: t.String(), name: t.String() }),
-        404: t.Object({ message: t.String() }),
-      },
+      headers: t.Object({ 'x-trace': t.Optional(t.String()) }),
+      response: { 200: User, 404: ApiError },
     },
   )
-  .delete('/users/:id', ({ status }) => {
-    requestLog.push('DELETE /users/:id')
+  .delete('/users/:id', ({ params, status }) => {
+    requestLog.push(`DELETE /users/${params.id}`)
     return status(204)
   })
   .get(
     '/items',
     ({ query }) => {
-      requestLog.push(`GET /items?page=${query.page ?? ''}`)
-      const page = Number.parseInt(query.page ?? '0', 10)
-      return PAGES[page] ?? { items: [] }
+      requestLog.push(`GET /items?page=${query.page}`)
+      const items = [...(PAGES[query.page] ?? [])]
+      const nextPage = query.page + 1 < PAGES.length ? query.page + 1 : undefined
+      return nextPage === undefined ? { items } : { items, nextPage }
     },
     {
+      query: t.Object({ page: t.Integer({ minimum: 0 }) }),
       // Declared so the client infers the shape the spec promises rather than the literal types
       // of the seed data — a caller writing `getNextPageParam` should see `nextPage?: number`.
       response: {
-        200: t.Object({ items: t.Array(t.String()), nextPage: t.Optional(t.Number()) }),
+        200: t.Object({ items: t.Array(t.String()), nextPage: t.Optional(t.Integer()) }),
       },
     },
   )
+  .get('/slow', async ({ request }) => {
+    requestLog.push('GET /slow')
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50)
+    })
+    abortLog.push(request.signal.aborted)
+    return { ok: true }
+  })
 
 export type App = typeof app

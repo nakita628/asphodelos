@@ -59,7 +59,7 @@ describe('7 query clients — dataT contract', () => {
   })
 })
 
-describe('7 query clients — key derivation contract (hono-takibi path-based)', () => {
+describe('7 query clients — key derivation contract (path-based)', () => {
   it('uses the first path segment as prefix and the full path as the second key element (tag is not used)', async () => {
     const api: OpenAPI = {
       openapi: '3.1.0',
@@ -103,7 +103,7 @@ describe('7 query clients — key derivation contract (hono-takibi path-based)',
 })
 
 describe('7 query clients — HTTP method contract', () => {
-  it('emits mutation hooks for PUT and PATCH (not query hooks)', async () => {
+  it('emits mutation hooks for PUT and PATCH, named by method and path', async () => {
     const api: OpenAPI = {
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -118,18 +118,18 @@ describe('7 query clients — HTTP method contract', () => {
     const flags = results.map(({ name, code }) => ({
       name,
       hasReplace:
-        code.includes('useReplaceItem') ||
-        code.includes('createReplaceItem') ||
-        code.includes('injectReplaceItem'),
+        code.includes('usePutItemsId') ||
+        code.includes('createPutItemsId') ||
+        code.includes('injectPutItemsId'),
       hasPatch:
-        code.includes('usePatchItem') ||
-        code.includes('createPatchItem') ||
-        code.includes('injectPatchItem'),
+        code.includes('usePatchItemsId') ||
+        code.includes('createPatchItemsId') ||
+        code.includes('injectPatchItemsId'),
     }))
     expect(flags.every((r) => r.hasReplace && r.hasPatch)).toBe(true)
   })
 
-  it('emits query hooks for HEAD (treated as GET-like)', async () => {
+  it('emits query hooks for HEAD, keeping the method in the name', async () => {
     const api: OpenAPI = {
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },

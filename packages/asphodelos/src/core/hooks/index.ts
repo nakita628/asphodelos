@@ -14,6 +14,30 @@ type HookLibrary =
   | 'solid-query'
   | 'angular-query'
 
+// The trailing argument each library's hooks take after their options, forwarded as it is.
+const QUERY_CLIENT_TAIL = {
+  name: 'queryClient',
+  query: 'QueryClient',
+  infinite: 'QueryClient',
+  mutation: 'QueryClient',
+  imports: ['QueryClient'],
+} as const
+// Solid and Svelte take the client as an accessor.
+const QUERY_CLIENT_ACCESSOR_TAIL = {
+  name: 'queryClient',
+  query: '() => QueryClient',
+  infinite: '() => QueryClient',
+  mutation: '() => QueryClient',
+  imports: ['QueryClient'],
+} as const
+const INJECT_OPTIONS_TAIL = {
+  name: 'injectOptions',
+  query: 'InjectQueryOptions',
+  infinite: 'InjectInfiniteQueryOptions',
+  mutation: 'InjectMutationOptions',
+  imports: ['InjectQueryOptions', 'InjectInfiniteQueryOptions', 'InjectMutationOptions'],
+} as const
+
 const TANSTACK: QueryHookConfig = {
   label: 'tanstack-query',
   packageName: '@tanstack/react-query',
@@ -21,8 +45,6 @@ const TANSTACK: QueryHookConfig = {
   queryFn: 'useQuery',
   mutationFn: 'useMutation',
   infiniteQueryFn: 'useInfiniteQuery',
-  useQueryGenerics: true,
-  hasInfiniteQueryOptionsHelper: true,
   suspenseQueryFn: 'useSuspenseQuery',
   suspenseInfiniteQueryFn: 'useSuspenseInfiniteQuery',
   queryOptionsType: 'UseQueryOptions',
@@ -30,6 +52,7 @@ const TANSTACK: QueryHookConfig = {
   mutationOptionsType: 'UseMutationOptions',
   infiniteOptionsType: 'UseInfiniteQueryOptions',
   suspenseInfiniteOptionsType: 'UseSuspenseInfiniteQueryOptions',
+  hookTail: QUERY_CLIENT_TAIL,
 }
 
 export const HOOK_CONFIGS = {
@@ -45,6 +68,9 @@ export const HOOK_CONFIGS = {
   },
   'tanstack-query': TANSTACK,
   'preact-query': { ...TANSTACK, label: 'preact-query', packageName: '@tanstack/preact-query' },
+  // Vue Query's `queryOptions()` / `infiniteQueryOptions()` do not take the generic factories (its
+  // `MaybeRefDeep<TPageParam>` never narrows from a generic parameter), so Vue gets plain
+  // factories and inline hooks. It also has no suspense hooks: suspense is `<Suspense>`.
   'vue-query': {
     label: 'vue-query',
     packageName: '@tanstack/vue-query',
@@ -52,12 +78,15 @@ export const HOOK_CONFIGS = {
     queryFn: 'useQuery',
     mutationFn: 'useMutation',
     infiniteQueryFn: 'useInfiniteQuery',
-    queryFnContext: true,
-    maybeRefOptions: true,
+    isVueQuery: true,
     queryOptionsType: 'UseQueryOptions',
     mutationOptionsType: 'UseMutationOptions',
     infiniteOptionsType: 'UseInfiniteQueryOptions',
+    hookTail: QUERY_CLIENT_TAIL,
   },
+  // Solid Query takes the whole options object as an accessor, and aliases every `Create*Options`
+  // type to `Accessor<...>`; `createQuery` has only the Undefined / Defined `initialData` overloads,
+  // so the Undefined variant is the one the spread resolves against.
   'solid-query': {
     label: 'solid-query',
     packageName: '@tanstack/solid-query',
@@ -65,15 +94,15 @@ export const HOOK_CONFIGS = {
     queryFn: 'createQuery',
     mutationFn: 'createMutation',
     infiniteQueryFn: 'createInfiniteQuery',
-    queryFnContext: true,
     useThunk: true,
-    thunkOptionsCall: true,
     unwrapOptionsAccessor: true,
-    hasInfiniteQueryOptionsHelper: true,
     queryOptionsType: 'UndefinedInitialDataOptions',
     mutationOptionsType: 'CreateMutationOptions',
     infiniteOptionsType: 'UndefinedInitialDataInfiniteOptions',
+    hookTail: QUERY_CLIENT_ACCESSOR_TAIL,
   },
+  // Svelte Query v5+ takes the options as a thunk, `createQuery(() => options)`.
+  // @see https://tanstack.com/query/v5/docs/framework/svelte/reactivity
   'svelte-query': {
     label: 'svelte-query',
     packageName: '@tanstack/svelte-query',
@@ -81,13 +110,13 @@ export const HOOK_CONFIGS = {
     queryFn: 'createQuery',
     mutationFn: 'createMutation',
     infiniteQueryFn: 'createInfiniteQuery',
-    queryFnContext: true,
     useThunk: true,
-    hasInfiniteQueryOptionsHelper: true,
     queryOptionsType: 'CreateQueryOptions',
     mutationOptionsType: 'CreateMutationOptions',
     infiniteOptionsType: 'CreateInfiniteQueryOptions',
+    hookTail: QUERY_CLIENT_ACCESSOR_TAIL,
   },
+  // Angular replaces suspense with signal-based reactivity, so there are no suspense hooks.
   'angular-query': {
     label: 'angular-query',
     packageName: '@tanstack/angular-query-experimental',
@@ -95,12 +124,11 @@ export const HOOK_CONFIGS = {
     queryFn: 'injectQuery',
     mutationFn: 'injectMutation',
     infiniteQueryFn: 'injectInfiniteQuery',
-    queryFnContext: true,
     useThunk: true,
-    hasInfiniteQueryOptionsHelper: true,
     queryOptionsType: 'CreateQueryOptions',
     mutationOptionsType: 'CreateMutationOptions',
     infiniteOptionsType: 'CreateInfiniteQueryOptions',
+    hookTail: INJECT_OPTIONS_TAIL,
   },
 } as const satisfies Record<HookLibrary, QueryHookConfig>
 

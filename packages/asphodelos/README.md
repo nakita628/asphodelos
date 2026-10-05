@@ -256,6 +256,30 @@ export default defineConfig({
 The hooks are written into one file. `import` names the module that exports your Eden Treaty
 client, and `client` its export name (`client` when left out).
 
+Every operation is named by its method and path: a GET on `/users/{id}` becomes `useUsersId`, with
+`getUsersIdQueryKey` and `getUsersIdQueryOptions` beside it; a POST on `/users` becomes
+`usePostUsers`, with `getPostUsersMutationKey` and `getPostUsersMutationOptions`. Path parameters
+come first, then one `options` object, then the library's own trailing argument (a `QueryClient`,
+or Angular's inject options):
+
+```ts
+const user = useUsersId(
+  { id: '1' },
+  {
+    query: { staleTime: 1_000 }, // the library's options, minus the key and the query function
+    options: { headers: { 'x-trace': 'a' } }, // the client's request options
+  },
+)
+
+const create = usePostUsers({ mutation: { onSuccess: () => invalidate() } })
+create.mutate({ body: { name: 'Alice' } })
+```
+
+A query's `options` are part of its key, headers excluded; a mutation honors a `mutationKey` of
+your own over the generated one. SWR hooks take `{ swr, options }` instead, where `swr` adds
+`swrKey` (replaces the generated key) and `enabled` (a `false` turns the key into `null`), and
+return the key they used beside SWR's result.
+
 ### Infinite Query (`x-pagination`)
 
 Set `x-pagination: true` on a GET operation to generate infinite query hooks.
@@ -267,18 +291,25 @@ paths:
       x-pagination: true
 ```
 
-The paging rules go in a `pagination` argument:
+The paging rules go in a `pagination` argument, ahead of the options:
 
 ```ts
-const items = useListItemsInfinite(undefined, {
-  initialPageParam: 0,
-  getNextPageParam: (lastPage) => lastPage.nextPage,
-  buildInit: (pageParam) => ({ query: { page: String(pageParam) } }),
-})
+const items = useInfiniteItems(
+  {
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.nextPage,
+    getRequestArgs: (options, pageParam) => ({
+      ...options,
+      query: { ...options.query, page: Number(pageParam) },
+    }),
+  },
+  { options: { query: { page: 0 } } },
+)
 ```
 
-Vue Query takes only `buildInit` there, with `initialPageParam` / `getNextPageParam` in the third
-argument. SWR takes `buildInit(pageIndex, previousPage)` and stops when it returns `null`.
+Vue Query takes only `getRequestArgs` there, with `initialPageParam` / `getNextPageParam` in
+`options.query`. SWR takes `pagination.getRequestArgs(options, index)` inside its options object,
+and a `swr.swrKey` loader that returns `null` stops the paging.
 
 ## Mock Server Generation
 

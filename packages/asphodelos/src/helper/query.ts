@@ -4,15 +4,29 @@ import { Effect } from 'effect'
 
 import { emit } from '../emit/index.js'
 import type { OpenAPI, Operation } from '../openapi/index.js'
-import { capitalize, pascalCase, resourcePrefix, toSafeIdentifier } from '../utils/index.js'
-import { edenChain } from './eden.js'
 import {
-  HTTP_METHODS,
-  makePrefixKeyCodes,
-  resolveOperation,
-  resolveOperationId,
-} from './openapi.js'
+  capitalize,
+  filterDefined,
+  methodPath,
+  pascalCase,
+  resourcePrefix,
+} from '../utils/index.js'
+import { edenChain } from './eden.js'
+import { HTTP_METHODS, makePrefixKeyCodes, resolveOperation } from './openapi.js'
 import { responseInfo } from './schema.js'
+
+/**
+ * The trailing argument a library's hooks take after their options: a `QueryClient` (an accessor
+ * of one in Solid and Svelte), or Angular's inject options. The hooks forward it, so a caller can
+ * target a client other than the provided one, or run outside an injection context.
+ */
+export type HookTail = {
+  readonly name: string
+  readonly query: string
+  readonly infinite: string
+  readonly mutation: string
+  readonly imports: readonly string[]
+}
 
 export type QueryHookConfig = {
   readonly label: string
@@ -23,11 +37,12 @@ export type QueryHookConfig = {
   readonly infiniteQueryFn: string
   readonly immutableQueryFn?: string
   readonly isSWR?: boolean
-  readonly queryFnContext?: boolean
+  /** Solid, Svelte and Angular take the options as a thunk, `() => options`. */
   readonly useThunk?: boolean
-  readonly thunkOptionsCall?: boolean
-  readonly useQueryGenerics?: boolean
-  readonly maybeRefOptions?: boolean
+  /** Solid aliases every option type to `Accessor<...>`; the caller's slot is the unwrapped object. */
+  readonly unwrapOptionsAccessor?: boolean
+  /** Vue: a path parameter may be a ref, the option types are `MaybeRef` unions, and there is no options helper. */
+  readonly isVueQuery?: boolean
   readonly suspenseQueryFn?: string
   readonly suspenseInfiniteQueryFn?: string
   readonly queryOptionsType?: string
@@ -35,416 +50,94 @@ export type QueryHookConfig = {
   readonly mutationOptionsType?: string
   readonly infiniteOptionsType?: string
   readonly suspenseInfiniteOptionsType?: string
-  readonly hasInfiniteQueryOptionsHelper?: boolean
-  readonly unwrapOptionsAccessor?: boolean
+  readonly hookTail?: HookTail
 }
 
-type OpDeps = { isQuery: boolean; isInfinite: boolean; isMutation: boolean }
-
-// Solid aliases every `Create*Options` type to `Accessor<...>` (a thunk), because `createQuery`
-// takes the whole options object as one. The user-facing slot must be the unwrapped object:
-// typed as the accessor, `...queryOptions?.()` spreads a function's (empty) own properties, so
-// the caller's options are silently dropped. `ReturnType` is the unwrapping Solid itself uses.
-function optionsObjectType(config: QueryHookConfig, optionsType: string) {
-  return config.unwrapOptionsAccessor ? `ReturnType<${optionsType}>` : optionsType
-}
-
-// The hook supplies these itself, so the caller's options leave them out — the shape
+// The hook supplies these itself, so the caller's slot leaves them out — the shape
 // openapi-react-query uses. The libraries type `queryKey` as required, which otherwise forces the
 // caller to pass a key the hook then overwrites, and leaves `select` unable to bind TData.
 const QUERY_OMIT_KEYS = `'queryKey' | 'queryFn'`
 // Infinite hooks also supply both page-param functions, from `pagination`.
 const INFINITE_OMIT_KEYS = `'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'`
-// The mutation hook spreads its factory after the caller's options, so a caller's key or request
-// would be silently overwritten: the slot must not accept what the hook discards.
-const MUTATION_OMIT_KEYS = `'mutationKey' | 'mutationFn'`
+// Mutation hooks supply `mutationFn` — the operation contract that types `data` — so the slot
+// leaves it out. `mutationKey` stays: mutations are not cached, so the key is metadata rather than
+// identity (`useIsMutating` / `setMutationDefaults` go by it), and the hook honours the caller's
+// key over the factory's, the way the SWR mutation hook honours `swrKey`.
+const MUTATION_OMIT_KEYS = `'mutationFn'`
 
-// Vue's options types are `MaybeRef<{...}>` (`Ref | ComputedRef | object`, and for mutations also a
-// getter), and a plain `Omit` over that union keeps only the keys all of them share — none. The
-// hook spreads the value, which only works on the plain object anyway, so `Extract` keeps that
-// member: the query object is the only one with a `queryKey`. Nothing in the mutation object is
-// required, so its marker is optional — a ref or a getter shares no property with it, and
-// TypeScript's weak-type check then leaves them out.
-function omitInjectedKeys(
-  config: QueryHookConfig,
-  optionsType: string,
-  keys: string,
-  marker = '{ queryKey: unknown }',
-) {
-  const objectType = config.maybeRefOptions
-    ? `Extract<${optionsType}, ${marker}>`
-    : optionsObjectType(config, optionsType)
+// Vue's option types are unions — `MaybeRef<{...}>` (`Ref | ComputedRef | object`), plus a getter
+// for mutations — and a plain `Omit` over a union keeps only the keys every member shares: none.
+// The hook spreads the value, which only works on the plain object anyway, so `Extract` keeps that
+// member. For queries it is the only one with the required `queryKey`. Mutation options are all
+// optional, so the probe is a weak type: a `Ref` (only `value`) and a getter (no properties) share
+// nothing with it and drop out, while the plain object matches.
+const VUE_QUERY_MEMBER = `{ queryKey: unknown }`
+const VUE_MUTATION_MEMBER = `{ mutationFn?: unknown }`
+
+/** The caller's options slot: the library type, unwrapped for Solid, narrowed for Vue, minus the keys the hook supplies. */
+function slotType(config: QueryHookConfig, optionsType: string, keys: string, vueMember?: string) {
+  const objectType = config.isVueQuery
+    ? `Extract<${optionsType}, ${vueMember ?? VUE_QUERY_MEMBER}>`
+    : config.unwrapOptionsAccessor
+      ? `ReturnType<${optionsType}>`
+      : optionsType
   return `Omit<${objectType}, ${keys}>`
 }
 
-function makeGetQueryOptionsParam(config: QueryHookConfig, dataT: string, keyName: string) {
-  const optType = config.queryOptionsType
-  const omit = (optionsType: string) => omitInjectedKeys(config, optionsType, QUERY_OMIT_KEYS)
-  if (config.maybeRefOptions) {
-    return `queryOptions?: ${omit(`${optType}<${dataT}, TError, TData, ${dataT}, ReturnType<typeof ${keyName}>>`)}`
-  }
-  // The key is pinned to the factory's own tuple: the hook spreads the factory, and the options'
-  // key-typed members have to agree with the key it brings along.
-  const keyed = `${optType}<${dataT}, TError, TData, ReturnType<typeof ${keyName}>>`
-  if (config.thunkOptionsCall) return `queryOptions?: () => ${omit(keyed)}`
-  return `queryOptions?: ${omit(keyed)}`
+function tailOf(config: QueryHookConfig, kind: 'query' | 'infinite' | 'mutation') {
+  const tail = config.hookTail
+  return tail
+    ? { sig: `, ${tail.name}?: ${tail[kind]}`, arg: `, ${tail.name}` }
+    : { sig: '', arg: '' }
 }
 
-function makeMutationOptionsParam(
-  config: QueryHookConfig,
-  dataT: string,
-  errorT: string,
-  variablesType: string,
-) {
-  const optType = omitInjectedKeys(
-    config,
-    `${config.mutationOptionsType}<${dataT}, ${errorT}, ${variablesType}>`,
-    MUTATION_OMIT_KEYS,
-    '{ mutationKey?: unknown }',
-  )
-  return config.thunkOptionsCall
-    ? `mutationOptions?: () => ${optType}`
-    : `mutationOptions?: ${optType}`
+/**
+ * One operation as the hooks see it: how its path parameters are passed, what its request
+ * options are, what it answers with, and how a request is written. The Eden client gives one
+ * shape, a path Eden cannot type another (see {@link fetchTarget}); the hooks are written the
+ * same way over either.
+ */
+type Target = {
+  /** The path parameters, in order: `params`, `params2`, … with their types. */
+  readonly params: readonly { readonly name: string; readonly type: string }[]
+  /** The request options the operation takes: query, headers, fetch. */
+  readonly optionsType: string
+  /** Whether a required query or header makes the options mandatory. */
+  readonly requiredOptions: boolean
+  /** Whether the options take part in the cache key (the operation has query parameters). */
+  readonly hasKeyArgs: boolean
+  /** The members of the options that never belong in a cache key. */
+  readonly keyDrops: readonly string[]
+  readonly dataT: string
+  readonly errorT: string
+  /** For a mutation: the request body type, when the method carries one. */
+  readonly bodyType?: string
+  /** Whether the body is required in the mutation variables. */
+  readonly bodyRequired: boolean
+  /**
+   * The statements of a `queryFn`, given the expressions for each path parameter and the options.
+   * `signal` forwards the query function's abort signal to the request; SWR has none.
+   */
+  readonly queryBody: (
+    paramExprs: readonly string[],
+    optionsExpr: string,
+    signal: boolean,
+  ) => string
+  /** The statements of a `mutationFn`, given the expressions for the path parameters, body and options. */
+  readonly mutationBody: (
+    paramExprs: readonly string[],
+    bodyExpr: string,
+    optionsExpr: string,
+  ) => string
+  /** The response component a `fetch` fallback types its data by, to import. */
+  readonly fetchType?: string
 }
 
-// The request is written once, in the `queryOptions` factory, and the hooks spread it with the
-// caller's options after it: `{ ...xQueryOptions<TData, TError>(args), ...queryOptions }`. The
-// factory carries the hook's `<TData, TError>` so that spread type-checks — `queryOptions()` bakes
-// both into its result. Vue is the exception: its `MaybeRef` option types do not take the branded
-// factory, so its hooks keep the key and the request inline.
-function makeGetHookBody(
-  config: QueryHookConfig,
-  factoryCall: string,
-  keyCall: string,
-  queryFnBlock: string,
-) {
-  if (config.maybeRefOptions) {
-    return `${config.queryFn}({...queryOptions,queryKey:${keyCall},${queryFnBlock}})`
-  }
-  const spread = config.thunkOptionsCall ? '...queryOptions?.()' : '...queryOptions'
-  const inner = `...${factoryCall},${spread}`
-  return config.useThunk ? `${config.queryFn}(()=>({${inner}}))` : `${config.queryFn}({${inner}})`
-}
-
-/** The `queryOptions` factory of one GET, generic over the hooks' `<TData, TError>` except for Vue. */
-function makeQueryFactoryCode(
-  config: QueryHookConfig,
-  name: string,
-  sig: string,
-  keyName: string,
-  keyCall: string,
-  dataT: string,
-  errorT: string,
-  queryFnBody: string,
-) {
-  if (config.maybeRefOptions) {
-    return `export function ${name}(${sig}){return queryOptions({queryKey:${keyCall},${queryFnBody}})}`
-  }
-  return `export function ${name}<TData = ${dataT}, TError = ${errorT}>(${sig}){return queryOptions<${dataT},TError,TData,ReturnType<typeof ${keyName}>>({queryKey:${keyCall},${queryFnBody}})}`
-}
-
-/** The suspense hook of one GET: the factory spread with the caller's options. */
-function makeSuspenseHookCode(
-  config: QueryHookConfig,
-  name: string,
-  generics: string,
-  sig: readonly string[],
-  factoryCall: string,
-  keyName: string,
-  dataT: string,
-) {
-  const optionsType = omitInjectedKeys(
-    config,
-    `${config.suspenseQueryOptionsType}<${dataT}, TError, TData, ReturnType<typeof ${keyName}>>`,
-    QUERY_OMIT_KEYS,
-  )
-  return `export function ${name}${generics}(${[...sig, `queryOptions?: ${optionsType}`].join(', ')}){return ${config.suspenseQueryFn}({...${factoryCall},...queryOptions})}`
-}
-
-// The mutation counterpart of the `queryOptions` factory: a typed, reusable options object (for
-// `queryClient.setMutationDefaults`, or to spread into a hook yourself). Unlike the query hooks,
-// the mutation hook consumes it — `mutationOptions()` adds no DataTag brand, so its result stays
-// assignable to the hook's generics and the request lives in one place. TError is a parameter so
-// the hook's own TError reaches `onError`.
-function makeMutationFactoryCode(
-  name: string,
-  keySig: string,
-  keyCall: string,
-  dataT: string,
-  errorT: string,
-  variablesType: string,
-  mutationFnBlock: string,
-) {
-  return `export function ${name}<TError = ${errorT}>(${keySig}){return mutationOptions<${dataT},TError,${variablesType}>({mutationKey:${keyCall},${mutationFnBlock}})}`
-}
-
-function makeMutationHookBody(
-  config: QueryHookConfig,
-  dataT: string,
-  variablesType: string,
-  factoryCall: string,
-) {
-  // The caller's options spread first so the factory's key and request win.
-  const spread = config.thunkOptionsCall ? '...mutationOptions?.()' : '...mutationOptions'
-  const inner = `${spread},...${factoryCall}`
-  if (config.useQueryGenerics) {
-    return `${config.mutationFn}<${dataT},TError,${variablesType}>({${inner}})`
-  }
-  if (config.useThunk) {
-    return `${config.mutationFn}(()=>({${inner}}))`
-  }
-  return `${config.mutationFn}({${inner}})`
-}
-
-function makeTanstackInfiniteParts(
-  config: QueryHookConfig,
-  args: {
-    funcName: string
-    hookName: string
-    suspenseHookName: string
-    keyPrefix: string
-    pathStr: string
-    paramSig: readonly string[]
-    paramPass: readonly string[]
-    optionsType: string
-    dataT: string
-    errorT: string
-    callExpr: string
-  },
-) {
-  const { funcName, hookName, suspenseHookName, keyPrefix, pathStr } = args
-  const { paramSig, paramPass, optionsType, dataT, errorT, callExpr } = args
-  const infiniteKeyName = `${funcName}InfiniteQueryKey`
-  const infiniteKeySig = [...paramSig, `options?: ${optionsType}`].join(', ')
-  const infiniteKeyTuple = [
-    `'${keyPrefix}'`,
-    `'${pathStr}'`,
-    `'infinite'`,
-    ...paramPass,
-    'keyArgs',
-  ].join(', ')
-  const infiniteKeyCode = `export function ${infiniteKeyName}(${infiniteKeySig}){const{headers:_h,fetch:_f,throwHttpError:_t,...keyArgs}=options??{};return[${infiniteKeyTuple}]as const}`
-  const infiniteKeyCall = `${infiniteKeyName}(${[...paramPass, 'options'].join(', ')})`
-  const infiniteHookName = `${hookName}Infinite`
-  const suspenseInfiniteHookName = `${suspenseHookName}Infinite`
-  const queryKeyType = `ReturnType<typeof ${infiniteKeyName}>`
-
-  // `pagination` carries the three page-param concerns TanStack v5 requires that an
-  // `x-pagination: true` flag can't supply: where paging starts (initialPageParam), how to
-  // read the next cursor (getNextPageParam), and how a pageParam maps onto the request
-  // (buildInit — eden has no page-param slot, so the per-page overlay is merged into the call).
-  const paginationParam = `pagination: { initialPageParam: TPageParam; getNextPageParam: (lastPage: ${dataT}, allPages: ${dataT}[], lastPageParam: TPageParam, allPageParams: TPageParam[]) => TPageParam | undefined | null; buildInit: (pageParam: unknown) => ${optionsType} }`
-  const infiniteSig = [...paramSig, `options: ${optionsType} | undefined`, paginationParam].join(
-    ', ',
-  )
-
-  // `pageParam` is `unknown` at the QueryFunctionContext boundary (TanStack can't know
-  // TPageParam there), so buildInit accepts `unknown` and the caller narrows it — no cast emitted.
-  const infiniteQueryFnBody = `queryFn:async({pageParam,signal})=>{const overlay=pagination.buildInit(pageParam);const{data,error}=await ${callExpr}({...options,...overlay,query:{...options?.query,...overlay?.query},headers:{...options?.headers,...overlay?.headers},fetch:{...options?.fetch,...overlay?.fetch,signal}});if(error)throw error;return data},`
-  // The factory is written once and the hooks spread it, so it carries the hooks' generics:
-  // `infiniteQueryOptions()` bakes TData and TError into its result, and a factory pinned to the
-  // defaults would not be assignable to a hook whose caller picks them. All five helper generics
-  // are spelled out: inferring TPageParam from the body collapses `pageParam` to `unknown`.
-  // `TPageParam` comes first and has no default, so a direct call still infers it from
-  // `pagination`, while the hooks pass all three through.
-  const infiniteOptionsName = `${funcName}InfiniteQueryOptions`
-  const infiniteOptionsCode = `export function ${infiniteOptionsName}<TPageParam, TData = InfiniteData<${dataT}, TPageParam>, TError = ${errorT}>(${infiniteSig}){return infiniteQueryOptions<${dataT},TError,TData,${queryKeyType},TPageParam>({queryKey:${infiniteKeyCall},${infiniteQueryFnBody}initialPageParam:pagination.initialPageParam,getNextPageParam:pagination.getNextPageParam})}`
-
-  const infiniteGenerics = `<TPageParam = unknown, TData = InfiniteData<${dataT}, TPageParam>, TError = ${errorT}>`
-  const factoryCall = `${infiniteOptionsName}<TPageParam,TData,TError>(${[...paramPass, 'options', 'pagination'].join(', ')})`
-  const spread = config.thunkOptionsCall ? '...queryOptions?.()' : '...queryOptions'
-  const inner = `...${factoryCall},${spread}`
-  const hookBody = (queryFn: string) =>
-    config.useThunk ? `${queryFn}(()=>({${inner}}))` : `${queryFn}({${inner}})`
-  const hookSig = (libOptionsType: string | undefined) => {
-    const fullType = omitInjectedKeys(
-      config,
-      `${libOptionsType}<${dataT}, TError, TData, ${queryKeyType}, TPageParam>`,
-      INFINITE_OMIT_KEYS,
-    )
-    const queryOptionsParam = config.thunkOptionsCall
-      ? `queryOptions?: () => ${fullType}`
-      : `queryOptions?: ${fullType}`
-    return [infiniteSig, queryOptionsParam].join(', ')
-  }
-  const infiniteCode = `export function ${infiniteHookName}${infiniteGenerics}(${hookSig(config.infiniteOptionsType)}){return ${hookBody(config.infiniteQueryFn)}}`
-  if (!config.suspenseInfiniteQueryFn) {
-    return [infiniteKeyCode, infiniteOptionsCode, infiniteCode]
-  }
-  const suspenseInfiniteCode = `export function ${suspenseInfiniteHookName}${infiniteGenerics}(${hookSig(config.suspenseInfiniteOptionsType)}){return ${hookBody(config.suspenseInfiniteQueryFn)}}`
-
-  return [infiniteKeyCode, infiniteOptionsCode, infiniteCode, suspenseInfiniteCode]
-}
-
-function makeInfiniteParts(
-  config: QueryHookConfig,
-  args: {
-    funcName: string
-    hookName: string
-    suspenseHookName: string
-    keyPrefix: string
-    pathStr: string
-    paramSig: readonly string[]
-    paramPass: readonly string[]
-    optionsType: string
-    dataT: string
-    errorT: string
-    callExpr: string
-  },
-) {
-  if (config.hasInfiniteQueryOptionsHelper) {
-    return makeTanstackInfiniteParts(config, args)
-  }
-  // Vue Query: its `infiniteQueryOptions()` (and `useInfiniteQuery`) type `initialPageParam` as
-  // `MaybeRefDeep<TPageParam>`, which a generic `TPageParam` is never assignable to — even with
-  // all five generics spelled out. So there is no factory and `pagination` carries only
-  // `buildInit`; the page-param functions travel in the (required) `queryOptions` instead.
-  const { funcName, hookName, keyPrefix, pathStr } = args
-  const { paramSig, paramPass, optionsType, dataT, errorT, callExpr } = args
-  const infiniteKeyName = `${funcName}InfiniteQueryKey`
-  const infiniteKeySig = [...paramSig, `options?: ${optionsType}`].join(', ')
-  const infiniteKeyTuple = [
-    `'${keyPrefix}'`,
-    `'${pathStr}'`,
-    `'infinite'`,
-    ...paramPass,
-    'keyArgs',
-  ].join(', ')
-  const infiniteKeyCode = `export function ${infiniteKeyName}(${infiniteKeySig}){const{headers:_h,fetch:_f,throwHttpError:_t,...keyArgs}=options??{};return[${infiniteKeyTuple}]as const}`
-  const infiniteKeyCall = `${infiniteKeyName}(${[...paramPass, 'options'].join(', ')})`
-  const infiniteHookName = `${hookName}Infinite`
-
-  const infiniteGenerics = `<TPageParam = unknown, TData = InfiniteData<${dataT}, TPageParam>, TError = ${errorT}>`
-  const infiniteQueryFnBlock = `queryFn:async({pageParam,signal}:QueryFunctionContext)=>{const overlay=pagination.buildInit(pageParam);const{data,error}=await ${callExpr}({...options,...overlay,query:{...options?.query,...overlay?.query},headers:{...options?.headers,...overlay?.headers},fetch:{...options?.fetch,...overlay?.fetch,signal}});if(error)throw error;return data},`
-  const fullOptionsType = `${config.infiniteOptionsType}<${dataT}, TError, TData, ReturnType<typeof ${infiniteKeyName}>, TPageParam>`
-  const infiniteHookSig = [
-    ...paramSig,
-    `options: ${optionsType} | undefined`,
-    `pagination: { buildInit: (pageParam: unknown) => ${optionsType} }`,
-    `queryOptions: ${omitInjectedKeys(config, fullOptionsType, QUERY_OMIT_KEYS)}`,
-  ].join(', ')
-  const inner = `...queryOptions,queryKey:${infiniteKeyCall},${infiniteQueryFnBlock}`
-  const infiniteCode = `export function ${infiniteHookName}${infiniteGenerics}(${infiniteHookSig}){return ${config.infiniteQueryFn}({${inner}})}`
-
-  return [infiniteKeyCode, infiniteCode]
-}
-
-function makeSwrOperation(
-  config: QueryHookConfig,
-  args: {
-    hookName: string
-    immutableHookName: string
-    keyName: string
-    keyPrefix: string
-    pathStr: string
-    method: (typeof HTTP_METHODS)[number]
-    paramSig: readonly string[]
-    paramPass: readonly string[]
-    argsType: string
-    optionsType: string
-    dataT: string
-    errorT: string
-    callExpr: string
-    isQuery: boolean
-    isBodyMethod: boolean
-    isPaginated: boolean
-    hasKeyArgs: boolean
-    optMark: string
-  },
-) {
-  const { hookName, immutableHookName, keyName, keyPrefix, pathStr, method } = args
-  const { paramSig, paramPass } = args
-  const { argsType, optionsType, dataT, errorT, callExpr } = args
-  const { isQuery, isBodyMethod, isPaginated, hasKeyArgs, optMark } = args
-
-  if (isQuery) {
-    const keySig = (hasKeyArgs ? [...paramSig, `options?: ${optionsType}`] : paramSig).join(', ')
-    const keyTuple = [
-      `'${keyPrefix}'`,
-      `'${pathStr}'`,
-      ...paramPass,
-      ...(hasKeyArgs ? ['keyArgs'] : []),
-    ].join(', ')
-    const keyCode = hasKeyArgs
-      ? `export function ${keyName}(${keySig}){const{headers:_h,fetch:_f,throwHttpError:_t,...keyArgs}=options??{};return[${keyTuple}]as const}`
-      : `export function ${keyName}(${keySig}){return[${keyTuple}]as const}`
-    const keyCall = `${keyName}(${[...paramPass, ...(hasKeyArgs ? ['options'] : [])].join(', ')})`
-    const generics = `<TError = ${errorT}>`
-    const hookSig = [
-      ...paramSig,
-      `options${optMark}: ${optionsType}`,
-      `config?: SWRConfiguration<${dataT}, TError>`,
-    ].join(', ')
-    const swrHook = (name: string, swrFn: string) =>
-      `export function ${name}${generics}(${hookSig}){return ${swrFn}<${dataT},TError>(${keyCall},async()=>{const{data,error}=await ${callExpr}(options);if(error)throw error;return data},config)}`
-    // The immutable variant shares the key and fetcher: same cache entry, fetched once and never
-    // revalidated — for data that does not change while the page is open.
-    const hookCode = config.immutableQueryFn
-      ? `${swrHook(hookName, config.queryFn)}\n\n${swrHook(immutableHookName, config.immutableQueryFn)}`
-      : swrHook(hookName, config.queryFn)
-
-    if (isPaginated) {
-      const infiniteHookName = `${hookName}Infinite`
-      const infiniteHookSig = [
-        ...paramSig,
-        `buildInit: (pageIndex: number, previousPage: ${dataT} | null) => ${optionsType} | null`,
-        `config?: SWRInfiniteConfiguration<${dataT}, TError>`,
-      ].join(', ')
-      const infiniteKeyTuple = [
-        `'${keyPrefix}'`,
-        `'${pathStr}'`,
-        `'infinite'`,
-        'pageIndex',
-        ...paramPass,
-        'keyArgs',
-      ].join(', ')
-      // Naming the key loader and threading `typeof getKey` as the third useSWRInfinite generic
-      // keeps the fetcher's key precisely typed (otherwise it widens to `Arguments`, and the
-      // recovered keyArgs would need an `as` cast). Path params come back typed but stay unused —
-      // the call uses the typed hook params from the closure — so bind them to throwaway names.
-      const fetcherDestructure = [
-        '_resource',
-        '_opId',
-        '_infinite',
-        '_pageIndex',
-        ...paramPass.map((_, i) => `_key${i}`),
-        'keyArgs',
-      ].join(', ')
-      const getKey = `const getKey=(pageIndex:number,previousPage:${dataT}|null)=>{const options=buildInit(pageIndex,previousPage);if(options===null)return null;const{headers:_h,fetch:_f,throwHttpError:_t,...keyArgs}=options??{};return[${infiniteKeyTuple}]as const}`
-      const infiniteCode = `export function ${infiniteHookName}${generics}(${infiniteHookSig}){${getKey};return useSWRInfinite<${dataT},TError,typeof getKey>(getKey,async([${fetcherDestructure}])=>{const{data,error}=await ${callExpr}(keyArgs);if(error)throw error;return data},config)}`
-      return `${keyCode}\n\n${hookCode}\n\n${infiniteCode}`
-    }
-    return `${keyCode}\n\n${hookCode}`
-  }
-
-  const keySig = paramSig.join(', ')
-  const keyExpr = `[${[`'${keyPrefix}'`, `'${pathStr}'`, `'${method.toUpperCase()}'`, ...paramPass].join(', ')}] as const`
-  const keyCode = `export function ${keyName}(${keySig}){return ${keyExpr}}`
-  const keyCall = `${keyName}(${paramPass.join(', ')})`
-
-  const variablesType = isBodyMethod
-    ? `{ body: ${argsType}[0]; options${optMark}: ${argsType}[1] }`
-    : `{ options${optMark}: ${argsType}[0] }`
-  const triggerCallExpr = isBodyMethod
-    ? `${callExpr}(arg.body, arg.options)`
-    : `${callExpr}(arg.options)`
-  const mutationGenerics = `<TError = ${errorT}>`
-  const hookSig = [
-    ...paramSig,
-    `config?: SWRMutationConfiguration<${dataT}, TError, ReturnType<typeof ${keyName}>, ${variablesType}>`,
-  ].join(', ')
-  const triggerCb = `async(_key:ReturnType<typeof ${keyName}>,{arg}:{arg:${variablesType}})=>{const{data,error}=await ${triggerCallExpr};if(error)throw error;return data}`
-  const hookCode = `export function ${hookName}${mutationGenerics}(${hookSig}){return useSWRMutation<${dataT},TError,ReturnType<typeof ${keyName}>,${variablesType}>(${keyCall},${triggerCb},config)}`
-  return `${keyCode}\n\n${hookCode}`
-}
-
-// Eden treaty projects a path onto a property/function tree, so a segment it cannot turn into
-// a clean node breaks the whole chain: a partial param (`/{Sid}.json` — a `{param}` mixed with
-// static text has no function node) and, transitively, every sibling under the same resource
-// (the parent position becomes a union whose branches expose disjoint children). File-extension
-// REST (Twilio/Shopify put `.json` on every endpoint) hits both. A segment carrying a `.` or a
-// partial param marks the path as untypeable through eden — fall back to a literal-path `fetch`
-// hook (the approach orval/openapi-typescript take, which has no path-tree to break).
+// Eden treaty projects a path onto a property/function tree, so a segment it cannot turn into a
+// clean node breaks the whole chain: a partial param (`/{Sid}.json` — a `{param}` mixed with static
+// text has no function node) and, transitively, every sibling under the same resource. A segment
+// carrying a `.` or a partial param marks the path as untypeable through Eden, and the hooks fall
+// back to a literal-path `fetch`.
 function needsFetchHook(pathStr: string) {
   return pathStr
     .split('/')
@@ -456,9 +149,9 @@ function pathParamNames(pathStr: string): readonly string[] {
   return [...pathStr.matchAll(/\{([^}]+)\}/gu)].map((m) => m[1] ?? '')
 }
 
-// The data type for a partial-param op comes from its 2xx response schema — the eden chain
-// that normally yields it is untypeable here. A component `$ref` resolves to its exported
-// `Static` alias (imported from the schemas module); inline/void degrade to a safe wide type.
+// The data type for a fetch fallback comes from its 2xx response schema — the Eden chain that
+// normally yields it is untypeable here. A component `$ref` resolves to its exported alias from the
+// schemas module; inline and empty responses degrade to a safe wide type.
 function successType(operation: Operation): {
   readonly dataT: string
   readonly importName?: string
@@ -471,387 +164,651 @@ function successType(operation: Operation): {
   return { dataT: 'unknown' }
 }
 
-export function fetchTypeImport(pathStr: string, operation: Operation): string | undefined {
-  return needsFetchHook(pathStr) ? successType(operation).importName : undefined
+function isBodyMethod(method: string) {
+  return method === 'post' || method === 'put' || method === 'patch' || method === 'delete'
 }
 
-// Literal-path fetch hook for a partial-param op. Reuses the same hook shape (key + options +
-// generics) as the eden path, swapping the eden call for a typed `fetch`. Path params are
-// strings in a URL, so they are typed `{ name: string }` rather than via the (unreachable)
-// eden param type.
-function makeFetchOperation(
-  pathStr: string,
-  method: (typeof HTTP_METHODS)[number],
+function edenTarget(
+  fullPath: string,
+  method: string,
   operation: Operation,
-  config: QueryHookConfig,
-) {
-  const funcName = toSafeIdentifier(resolveOperationId(operation, method, pathStr))
-  const Op = capitalize(funcName)
-  const hookName = `${config.hookPrefix}${Op}`
-  const suspenseHookName = `${config.hookPrefix}Suspense${Op}`
-  const immutableHookName = `${config.hookPrefix}Immutable${Op}`
-  const keyPrefix = resourcePrefix(pathStr)
-  const isQuery = method === 'get' || method === 'head'
-  const params = pathParamNames(pathStr)
-  const paramSig = params.map((p) => `${p}: string`)
-  const paramPass = [...params]
-  // Mirror the eden path: `query` params reach the URL and the cache key; `headers` are
-  // forwarded but never keyed on. Without this the fetch hook silently drops filters and
-  // pagination, and distinct queries collide on one cache key.
+  client: string,
+): Target {
+  const { callExpr, methodHostTypeExpr, paramArgs } = edenChain(fullPath, client, method)
+  const argsType = `Parameters<${methodHostTypeExpr}>`
+  // Eden treaty types every method except get/head as `(body, options)`: the first argument is the
+  // request body, the second the query/header options.
+  const withBody = isBodyMethod(method)
+  const optionsType = withBody ? `${argsType}[1]` : `${argsType}[0]`
+  // Eden's `Awaited<ReturnType<M>>` is a discriminated union: the success branch is
+  // `{ data: SuccessData; error: null }`, the error branch `{ data: null; error: Err }`. The success
+  // branch is picked by `error: null` — `Exclude<data, null>` would drop a legitimately nullable
+  // response — and the error by excluding the `null` that only the success branch carries.
+  const response = `Awaited<ReturnType<${methodHostTypeExpr}>>`
+  // A required query or header makes Eden's options argument required as well, so the hooks
+  // cannot type it as optional without collapsing the required member.
+  const requiredOptions = (operation.parameters ?? []).some(
+    (p) => 'in' in p && (p.in === 'query' || p.in === 'header') && p.required === true,
+  )
+  const call = (exprs: readonly string[]) =>
+    paramArgs.reduce(
+      (acc, param, index) => acc.replace(`(${param.name})`, `(${exprs[index] ?? param.name})`),
+      callExpr,
+    )
+  const access = requiredOptions ? '.' : '?.'
+  return {
+    params: paramArgs.map((p) => ({ name: p.name, type: p.typeExpr })),
+    optionsType,
+    requiredOptions,
+    hasKeyArgs: (operation.parameters ?? []).some((p) => ('in' in p ? p.in === 'query' : true)),
+    keyDrops: ['headers', 'fetch', 'throwHttpError'],
+    dataT: `Extract<${response}, { error: null }>['data']`,
+    errorT: `Exclude<${response}['error'], null>`,
+    ...(withBody ? { bodyType: `${argsType}[0]` } : {}),
+    // Eden types the body of a method without a schema as an optional `unknown`, so the variables
+    // leave it optional too and a DELETE is triggered with `{}`.
+    bodyRequired: operation.requestBody !== undefined,
+    queryBody: (exprs, options, signal) =>
+      `const{data,error}=await ${call(exprs)}(${signal ? `{...${options},fetch:{...${options}${access}fetch,signal}}` : options});if(error)throw error;return data`,
+    mutationBody: (exprs, body, options) =>
+      `const{data,error}=await ${call(exprs)}(${withBody ? `${body},${options}` : options});if(error)throw error;return data`,
+  }
+}
+
+// A literal-path `fetch` for an operation Eden cannot type: path parameters are strings in a URL,
+// the query is spread into the search string, and the body is JSON.
+function fetchTarget(fullPath: string, method: string, operation: Operation): Target {
+  const names = pathParamNames(fullPath)
   const hasQuery = (operation.parameters ?? []).some((p) => 'in' in p && p.in === 'query')
   const optionsType = hasQuery
     ? '{ headers?: Record<string, string>; query?: Record<string, unknown> }'
     : '{ headers?: Record<string, string> }'
-  const { dataT } = successType(operation)
-  const errorT = 'unknown'
-  const urlInner = pathStr.replaceAll(/\{([^}]+)\}/gu, (_, n) => `\${encodeURIComponent(${n})}`)
-  const urlExpr = hasQuery
-    ? `\`${urlInner}\${search.size ? \`?\${search}\` : ''}\``
-    : `\`${urlInner}\``
-  const searchCode = (opt: string) =>
-    hasQuery
-      ? `const search=new URLSearchParams();for(const[k,v]of Object.entries(${opt}?.query??{})){if(v===undefined)continue;if(Array.isArray(v)){for(const x of v){search.append(k,String(x))}}else{search.set(k,String(v))}}`
-      : ''
-  // Read body via res.json() would type as unknown (unassignable); res.text() + JSON.parse
-  // yields `any`, keeping the annotated return type without an `as` cast.
-  const getBody = (returnAnnotation: string, opt: string, signal: boolean) =>
-    `${searchCode(opt)}const res=await fetch(${urlExpr},{headers:${opt}?.headers${signal ? ',signal' : ''}});if(!res.ok)throw await res.json();return JSON.parse(await res.text())`
-
-  const keyArgsDecl = hasQuery ? 'const{headers:_h,...keyArgs}=options??{};' : ''
-  const keyTuple = [
-    `'${keyPrefix}'`,
-    `'${pathStr}'`,
-    ...paramPass,
-    ...(hasQuery ? ['keyArgs'] : []),
-  ].join(', ')
-
-  if (config.isSWR && isQuery) {
-    const keyName = `${funcName}QueryKey`
-    const keySig = [...paramSig, `options?: ${optionsType}`].join(', ')
-    const keyCode = `export function ${keyName}(${keySig}){${keyArgsDecl}return[${keyTuple}]as const}`
-    const keyCall = `${keyName}(${[...paramPass, 'options'].join(', ')})`
-    const fetcher = `async():Promise<${dataT}>=>{${getBody(dataT, 'options', false)}}`
-    const hookSig = [
-      ...paramSig,
-      `options?: ${optionsType}`,
-      `config?: SWRConfiguration<${dataT}, TError>`,
-    ].join(', ')
-    const swrHook = (name: string, swrFn: string) =>
-      `export function ${name}<TError=${errorT}>(${hookSig}){return ${swrFn}<${dataT},TError>(${keyCall},${fetcher},config)}`
-    const hookCode = config.immutableQueryFn
-      ? `${swrHook(hookName, config.queryFn)}\n\n${swrHook(immutableHookName, config.immutableQueryFn)}`
-      : swrHook(hookName, config.queryFn)
-    return `${keyCode}\n\n${hookCode}`
-  }
-
-  const mutationBody = (opt: string, body: string) =>
-    `${searchCode(opt)}const res=await fetch(${urlExpr},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${opt}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});if(!res.ok)throw await res.json();return JSON.parse(await res.text())`
-  const variablesType = `{ body?: unknown; options?: ${optionsType} }`
-
-  if (config.isSWR) {
-    const keyName = `${funcName}MutationKey`
-    const keyExpr = `[${[`'${keyPrefix}'`, `'${pathStr}'`, `'${method.toUpperCase()}'`, ...paramPass].join(', ')}] as const`
-    const keyCode = `export function ${keyName}(${paramSig.join(', ')}){return ${keyExpr}}`
-    const keyCall = `${keyName}(${paramPass.join(', ')})`
-    const triggerCb = `async(_key:ReturnType<typeof ${keyName}>,{arg}:{arg:${variablesType}}):Promise<${dataT}>=>{${mutationBody('arg.options', 'arg.body')}}`
-    const hookSig = [
-      ...paramSig,
-      `config?: SWRMutationConfiguration<${dataT}, TError, ReturnType<typeof ${keyName}>, ${variablesType}>`,
-    ].join(', ')
-    const hookCode = `export function ${hookName}<TError=${errorT}>(${hookSig}){return useSWRMutation<${dataT},TError,ReturnType<typeof ${keyName}>,${variablesType}>(${keyCall},${triggerCb},config)}`
-    return `${keyCode}\n\n${hookCode}`
-  }
-
-  if (isQuery) {
-    const keyName = `${funcName}QueryKey`
-    const keySig = [...paramSig, `options?: ${optionsType}`].join(', ')
-    const keyCode = `export function ${keyName}(${keySig}){${keyArgsDecl}return[${keyTuple}]as const}`
-    const keyCall = `${keyName}(${[...paramPass, 'options'].join(', ')})`
-    const sigParam = config.queryFnContext ? '{signal}:QueryFunctionContext' : '{signal}'
-    const queryFnBlock = `queryFn:async(${sigParam}):Promise<${dataT}>=>{${getBody(dataT, 'options', true)}},`
-    const queryOptionsName = `${funcName}QueryOptions`
-    const optionsSig = [...paramSig, `options?: ${optionsType}`]
-    const queryOptionsCode = makeQueryFactoryCode(
-      config,
-      queryOptionsName,
-      optionsSig.join(', '),
-      keyName,
-      keyCall,
-      dataT,
-      errorT,
-      `queryFn:async({signal}):Promise<${dataT}>=>{${getBody(dataT, 'options', true)}}`,
-    )
-    const factoryCall = `${queryOptionsName}<TData,TError>(${[...paramPass, 'options'].join(', ')})`
-    const generics = `<TData = ${dataT}, TError = ${errorT}>`
-    const queryOptionsParam = makeGetQueryOptionsParam(config, dataT, keyName)
-    const hookSig = [...optionsSig, queryOptionsParam].join(', ')
-    const hookBody = makeGetHookBody(config, factoryCall, keyCall, queryFnBlock)
-    const hookCode = `export function ${hookName}${generics}(${hookSig}){return ${hookBody}}`
-    const parts = [keyCode, queryOptionsCode, hookCode]
-    if (config.suspenseQueryFn) {
-      parts.push(
-        makeSuspenseHookCode(
-          config,
-          suspenseHookName,
-          generics,
-          optionsSig,
-          factoryCall,
-          keyName,
-          dataT,
-        ),
-      )
-    }
-    return parts.join('\n\n')
-  }
-
-  const keyName = `${funcName}MutationKey`
-  const keyExpr = `[${[`'${keyPrefix}'`, `'${pathStr}'`, `'${method.toUpperCase()}'`, ...paramPass].join(', ')}] as const`
-  const keyCode = `export function ${keyName}(${paramSig.join(', ')}){return ${keyExpr}}`
-  const keyCall = `${keyName}(${paramPass.join(', ')})`
-  const mutationFnBlock = `mutationFn:async({body,options}):Promise<${dataT}>=>{${mutationBody('options', 'body')}},`
-  const mutationOptionsName = `${funcName}MutationOptions`
-  const factoryCode = makeMutationFactoryCode(
-    mutationOptionsName,
-    paramSig.join(', '),
-    keyCall,
-    dataT,
-    errorT,
-    variablesType,
-    mutationFnBlock,
-  )
-  const factoryCall = `${mutationOptionsName}<TError>(${paramPass.join(', ')})`
-  const mutationOptionsParam = makeMutationOptionsParam(config, dataT, 'TError', variablesType)
-  const hookSig = [...paramSig, mutationOptionsParam].join(', ')
-  const bodyExpr = makeMutationHookBody(config, dataT, variablesType, factoryCall)
-  const hookCode = `export function ${hookName}<TError=${errorT}>(${hookSig}){return ${bodyExpr}}`
-  return `${keyCode}\n\n${factoryCode}\n\n${hookCode}`
-}
-
-function makeOperation(
-  pathStr: string,
-  method: (typeof HTTP_METHODS)[number],
-  operation: Operation,
-  client: string,
-  config: QueryHookConfig,
-) {
-  if (needsFetchHook(pathStr)) return makeFetchOperation(pathStr, method, operation, config)
-  const funcName = toSafeIdentifier(resolveOperationId(operation, method, pathStr))
-  const Op = capitalize(funcName)
-  const hookName = `${config.hookPrefix}${Op}`
-  const suspenseHookName = `${config.hookPrefix}Suspense${Op}`
-  const immutableHookName = `${config.hookPrefix}Immutable${Op}`
-  const isQuery = method === 'get' || method === 'head'
-  const keyName = `${funcName}${isQuery ? 'QueryKey' : 'MutationKey'}`
-  const keyPrefix = resourcePrefix(pathStr)
-  const { callExpr, methodHostTypeExpr, paramArgs } = edenChain(pathStr, client, method)
-
-  const paramSig = paramArgs.map((p) => `${p.name}: ${p.typeExpr}`)
-  const paramPass = paramArgs.map((p) => p.name)
-  const argsType = `Parameters<${methodHostTypeExpr}>`
-  const optionsType = `${argsType}[0]`
-
-  // Eden's `Awaited<ReturnType<M>>` is a discriminated union: the success branch
-  // is `{ data: SuccessData; error: null }`, the error branch `{ data: null;
-  // error: Err }`. Select the success branch by `error: null` to recover the
-  // response data — `Exclude<data, null>` would wrongly drop a legitimately
-  // nullable response value (the queryFn returns it, so the hook's TData must
-  // keep it; see openapi-nullable). Error stays `Exclude<…['error'], null>`
-  // since the error sentinel null only lives on the success branch.
-  const response = `Awaited<ReturnType<${methodHostTypeExpr}>>`
-  const dataT = `Extract<${response}, { error: null }>['data']`
-  const errorT = `Exclude<${response}['error'], null>`
-
-  // Eden treaty types every method except get/head as `(body, options)` — the
-  // first arg is the request body, the second the query/header options. delete
-  // is therefore a body method: passing options into the body slot breaks when
-  // the operation has a required body (TS2345) or a required query (the options
-  // arg becomes mandatory, TS2554).
-  const isBodyMethod =
-    method === 'post' || method === 'put' || method === 'patch' || method === 'delete'
-  const isPaginated = operation['x-pagination'] === true
-  const hasKeyArgs = (operation.parameters ?? []).some((p) => ('in' in p ? p.in === 'query' : true))
-  // When the operation has a required query/header param, the eden call's options
-  // argument is itself required (e.g. `query` is non-optional), so the hook can't
-  // type it as `options?` — that would collapse the required member under
-  // `exactOptionalPropertyTypes`. Thread the optionality through the signatures and
-  // the `options.fetch` access used for AbortSignal injection.
-  const requiredOptions = (operation.parameters ?? []).some(
-    (p) => 'in' in p && (p.in === 'query' || p.in === 'header') && p.required === true,
-  )
-  const optMark = requiredOptions ? '' : '?'
-  const optFetch = requiredOptions ? 'options.fetch' : 'options?.fetch'
-
-  if (config.isSWR) {
-    return makeSwrOperation(config, {
-      hookName,
-      immutableHookName,
-      keyName,
-      keyPrefix,
-      pathStr,
-      method,
-      paramSig,
-      paramPass,
-      argsType,
-      optionsType,
-      dataT,
-      errorT,
-      callExpr,
-      isQuery,
-      isBodyMethod,
-      isPaginated,
-      hasKeyArgs,
-      optMark,
+  const withBody = isBodyMethod(method)
+  const { dataT, importName } = successType(operation)
+  const url = (exprs: readonly string[]) => {
+    const inner = fullPath.replaceAll(/\{([^}]+)\}/gu, (_, n: string) => {
+      const index = names.indexOf(n)
+      return `\${encodeURIComponent(${exprs[index] ?? n})}`
     })
+    return hasQuery ? `\`${inner}\${search.size ? \`?\${search}\` : ''}\`` : `\`${inner}\``
   }
-
-  if (isQuery) {
-    const keySig = (hasKeyArgs ? [...paramSig, `options?: ${optionsType}`] : paramSig).join(', ')
-    const keyTuple = [
-      `'${keyPrefix}'`,
-      `'${pathStr}'`,
-      ...paramPass,
-      ...(hasKeyArgs ? ['keyArgs'] : []),
-    ].join(', ')
-    const keyCode = hasKeyArgs
-      ? `export function ${keyName}(${keySig}){const{headers:_h,fetch:_f,throwHttpError:_t,...keyArgs}=options??{};return[${keyTuple}]as const}`
-      : `export function ${keyName}(${keySig}){return[${keyTuple}]as const}`
-    const keyCall = `${keyName}(${[...paramPass, ...(hasKeyArgs ? ['options'] : [])].join(', ')})`
-
-    const queryOptionsName = `${funcName}QueryOptions`
-    const optionsSig = [...paramSig, `options${optMark}: ${optionsType}`]
-    const sigParam = config.queryFnContext ? '{signal}:QueryFunctionContext' : '{signal}'
-    const queryFnBlock = `queryFn:async(${sigParam})=>{const{data,error}=await ${callExpr}({...options,fetch:{...${optFetch},signal}});if(error)throw error;return data},`
-    const queryOptionsCode = makeQueryFactoryCode(
-      config,
-      queryOptionsName,
-      optionsSig.join(', '),
-      keyName,
-      keyCall,
-      dataT,
-      errorT,
-      `queryFn:async({signal})=>{const{data,error}=await ${callExpr}({...options,fetch:{...${optFetch},signal}});if(error)throw error;return data}`,
-    )
-    const factoryCall = `${queryOptionsName}<TData,TError>(${[...paramPass, 'options'].join(', ')})`
-    const generics = `<TData = ${dataT}, TError = ${errorT}>`
-    const queryOptionsParam = makeGetQueryOptionsParam(config, dataT, keyName)
-    const hookSig = [...optionsSig, queryOptionsParam].join(', ')
-    const hookBody = makeGetHookBody(config, factoryCall, keyCall, queryFnBlock)
-    const hookCode = `export function ${hookName}${generics}(${hookSig}){return ${hookBody}}`
-
-    const parts = [keyCode, queryOptionsCode, hookCode]
-    if (config.suspenseQueryFn) {
-      parts.push(
-        makeSuspenseHookCode(
-          config,
-          suspenseHookName,
-          generics,
-          optionsSig,
-          factoryCall,
-          keyName,
-          dataT,
-        ),
-      )
-    }
-    if (isPaginated) {
-      parts.push(
-        ...makeInfiniteParts(config, {
-          funcName,
-          hookName,
-          suspenseHookName,
-          keyPrefix,
-          pathStr,
-          paramSig,
-          paramPass,
-          optionsType,
-          dataT,
-          errorT,
-          callExpr,
-        }),
-      )
-    }
-    return parts.join('\n\n')
-  }
-
-  const keySig = paramSig.join(', ')
-  const keyExpr = `[${[`'${keyPrefix}'`, `'${pathStr}'`, `'${method.toUpperCase()}'`, ...paramPass].join(', ')}] as const`
-  const keyCode = `export function ${keyName}(${keySig}){return ${keyExpr}}`
-  const keyCall = `${keyName}(${paramPass.join(', ')})`
-
-  const variablesType = isBodyMethod
-    ? `{ body: ${argsType}[0]; options${optMark}: ${argsType}[1] }`
-    : `{ options${optMark}: ${argsType}[0] }`
-  const mutationFnBlock = isBodyMethod
-    ? `mutationFn:async({body,options})=>{const{data,error}=await ${callExpr}(body,options);if(error)throw error;return data},`
-    : `mutationFn:async({options})=>{const{data,error}=await ${callExpr}(options);if(error)throw error;return data},`
-
-  const mutationOptionsName = `${funcName}MutationOptions`
-  const factoryCode = makeMutationFactoryCode(
-    mutationOptionsName,
-    keySig,
-    keyCall,
+  const search = (options: string) =>
+    hasQuery
+      ? `const search=new URLSearchParams();for(const[k,v]of Object.entries(${options}?.query??{})){if(v===undefined)continue;if(Array.isArray(v)){for(const x of v){search.append(k,String(x))}}else{search.set(k,String(v))}}`
+      : ''
+  // `res.json()` types as `unknown`, which the annotated return type rejects; `JSON.parse` of the
+  // text is `any`, which it takes without a cast.
+  return {
+    params: names.map((name) => ({ name, type: 'string' })),
+    optionsType,
+    requiredOptions: false,
+    hasKeyArgs: hasQuery,
+    keyDrops: ['headers'],
     dataT,
-    errorT,
-    variablesType,
-    mutationFnBlock,
-  )
-  const factoryCall = `${mutationOptionsName}<TError>(${paramPass.join(', ')})`
-  const mutationGenerics = `<TError = ${errorT}>`
-  const mutationOptionsParam = makeMutationOptionsParam(config, dataT, 'TError', variablesType)
-  const hookSig = [...paramSig, mutationOptionsParam].join(', ')
-  const bodyExpr = makeMutationHookBody(config, dataT, variablesType, factoryCall)
-  const hookCode = `export function ${hookName}${mutationGenerics}(${hookSig}){return ${bodyExpr}}`
-  return `${keyCode}\n\n${factoryCode}\n\n${hookCode}`
+    errorT: 'unknown',
+    ...(withBody ? { bodyType: 'unknown' } : {}),
+    bodyRequired: false,
+    queryBody: (exprs, options, signal) =>
+      `${search(options)}const res=await fetch(${url(exprs)},{headers:${options}?.headers${signal ? ',signal' : ''}});if(!res.ok)throw await res.json();return JSON.parse(await res.text())`,
+    mutationBody: (exprs, body, options) =>
+      `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});if(!res.ok)throw await res.json();return JSON.parse(await res.text())`,
+    ...(importName ? { fetchType: importName } : {}),
+  }
 }
 
-function makeSwrHeader(config: QueryHookConfig, client: string, importPath: string, deps: OpDeps) {
-  const swrImport = deps.isQuery
-    ? `import useSWR from 'swr'\nimport type { SWRConfiguration } from 'swr'\n`
-    : ''
-  const swrImmutableImport =
-    deps.isQuery && config.immutableQueryFn
-      ? `import ${config.immutableQueryFn} from 'swr/immutable'\n`
-      : ''
-  const swrInfiniteImport = deps.isInfinite
-    ? `import useSWRInfinite from 'swr/infinite'\nimport type { SWRInfiniteConfiguration } from 'swr/infinite'\n`
-    : ''
-  const swrMutationImport = deps.isMutation
-    ? `import useSWRMutation from 'swr/mutation'\nimport type { SWRMutationConfiguration } from 'swr/mutation'\n`
-    : ''
-  return `${swrImport}${swrImmutableImport}${swrInfiniteImport}${swrMutationImport}import { ${client} } from '${importPath}'\n\n`
+/** The names of one query operation's hooks and helpers. */
+type Names = {
+  readonly hook: string
+  readonly suspense: string
+  readonly immutable: string
+  readonly infinite: string
+  readonly suspenseInfinite: string
+  readonly key: string
+  readonly options: string
+  readonly infiniteKey: string
+  readonly infiniteOptions: string
+}
+
+// GET is the resource's default read, so its names carry only the path (`useUsers`,
+// `getUsersQueryKey`). HEAD keeps its method (`useHeadUsers`) so it can sit next to the GET on the
+// same path, the way the mutation names do (`usePostUsers`). SWR names keep the method throughout
+// (`useGetUsers`, `getGetUsersKey`).
+function queryNames(config: QueryHookConfig, method: string, pathStr: string): Names {
+  const name = capitalize(methodPath(method === 'get' ? '' : method, pathStr))
+  const full = capitalize(methodPath(method, pathStr))
+  if (config.isSWR) {
+    return {
+      hook: `${config.hookPrefix}${full}`,
+      suspense: '',
+      immutable: `${config.hookPrefix}Immutable${full}`,
+      infinite: `${config.hookPrefix}Infinite${full}`,
+      suspenseInfinite: '',
+      key: `get${full}Key`,
+      options: '',
+      infiniteKey: `get${full}InfiniteKey`,
+      infiniteOptions: '',
+    }
+  }
+  return {
+    hook: `${config.hookPrefix}${name}`,
+    suspense: `${config.hookPrefix}Suspense${name}`,
+    immutable: '',
+    infinite: `${config.hookPrefix}Infinite${name}`,
+    suspenseInfinite: `${config.hookPrefix}SuspenseInfinite${name}`,
+    key: `get${name}QueryKey`,
+    options: `get${name}QueryOptions`,
+    infiniteKey: `get${name}InfiniteQueryKey`,
+    infiniteOptions: `get${name}InfiniteQueryOptions`,
+  }
 }
 
 /**
- * The imports of a hooks file: one value import and one type import from the library, then the
- * client. Each name is brought in only when an operation in the file uses it, so a document with
- * no mutation imports nothing a mutation would.
+ * How the path parameters are spelled: plain values, thunks (the hooks of Solid, Svelte and
+ * Angular), or refs (Vue). The key getters and factories take plain values — refs in Vue, so a
+ * key can follow one — and the hooks pass theirs on to them.
  */
-function makeHeader(config: QueryHookConfig, client: string, importPath: string, deps: OpDeps) {
-  if (config.isSWR) {
-    return makeSwrHeader(config, client, importPath, deps)
-  }
-  const values = [
-    ...(deps.isQuery ? [config.queryFn, config.suspenseQueryFn] : []),
-    ...(deps.isInfinite ? [config.infiniteQueryFn, config.suspenseInfiniteQueryFn] : []),
-    ...(deps.isMutation ? [config.mutationFn] : []),
-    ...(deps.isQuery ? ['queryOptions'] : []),
-    ...(deps.isInfinite && config.hasInfiniteQueryOptionsHelper ? ['infiniteQueryOptions'] : []),
-    ...(deps.isMutation ? ['mutationOptions'] : []),
-  ].filter((name) => name !== undefined)
-  // Only Vue's hooks still write a `queryFn` of their own, and so type its context.
-  const needsContext = config.maybeRefOptions === true && (deps.isQuery || deps.isInfinite)
-  const types = [
-    ...(deps.isQuery ? [config.queryOptionsType] : []),
-    ...(needsContext ? ['QueryFunctionContext'] : []),
-    ...(deps.isQuery ? [config.suspenseQueryOptionsType] : []),
-    ...(deps.isInfinite
-      ? [config.infiniteOptionsType, config.suspenseInfiniteOptionsType, 'InfiniteData']
+type Spelling = {
+  /** The parameter list for the path parameters. */
+  readonly paramSig: (target: Target) => readonly string[]
+  /** The expressions that read each path parameter's value inside a body. */
+  readonly paramRead: (target: Target) => readonly string[]
+  /** The expressions a hook passes its path parameters on with, to a key getter or factory. */
+  readonly paramPass: (target: Target) => readonly string[]
+}
+
+const PLAIN: Spelling = {
+  paramSig: (t) => t.params.map((p) => `${p.name}: ${p.type}`),
+  paramRead: (t) => t.params.map((p) => p.name),
+  paramPass: (t) => t.params.map((p) => p.name),
+}
+const THUNK: Spelling = {
+  paramSig: (t) => t.params.map((p) => `${p.name}: () => ${p.type}`),
+  paramRead: (t) => t.params.map((p) => `${p.name}()`),
+  paramPass: (t) => t.params.map((p) => `${p.name}()`),
+}
+const REF: Spelling = {
+  paramSig: (t) => t.params.map((p) => `${p.name}: MaybeRefOrGetter<${p.type}>`),
+  paramRead: (t) => t.params.map((p) => `toValue(${p.name})`),
+  paramPass: (t) => t.params.map((p) => p.name),
+}
+
+/** How the key getters and factories of a library spell the path parameters. */
+function baseSpelling(config: QueryHookConfig): Spelling {
+  return config.isVueQuery ? REF : PLAIN
+}
+
+/** How the hooks of a library spell the path parameters. */
+function hookSpelling(config: QueryHookConfig): Spelling {
+  if (config.useThunk) return THUNK
+  return baseSpelling(config)
+}
+
+/**
+ * The cache key getter of a query: `['<prefix>', '<path>', ...params, keyArgs?]`, where `keyArgs`
+ * is the options without the members that never identify a resource (headers, fetch). The
+ * structured key lets a caller invalidate by prefix, by endpoint or by one request. An infinite
+ * query puts `'infinite'` after the path, so its prefix matches infinite lists only.
+ *
+ * @see https://tanstack.com/query/latest/docs/framework/react/guides/query-keys
+ */
+function keyGetterCode(
+  name: string,
+  target: Target,
+  spelling: Spelling,
+  prefix: string,
+  fullPath: string,
+  marker?: string,
+) {
+  const sig = [
+    ...spelling.paramSig(target),
+    ...(target.hasKeyArgs
+      ? [`options${target.requiredOptions ? '' : '?'}: ${target.optionsType}`]
       : []),
-    ...(deps.isMutation ? [config.mutationOptionsType] : []),
-  ].filter((name) => name !== undefined)
-  const pkg = config.packageName
-  const valueImport = values.length > 0 ? `import { ${values.join(', ')} } from '${pkg}'\n` : ''
-  const typeImport = types.length > 0 ? `import type { ${types.join(', ')} } from '${pkg}'\n` : ''
-  return `${valueImport}${typeImport}import { ${client} } from '${importPath}'\n\n`
+  ]
+  const drops = target.keyDrops.map((key, index) => `${key}:_${String.fromCodePoint(97 + index)}`)
+  const keyArgs = target.hasKeyArgs ? `const{${drops.join(',')},...keyArgs}=options??{};` : ''
+  const tuple = [
+    `'${prefix}'`,
+    `'${fullPath}'`,
+    ...(marker ? [`'${marker}'`] : []),
+    ...spelling.paramRead(target),
+    ...(target.hasKeyArgs ? ['keyArgs'] : []),
+  ].join(', ')
+  return `export function ${name}(${sig.join(', ')}){${keyArgs}return[${tuple}]as const}`
+}
+
+function keyCall(name: string, target: Target, spelling: Spelling, optionsExpr: string) {
+  const args = [...spelling.paramPass(target), ...(target.hasKeyArgs ? [optionsExpr] : [])]
+  return `${name}(${args.join(', ')})`
+}
+
+// Vue hooks take a path parameter as `MaybeRefOrGetter`, so the key has to follow it: a plain
+// getter call unwraps once at setup and freezes the key, and a changed `Ref` would never refetch.
+// `computed` keeps it live — Vue Query unwraps `MaybeRefDeep` keys itself. The key getters stay
+// plain arrays, which is what invalidation and cache lookups want.
+function vueKey(target: Target, call: string) {
+  return target.params.length > 0 ? `computed(()=>${call})` : call
+}
+
+/**
+ * The hook's `options` parameter: the caller's slot beside the request options, optional unless
+ * the request options are required. Thunk libraries take the whole object as `() => {...}`.
+ */
+function hookOptions(
+  config: QueryHookConfig,
+  target: Target,
+  slotName: 'query' | 'mutation',
+  slot: string,
+  withClientOptions = true,
+) {
+  const required = target.requiredOptions && withClientOptions
+  const members = [
+    `${slotName}?: ${slot}`,
+    ...(withClientOptions
+      ? [`options${target.requiredOptions ? '' : '?'}: ${target.optionsType}`]
+      : []),
+  ]
+  const type = `{ ${members.join('; ')} }`
+  return {
+    sig: `options${required ? '' : '?'}: ${config.useThunk ? `() => ${type}` : type}`,
+    // How the body reads its options: a thunk is called, a plain object is used as it is.
+    read: config.useThunk
+      ? required
+        ? 'options()'
+        : 'options?.()??{}'
+      : required
+        ? 'options'
+        : 'options??{}',
+  }
+}
+
+/**
+ * A GET: key getter, `queryOptions` factory, hook and suspense hook.
+ *
+ * The request is written once, in the factory, and the hooks spread it with the caller's
+ * options: `{ ...getXQueryOptions<TData, TError>(params, clientOptions), ...query }`. The factory
+ * carries the hooks' `<TData, TError>` so that spread type-checks — `queryOptions()` bakes both
+ * into its result. Vue is the exception: its `MaybeRef` option types do not take the branded
+ * factory, so its factory is a plain object and its hooks write the key and the request inline.
+ */
+function queryCode(
+  config: QueryHookConfig,
+  names: Names,
+  target: Target,
+  prefix: string,
+  fullPath: string,
+) {
+  const base = baseSpelling(config)
+  const hooks = hookSpelling(config)
+  const keyCode = keyGetterCode(names.key, target, base, prefix, fullPath)
+  const keyType = `ReturnType<typeof ${names.key}>`
+  const reads = base.paramRead(target)
+  const factorySig = [
+    ...base.paramSig(target),
+    `options${target.requiredOptions ? '' : '?'}: ${target.optionsType}`,
+  ].join(', ')
+  const generics = `<TData = ${target.dataT}, TError = ${target.errorT}>`
+  const tail = tailOf(config, 'query')
+  if (config.isVueQuery) {
+    const factory = `export function ${names.options}(${factorySig}){return{queryKey:${vueKey(target, keyCall(names.key, target, base, 'options'))},queryFn:async({signal}:QueryFunctionContext)=>{${target.queryBody(reads, 'options', true)}}}}`
+    const slot = slotType(
+      config,
+      `${config.queryOptionsType}<${target.dataT}, TError, TData, ${target.dataT}, ${keyType}>`,
+      QUERY_OMIT_KEYS,
+    )
+    const options = hookOptions(config, target, 'query', slot)
+    const hook = `export function ${names.hook}${generics}(${[...base.paramSig(target), options.sig].join(', ')}${tail.sig}){const{query:queryOptions,options:clientOptions}=${options.read};return ${config.queryFn}({...queryOptions,queryKey:${vueKey(target, keyCall(names.key, target, base, 'clientOptions'))},queryFn:async({signal})=>{${target.queryBody(reads, 'clientOptions', true)}}}${tail.arg})}`
+    return [keyCode, factory, hook]
+  }
+  const factory = `export function ${names.options}${generics}(${factorySig}){return queryOptions<${target.dataT},TError,TData,${keyType}>({queryKey:${keyCall(names.key, target, base, 'options')},queryFn:async({signal})=>{${target.queryBody(reads, 'options', true)}}})}`
+  const factoryCall = `${names.options}<TData,TError>(${[...hooks.paramPass(target), 'clientOptions'].join(', ')})`
+  const hookOf = (hookName: string, queryFn: string, optionsType: string) => {
+    const slot = slotType(
+      config,
+      `${optionsType}<${target.dataT}, TError, TData, ${keyType}>`,
+      QUERY_OMIT_KEYS,
+    )
+    const options = hookOptions(config, target, 'query', slot)
+    const sig = [...hooks.paramSig(target), options.sig].join(', ')
+    if (config.useThunk) {
+      return `export function ${hookName}${generics}(${sig}${tail.sig}){return ${queryFn}(()=>{const{query,options:clientOptions}=${options.read};return{...${factoryCall},...query}}${tail.arg})}`
+    }
+    return `export function ${hookName}${generics}(${sig}${tail.sig}){const{query:queryOptions,options:clientOptions}=${options.read};return ${queryFn}({...${factoryCall},...queryOptions}${tail.arg})}`
+  }
+  const parts = [
+    keyCode,
+    factory,
+    hookOf(names.hook, config.queryFn, config.queryOptionsType ?? ''),
+  ]
+  if (config.suspenseQueryFn && config.suspenseQueryOptionsType) {
+    parts.push(hookOf(names.suspense, config.suspenseQueryFn, config.suspenseQueryOptionsType))
+  }
+  return parts
+}
+
+/**
+ * A paginated GET (`x-pagination: true`): infinite key getter, `infiniteQueryOptions` factory,
+ * infinite hook and suspense infinite hook.
+ *
+ * `pagination` carries the three page-param concerns TanStack v5 requires that the flag cannot
+ * supply: where paging starts, how to read the next page param from a page, and how a page param
+ * maps onto the request options (`getRequestArgs`). The factory carries the hooks' generics and
+ * the hooks spread it. Vue Query's helper types `initialPageParam` as `MaybeRefDeep<TPageParam>`,
+ * which a generic parameter never satisfies, so Vue gets a plain factory and inline hooks, with the
+ * page-param functions traveling in the caller's `query` slot.
+ */
+function infiniteCode(
+  config: QueryHookConfig,
+  names: Names,
+  target: Target,
+  prefix: string,
+  fullPath: string,
+) {
+  const base = baseSpelling(config)
+  const hooks = hookSpelling(config)
+  const keyCode = keyGetterCode(names.infiniteKey, target, base, prefix, fullPath, 'infinite')
+  const keyType = `ReturnType<typeof ${names.infiniteKey}>`
+  const reads = base.paramRead(target)
+  const optionsSig = `options${target.requiredOptions ? '' : '?'}: ${target.optionsType}`
+  const tail = tailOf(config, 'infinite')
+  const requestArgs = `getRequestArgs: (options: ${target.optionsType}, pageParam: unknown) => ${target.optionsType}`
+  // `TPageParam` comes first so the `TData` default can name it: `data.pageParams` is then typed
+  // by `initialPageParam` rather than `unknown`. A direct call still infers it from `pagination`.
+  const generics = `<TPageParam = unknown, TData = InfiniteData<${target.dataT}, TPageParam>, TError = ${target.errorT}>`
+  const pageBody = (options: string) =>
+    `const page=pagination.getRequestArgs(${options},pageParam);${target.queryBody(reads, 'page', true)}`
+  if (config.isVueQuery) {
+    const factorySig = [...base.paramSig(target), `pagination: { ${requestArgs} }`, optionsSig]
+    const factory = `export function ${names.infiniteOptions}<TPageParam = unknown>(${factorySig.join(', ')}){return{queryKey:${vueKey(target, keyCall(names.infiniteKey, target, base, 'options'))},queryFn:async({pageParam,signal}:QueryFunctionContext<${keyType},TPageParam>)=>{${pageBody('options')}}}}`
+    // The page-param functions have no other way in, so the `query` slot is required here.
+    const slot = slotType(
+      config,
+      `${config.infiniteOptionsType}<${target.dataT}, TError, TData, ${keyType}, TPageParam>`,
+      QUERY_OMIT_KEYS,
+    )
+    const sig = [
+      ...base.paramSig(target),
+      `pagination: { ${requestArgs} }`,
+      `options: { query: ${slot}; ${optionsSig} }`,
+    ].join(', ')
+    const hook = `export function ${names.infinite}${generics}(${sig}${tail.sig}){const{query:queryOptions,options:clientOptions}=options;return ${config.infiniteQueryFn}({...queryOptions,queryKey:${vueKey(target, keyCall(names.infiniteKey, target, base, 'clientOptions'))},queryFn:async({pageParam,signal}:QueryFunctionContext<${keyType},TPageParam>)=>{${pageBody('clientOptions')}}}${tail.arg})}`
+    return [keyCode, factory, hook]
+  }
+  const pagination = `pagination: { initialPageParam: TPageParam; getNextPageParam: (lastPage: ${target.dataT}, allPages: ${target.dataT}[], lastPageParam: TPageParam, allPageParams: TPageParam[]) => TPageParam | undefined | null; ${requestArgs} }`
+  const factorySig = [...base.paramSig(target), pagination, optionsSig].join(', ')
+  const factory = `export function ${names.infiniteOptions}${generics}(${factorySig}){return infiniteQueryOptions<${target.dataT},TError,TData,${keyType},TPageParam>({queryKey:${keyCall(names.infiniteKey, target, base, 'options')},queryFn:async({pageParam,signal}:QueryFunctionContext<${keyType},TPageParam>)=>{${pageBody('options')}},initialPageParam:pagination.initialPageParam,getNextPageParam:pagination.getNextPageParam})}`
+  const factoryCall = `${names.infiniteOptions}<TPageParam,TData,TError>(${[...hooks.paramPass(target), 'pagination', 'clientOptions'].join(', ')})`
+  const hookOf = (hookName: string, queryFn: string, optionsType: string) => {
+    const slot = slotType(
+      config,
+      `${optionsType}<${target.dataT}, TError, TData, ${keyType}, TPageParam>`,
+      INFINITE_OMIT_KEYS,
+    )
+    const options = hookOptions(config, target, 'query', slot)
+    const sig = [...hooks.paramSig(target), pagination, options.sig].join(', ')
+    if (config.useThunk) {
+      return `export function ${hookName}${generics}(${sig}${tail.sig}){return ${queryFn}(()=>{const{query,options:clientOptions}=${options.read};return{...${factoryCall},...query}}${tail.arg})}`
+    }
+    return `export function ${hookName}${generics}(${sig}${tail.sig}){const{query:queryOptions,options:clientOptions}=${options.read};return ${queryFn}({...${factoryCall},...queryOptions}${tail.arg})}`
+  }
+  const parts = [
+    keyCode,
+    factory,
+    hookOf(names.infinite, config.infiniteQueryFn, config.infiniteOptionsType ?? ''),
+  ]
+  if (config.suspenseInfiniteQueryFn && config.suspenseInfiniteOptionsType) {
+    parts.push(
+      hookOf(
+        names.suspenseInfinite,
+        config.suspenseInfiniteQueryFn,
+        config.suspenseInfiniteOptionsType,
+      ),
+    )
+  }
+  return parts
+}
+
+/** The variables a mutation takes: the body, when the method carries one, beside the request options. */
+function variablesType(target: Target) {
+  const options = `options${target.requiredOptions ? '' : '?'}: ${target.optionsType}`
+  return target.bodyType
+    ? `{ body${target.bodyRequired ? '' : '?'}: ${target.bodyType}; ${options} }`
+    : `{ ${options} }`
+}
+
+/**
+ * A mutation: key getter, `mutationOptions` factory and hook.
+ *
+ * The variables are `{ body, options }` for a method that carries a body and `{ options }` for the
+ * rest, so the request is spelled out at the call to `mutate`. The hook spreads the caller's
+ * options first and the factory after it, so the operation contract wins — `Omit` only rejects a
+ * fresh object literal — and then restores the caller's `mutationKey`.
+ */
+function mutationCode(
+  config: QueryHookConfig,
+  method: string,
+  pathStr: string,
+  target: Target,
+  prefix: string,
+  fullPath: string,
+) {
+  const base = baseSpelling(config)
+  const hooks = hookSpelling(config)
+  const name = capitalize(methodPath(method, pathStr))
+  const hookName = `${config.hookPrefix}${name}`
+  const keyName = `get${name}MutationKey`
+  const factoryName = `get${name}MutationOptions`
+  const keyCode = `export function ${keyName}(){return['${prefix}', '${fullPath}', '${method.toUpperCase()}']as const}`
+  const variables = variablesType(target)
+  const destructure = target.bodyType ? '{body,options}' : '{options}'
+  const bodyExpr = target.bodyType ? 'body' : 'undefined'
+  const generics = `<TError = ${target.errorT}, TOnMutateResult = unknown>`
+  const factory = `export function ${factoryName}${generics}(${base.paramSig(target).join(', ')}){return mutationOptions<${target.dataT},TError,${variables},TOnMutateResult>({mutationKey:${keyName}(),mutationFn:async(${destructure})=>{${target.mutationBody(base.paramRead(target), bodyExpr, 'options')}}})}`
+  const factoryCall = `${factoryName}<TError,TOnMutateResult>(${hooks.paramPass(target).join(', ')})`
+  const slot = slotType(
+    config,
+    `${config.mutationOptionsType}<${target.dataT}, TError, ${variables}, TOnMutateResult>`,
+    MUTATION_OMIT_KEYS,
+    VUE_MUTATION_MEMBER,
+  )
+  const options = hookOptions(config, target, 'mutation', slot, false)
+  const tail = tailOf(config, 'mutation')
+  const sig = [...hooks.paramSig(target), options.sig].join(', ')
+  const merge = `{...mutation,...mutationDefaults,mutationKey:mutation?.mutationKey??mutationDefaults.mutationKey}`
+  if (config.useThunk) {
+    return [
+      keyCode,
+      factory,
+      `export function ${hookName}${generics}(${sig}${tail.sig}){return ${config.mutationFn}(()=>{const{mutation}=${options.read};const mutationDefaults=${factoryCall};return ${merge}}${tail.arg})}`,
+    ]
+  }
+  return [
+    keyCode,
+    factory,
+    `export function ${hookName}${generics}(${sig}${tail.sig}){const{mutation}=${options.read};const mutationDefaults=${factoryCall};return ${config.mutationFn}(${merge}${tail.arg})}`,
+  ]
+}
+
+/**
+ * SWR: `useSWR` and `useSWRImmutable` hooks for a GET, and `useSWRInfinite` for a paginated one.
+ * A hook takes `{ swr, options }`: `swr` is the SWR configuration plus `swrKey`, which replaces
+ * the generated key, and `enabled`, which turns the key into `null` — how SWR is told not to
+ * fetch. The hook answers with the key it used beside SWR's own result.
+ */
+function swrQueryCode(
+  config: QueryHookConfig,
+  names: Names,
+  target: Target,
+  prefix: string,
+  fullPath: string,
+  paginated: boolean,
+) {
+  const keyCode = keyGetterCode(names.key, target, PLAIN, prefix, fullPath)
+  const params = PLAIN.paramSig(target)
+  const reads = PLAIN.paramRead(target)
+  const mark = target.requiredOptions ? '' : '?'
+  const swrOptions = `SWRConfiguration<${target.dataT}, TError> & { swrKey?: Key; enabled?: boolean }`
+  const sig = [
+    ...params,
+    `options${mark}: { swr?: ${swrOptions}; options${mark}: ${target.optionsType} }`,
+  ]
+  const read = mark === '' ? 'options' : 'options??{}'
+  const hookOf = (hookName: string, swrFn: string) =>
+    `export function ${hookName}<TError = ${target.errorT}>(${sig.join(', ')}){const{swr:swrOptions,options:clientOptions}=${read};const{swrKey:customKey,enabled,...restSwrOptions}=swrOptions??{};const swrKey=enabled!==false?(customKey===undefined?${keyCall(names.key, target, PLAIN, 'clientOptions')}:customKey):null;return{swrKey,...${swrFn}<${target.dataT},TError>(swrKey,async()=>{${target.queryBody(reads, 'clientOptions', false)}},restSwrOptions)}}`
+  const parts = [keyCode, hookOf(names.hook, config.queryFn)]
+  if (config.immutableQueryFn) parts.push(hookOf(names.immutable, config.immutableQueryFn))
+  if (!paginated) return parts
+  const infiniteKeyCode = keyGetterCode(
+    names.infiniteKey,
+    target,
+    PLAIN,
+    prefix,
+    fullPath,
+    'infinite',
+  )
+  const loaderKey = `readonly [...ReturnType<typeof ${names.infiniteKey}>, number]`
+  const infiniteSwr = `SWRInfiniteConfiguration<${target.dataT}, TError> & { swrKey?: (index: number, previousPageData: ${target.dataT} | null) => ${loaderKey} | null; enabled?: boolean }`
+  const infiniteSig = [
+    ...params,
+    `options: { swr?: ${infiniteSwr}; options${mark}: ${target.optionsType}; pagination: { getRequestArgs: (options: ${target.optionsType}, index: number) => ${target.optionsType} } }`,
+  ]
+  // The page index comes after the prefix, the path, 'infinite', the params and the key args.
+  const leading = 3 + target.params.length + (target.hasKeyArgs ? 1 : 0)
+  const infinite = `export function ${names.infinite}<TError = ${target.errorT}>(${infiniteSig.join(', ')}){const{swr:swrOptions,options:clientOptions,pagination}=options;const{swrKey:customKeyLoader,enabled,...restSwrOptions}=swrOptions??{};const keyLoader=enabled!==false?(customKeyLoader??((index:number)=>[...${keyCall(names.infiniteKey, target, PLAIN, 'clientOptions')},index]as const)):()=>null;return useSWRInfinite(keyLoader,async([${','.repeat(leading)}index]:${loaderKey})=>{const page=pagination.getRequestArgs(clientOptions,index);${target.queryBody(reads, 'page', false)}},restSwrOptions)}`
+  parts.push(infiniteKeyCode, infinite)
+  return parts
+}
+
+/** SWR: a `useSWRMutation` hook, taking `{ mutation }` with `swrKey` replacing the generated key. */
+function swrMutationCode(
+  config: QueryHookConfig,
+  method: string,
+  pathStr: string,
+  target: Target,
+  prefix: string,
+  fullPath: string,
+) {
+  const name = capitalize(methodPath(method, pathStr))
+  const hookName = `${config.hookPrefix}${name}`
+  const keyName = `get${name}Key`
+  const keyCode = `export function ${keyName}(){return['${prefix}', '${fullPath}', '${method.toUpperCase()}']as const}`
+  const variables = variablesType(target)
+  const mutationOptions = `SWRMutationConfiguration<${target.dataT}, TError, Key, ${variables}> & { swrKey?: Key; throwOnError?: boolean }`
+  const sig = [...PLAIN.paramSig(target), `options?: { mutation?: ${mutationOptions} }`]
+  const bodyExpr = target.bodyType ? 'arg.body' : 'undefined'
+  const hook = `export function ${hookName}<TError = ${target.errorT}>(${sig.join(', ')}){const{mutation:mutationOptions}=options??{};const{swrKey:customKey,...restMutationOptions}=mutationOptions??{};const swrKey=customKey??${keyName}();return{swrKey,...useSWRMutation<${target.dataT},TError,Key,${variables}>(swrKey,async(_key:Key,{arg}:{arg:${variables}})=>{${target.mutationBody(PLAIN.paramRead(target), bodyExpr, 'arg.options')}},restMutationOptions)}}`
+  return [keyCode, hook]
+}
+
+/** Every hook and helper of one operation, in the order they are written. */
+function operationCode(
+  config: QueryHookConfig,
+  pathStr: string,
+  fullPath: string,
+  method: (typeof HTTP_METHODS)[number],
+  operation: Operation,
+  client: string,
+) {
+  const target = needsFetchHook(fullPath)
+    ? fetchTarget(fullPath, method, operation)
+    : edenTarget(fullPath, method, operation, client)
+  const prefix = resourcePrefix(fullPath)
+  const isQuery = method === 'get' || method === 'head'
+  const paginated = isQuery && operation['x-pagination'] === true
+  const names = queryNames(config, method, pathStr)
+  const code = config.isSWR
+    ? isQuery
+      ? swrQueryCode(config, names, target, prefix, fullPath, paginated)
+      : swrMutationCode(config, method, pathStr, target, prefix, fullPath)
+    : isQuery
+      ? [
+          ...queryCode(config, names, target, prefix, fullPath),
+          ...(paginated ? infiniteCode(config, names, target, prefix, fullPath) : []),
+        ]
+      : mutationCode(config, method, pathStr, target, prefix, fullPath)
+  return { code: code.join('\n\n'), fetchType: target.fetchType }
+}
+
+/**
+ * The imports of a hooks file, read off the code it holds: a value and a type import from the
+ * library, Vue's helpers when a ref is read, the response components the fetch fallbacks type
+ * their data by, and the client. A name is imported only when the file uses it, so a document
+ * with no mutation imports nothing a mutation would.
+ */
+function headerCode(
+  config: QueryHookConfig,
+  client: string,
+  importPath: string,
+  body: string,
+  fetchTypes: readonly string[],
+  schemasImport: string,
+) {
+  // A value is used where it is called or given type arguments; the hooks' local variables
+  // (`queryOptions`, `mutationOptions`) are not that.
+  const calls = (name: string) => new RegExp(`\\b${name}\\s*[<(]`, 'u').test(body)
+  const names = (name: string) => new RegExp(`\\b${name}\\b`, 'u').test(body)
+  const lines: string[] = []
+  if (config.isSWR) {
+    if (calls('useSWR')) lines.push("import useSWR from 'swr'")
+    if (calls('useSWRImmutable')) lines.push("import useSWRImmutable from 'swr/immutable'")
+    const swrTypes = ['Key', 'SWRConfiguration'].filter(names)
+    if (swrTypes.length > 0) lines.push(`import type { ${swrTypes.join(', ')} } from 'swr'`)
+    if (calls('useSWRInfinite')) {
+      lines.push(
+        "import useSWRInfinite from 'swr/infinite'",
+        "import type { SWRInfiniteConfiguration } from 'swr/infinite'",
+      )
+    }
+    if (calls('useSWRMutation')) {
+      lines.push(
+        "import useSWRMutation from 'swr/mutation'",
+        "import type { SWRMutationConfiguration } from 'swr/mutation'",
+      )
+    }
+  } else {
+    const values = [
+      ...new Set(
+        filterDefined([
+          config.queryFn,
+          config.suspenseQueryFn,
+          config.infiniteQueryFn,
+          config.suspenseInfiniteQueryFn,
+          config.mutationFn,
+          'queryOptions',
+          'infiniteQueryOptions',
+          'mutationOptions',
+        ]),
+      ),
+    ].filter(calls)
+    const types = [
+      ...new Set(
+        filterDefined([
+          config.queryOptionsType,
+          'QueryFunctionContext',
+          config.suspenseQueryOptionsType,
+          config.infiniteOptionsType,
+          config.suspenseInfiniteOptionsType,
+          'InfiniteData',
+          config.mutationOptionsType,
+          ...(config.hookTail?.imports ?? []),
+        ]),
+      ),
+    ].filter(names)
+    if (values.length > 0) {
+      lines.push(`import { ${values.join(', ')} } from '${config.packageName}'`)
+    }
+    if (types.length > 0) {
+      lines.push(`import type { ${types.join(', ')} } from '${config.packageName}'`)
+    }
+    const vue = ['computed', 'toValue'].filter(calls)
+    if (vue.length > 0) lines.push(`import { ${vue.join(', ')} } from 'vue'`)
+    if (names('MaybeRefOrGetter')) lines.push("import type { MaybeRefOrGetter } from 'vue'")
+  }
+  if (fetchTypes.length > 0) {
+    lines.push(`import type { ${fetchTypes.join(', ')} } from '${schemasImport}'`)
+  }
+  lines.push(`import { ${client} } from '${importPath}'`)
+  return `${lines.join('\n')}\n\n`
 }
 
 export function makeQueryHooks(
@@ -865,65 +822,27 @@ export function makeQueryHooks(
 ) {
   return Effect.gen(function* () {
     const prefix = basePath && basePath !== '/' ? basePath : ''
-    const ops: {
-      funcName: string
-      code: string
-      prefix: string
-      deps: OpDeps
-      fetchType?: string
-    }[] = []
-    for (const [pathStr, pathItem] of Object.entries(openAPI.paths)) {
-      if (!pathItem) continue
-      for (const method of HTTP_METHODS) {
-        const rawOperation = pathItem[method]
-        if (!rawOperation) continue
-        // Resolve `$ref` parameters (SwaggerParser.bundle leaves internal refs
-        // intact) so requiredOptions/hasKeyArgs can read `in`/`required` — a
-        // `{ $ref }` param otherwise reads as no required query and the hook types
-        // options as optional, breaking exactOptionalPropertyTypes (spotify).
-        const operation = resolveOperation(rawOperation, openAPI.components)
-        const funcName = toSafeIdentifier(
-          resolveOperationId(operation, method, `${prefix}${pathStr}`),
-        )
-        const code = makeOperation(`${prefix}${pathStr}`, method, operation, client, config)
-        const keyPrefix = resourcePrefix(`${prefix}${pathStr}`)
-        const isQuery = method === 'get' || method === 'head'
-        ops.push({
-          funcName,
-          code,
-          prefix: keyPrefix,
-          deps: {
-            isQuery,
-            isInfinite: isQuery && operation['x-pagination'] === true,
-            isMutation: !isQuery,
-          },
-          fetchType: fetchTypeImport(`${prefix}${pathStr}`, operation),
-        })
-      }
-    }
-    if (ops.length === 0) return 'No operations found'
-
-    const aggregate = ops.reduce<OpDeps>(
-      (acc, op) => ({
-        isQuery: acc.isQuery || op.deps.isQuery,
-        isInfinite: acc.isInfinite || op.deps.isInfinite,
-        isMutation: acc.isMutation || op.deps.isMutation,
-      }),
-      { isQuery: false, isInfinite: false, isMutation: false },
+    const operations = Object.entries(openAPI.paths).flatMap(([pathStr, pathItem]) =>
+      pathItem
+        ? HTTP_METHODS.flatMap((method) => {
+            const rawOperation = pathItem[method]
+            if (!rawOperation) return []
+            // `$ref` parameters are resolved so `in` / `required` can be read: a `{ $ref }` param
+            // otherwise reads as no required query and the hook types options as optional.
+            const operation = resolveOperation(rawOperation, openAPI.components)
+            return [
+              operationCode(config, pathStr, `${prefix}${pathStr}`, method, operation, client),
+            ]
+          })
+        : [],
     )
-    const header = makeHeader(config, client, importPath, aggregate)
+    if (operations.length === 0) return 'No operations found'
+    const body = `${[...makePrefixKeyCodes(openAPI, prefix), ...operations.map((op) => op.code)].join('\n\n')}\n`
     // A fetch hook types its data by the component the response names, which lives in the
     // generated schemas module rather than behind the Eden client.
-    const fetchTypes = [
-      ...new Set(ops.map((op) => op.fetchType).filter((name) => name !== undefined)),
-    ].toSorted()
-    const typeImport =
-      fetchTypes.length > 0
-        ? `import type { ${fetchTypes.join(', ')} } from '${schemasImport}'\n`
-        : ''
-    const prefixKeys = makePrefixKeyCodes(openAPI, prefix)
-    const body = `${[...prefixKeys, ...ops.map((op) => op.code)].join('\n\n')}\n`
-    yield* emit(`${typeImport}${header}${body}`, path.dirname(output), output)
+    const fetchTypes = [...new Set(filterDefined(operations.map((op) => op.fetchType)))].toSorted()
+    const header = headerCode(config, client, importPath, body, fetchTypes, schemasImport)
+    yield* emit(`${header}${body}`, path.dirname(output), output)
     return `Generated ${config.label} code written to ${output}`
   })
 }
