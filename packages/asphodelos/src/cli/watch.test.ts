@@ -141,7 +141,7 @@ describe('asphodelos --watch', () => {
       const started = await until(() =>
         watch.lines.some((line) => line.includes('Generated 1 module(s) (ping)')),
       )
-      expect(started).toBe(true)
+      expect(started, watch.output()).toBe(true)
       expect(watch.output()).toContain(`👀 Watching ${dir} and asphodelos.config.ts`)
 
       const regenerated = await writeUntil(
@@ -149,7 +149,7 @@ describe('asphodelos --watch', () => {
         SPEC(['ping', 'pong']),
         () => watch.lines.some((line) => line.includes('(ping, pong)')),
       )
-      expect(regenerated).toBe(true)
+      expect(regenerated, watch.output()).toBe(true)
     } finally {
       await stop(watch)
     }
@@ -167,7 +167,7 @@ describe('asphodelos --watch', () => {
         configSource(`{ input: 'other.yaml', output: 'src/index.ts' }`),
         () => watch.lines.some((line) => line.includes('(alpha, beta)')),
       )
-      expect(followed).toBe(true)
+      expect(followed, watch.output()).toBe(true)
     } finally {
       await stop(watch)
     }
@@ -193,6 +193,7 @@ describe('asphodelos --watch', () => {
           configSource(`{ input: 'b/openapi.yaml', output: 'src/index.ts' }`),
           () => watch.output().includes(`👀 Watching ${path.join(dir, 'b')}`),
         ),
+        watch.output(),
       ).toBe(true)
 
       // Editing the document in the directory the config now names has to rerun. The round
@@ -201,6 +202,7 @@ describe('asphodelos --watch', () => {
         await writeUntil(path.join(dir, 'b', 'openapi.yaml'), SPEC(['pong', 'pang']), () =>
           watch.lines.some((line) => line.includes('(pong, pang)')),
         ),
+        watch.output(),
       ).toBe(true)
     } finally {
       await stop(watch)
@@ -219,14 +221,14 @@ describe('asphodelos --watch', () => {
         'openapi: [not a document\n',
         () => watch.lines.some((line) => line.startsWith('❌')),
       )
-      expect(reported).toBe(true)
+      expect(reported, watch.output()).toBe(true)
 
       const recovered = await writeUntil(
         path.join(dir, 'openapi.yaml'),
         SPEC(['ping', 'pong']),
         () => watch.lines.some((line) => line.includes('(ping, pong)')),
       )
-      expect(recovered).toBe(true)
+      expect(recovered, watch.output()).toBe(true)
     } finally {
       await stop(watch)
     }
@@ -251,6 +253,7 @@ describe('asphodelos --watch', () => {
           configSource(`{ input: 'openapi.yaml', prefix: '/api', output: 'src/index.ts' }`),
           () => existsSync(path.join(dir, 'src/index.ts')),
         ),
+        watch.output(),
       ).toBe(true)
     } finally {
       await stop(watch)
@@ -273,6 +276,7 @@ describe('asphodelos --watch', () => {
         await writeUntil(path.join(dir, 'openapi.yaml'), SPEC(['ping']), () =>
           existsSync(path.join(dir, 'src/index.ts')),
         ),
+        watch.output(),
       ).toBe(true)
     } finally {
       await stop(watch)
@@ -307,6 +311,7 @@ describe('asphodelos --watch', () => {
         await writeUntil(path.join(spec, 'openapi.yaml'), SPEC(['ping', 'pong']), () =>
           watch.lines.some((line) => line.includes('(ping, pong)')),
         ),
+        watch.output(),
       ).toBe(true)
     } finally {
       await stop(watch)
@@ -333,6 +338,7 @@ describe('asphodelos --watch', () => {
         await writeUntil(path.join(spec, 'openapi.yaml'), SPEC(['ping']), () =>
           existsSync(path.join(dir, 'src/index.ts')),
         ),
+        watch.output(),
       ).toBe(true)
     } finally {
       await stop(watch)
@@ -372,6 +378,7 @@ describe('asphodelos --watch', () => {
         await writeUntil(shared, 'type: object\nproperties:\n  renamed: { type: number }\n', () =>
           readFileSync(path.join(dir, 'src/schemas.ts'), 'utf-8').includes('renamed'),
         ),
+        watch.output(),
       ).toBe(true)
     } finally {
       await stop(watch)

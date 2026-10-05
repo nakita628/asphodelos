@@ -36,9 +36,14 @@ afterEach(() => {
 })
 
 describe('generated queryOptions', () => {
+  // The result is read into a const before it meets `expect`: bun's `expect(actual?: T)` gives
+  // its argument the contextual type `T | undefined`, and a generic factory called inside it
+  // would take `undefined` for its `TData` default. The hooks and `queryClient.query` alone are
+  // typed exactly; only this nesting of two inferences is.
   it('resolves with the parsed body on 200', async () => {
     const queryClient = makeClient()
-    expect(await queryClient.query(listUsersQueryOptions())).toStrictEqual([
+    const users = await queryClient.query(listUsersQueryOptions())
+    expect(users).toStrictEqual([
       { id: '1', name: 'Alice' },
       { id: '2', name: 'Bob' },
     ])
@@ -46,10 +51,8 @@ describe('generated queryOptions', () => {
 
   it('threads a path parameter through to the request', async () => {
     const queryClient = makeClient()
-    expect(await queryClient.query(getUserQueryOptions({ id: '2' }))).toStrictEqual({
-      id: '2',
-      name: 'Bob',
-    })
+    const user = await queryClient.query(getUserQueryOptions({ id: '2' }))
+    expect(user).toStrictEqual({ id: '2', name: 'Bob' })
     expect(requestLog).toContain('GET /users/2')
   })
 
