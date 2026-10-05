@@ -259,6 +259,25 @@ describe('parseConfig', () => {
       expect(config.client?.baseUrl).toStrictEqual({ env: 'API_URL', import: '@/env', name: 'env' })
     })
 
+    it('takes the module the app comes from and the name the client is imported by', () => {
+      const config = decode({
+        input: 'a.yaml',
+        client: {
+          output: '../client/src/client.ts',
+          import: '@repo/server',
+          package: '@repo/client',
+        },
+      })
+      expect(config.client?.import).toBe('@repo/server')
+      expect(config.client?.package).toBe('@repo/client')
+      expect(
+        decodeError({ input: 'a.yaml', client: { output: 'src/client.ts', package: 'a b' } })
+          .message,
+      ).toBe(
+        'Invalid config: client.package: must be a module specifier, with no whitespace or quotes',
+      )
+    })
+
     // The generated client is what `eden` and the hooks read when they name no import.
     it('lets eden and the hooks leave their import out', () => {
       const config = decode({

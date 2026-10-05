@@ -54,11 +54,67 @@ function importSpecifier(
   return relative.startsWith('.') ? relative : `./${relative}`
 }
 
+/**
+ * The directory of the nearest `package.json` at or above `dir`, or `undefined` when there is
+ * none: the package a file belongs to, read from where it sits and nothing else.
+ */
+function packageRoot(dir: string): Effect.Effect<string | undefined, never, FileSystem.FileSystem> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const found = yield* fs
+      .exists(path.join(dir, 'package.json'))
+      .pipe(Effect.orElseSucceed(() => false))
+    if (found) return dir
+    const parent = path.dirname(dir)
+    return parent === dir ? undefined : yield* packageRoot(parent)
+  })
+}
+
+/**
+ * The specifier `from` imports the generated file `target` by, package boundaries respected.
+ *
+ * Inside one package it is `local` — relative, or through the alias. Across packages it is the
+ * name the target's package is imported by, `named`; a crossing with no name is refused with
+ * `missing`, rather than written as a relative path into another package.
+ */
+function packageImport(
+  from: string,
+  target: string,
+  local: string,
+  named: string | undefined,
+  missing: string,
+) {
+  return Effect.gen(function* () {
+    const [fromRoot, targetRoot] = yield* Effect.all([
+      packageRoot(path.dirname(path.resolve(process.cwd(), from))),
+      packageRoot(path.dirname(path.resolve(process.cwd(), target))),
+    ])
+    if (fromRoot === targetRoot) return local
+    if (named !== undefined) return named
+    return yield* new GenerateError({ message: missing })
+  })
+}
+
+/** An import specifier, worked out against the filesystem. */
+type Import = Effect.Effect<string, GenerateError, FileSystem.FileSystem>
+
+/** The `client` job's run: the client, importing the app entry from where `appImport` answers. */
+function clientRun(
+  output: string,
+  appImport: Import,
+  options: Omit<Parameters<typeof client>[1], 'appImport'>,
+) {
+  return Effect.gen(function* () {
+    const specifier = yield* appImport
+    return yield* client(output, { ...options, appImport: specifier })
+  })
+}
+
 /** The `eden` job's run: the wrappers, importing the client from where `importPath` answers. */
 function edenRun(
   openAPI: OpenAPI,
   output: string,
-  importPath: Effect.Effect<string, GenerateError>,
+  importPath: Import,
   edenConfig: NonNullable<Config['eden']>,
   prefix: string | undefined,
 ) {
@@ -72,7 +128,7 @@ function edenRun(
 function hooksRun(
   openAPI: OpenAPI,
   output: string,
-  importPath: Effect.Effect<string, GenerateError>,
+  importPath: Import,
   library: (typeof HOOK_KINDS)[number],
   options: Parameters<typeof hooks>[4],
 ) {
@@ -118,9 +174,10 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
   // The module a generated file imports the client from: the one it names, or the file the
   // top-level `client` generates, reached from where the generated file is written. A file beside
   // the client imports the client itself: the barrel is for the others, and may come to re-export
-  // the file that would import it. `parseConfig` requires an import or a client, so a file with
-  // neither is a wiring error, not a config error.
-  const clientImport = (field: string, output: string, named: string | undefined) => {
+  // the file that would import it. A file in another package imports the client by the name of
+  // its package. `parseConfig` requires an import or a client, so a file with neither is a wiring
+  // error, not a config error.
+  const clientImport = (field: string, output: string, named: string | undefined): Import => {
     if (named !== undefined) return Effect.succeed(named)
     if (clientConfig === undefined) {
       return Effect.fail(
@@ -130,10 +187,14 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
       )
     }
     const isBeside = posix.dirname(posix.normalize(output)) === posix.dirname(clientConfig.output)
-    return Effect.succeed(
+    return packageImport(
+      output,
+      clientConfig.output,
       isBeside || clientBarrel === undefined
         ? importSpecifier(output, clientConfig.output, pathAlias)
         : importSpecifier(output, clientBarrel, pathAlias, 'barrel'),
+      clientConfig.package,
+      `${field}.output is in another package than the client: name the package the client is published as, client.package, for the file to import it by.`,
     )
   }
   // `output` (single-file mode) and the per-type targets are mutually exclusive
@@ -174,13 +235,24 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
           output: clientConfig.output,
           split: false,
           run: (output: string) =>
-            client(output, {
-              appImport: importSpecifier(output, appOutput, pathAlias),
-              baseUrl: clientConfig.baseUrl ?? localhost,
-              fallback: localhost,
-              sameOrigin: clientConfig.sameOrigin === true,
-              barrel: clientBarrel,
-            }),
+            clientRun(
+              output,
+              clientConfig.import === undefined
+                ? packageImport(
+                    output,
+                    appOutput,
+                    importSpecifier(output, appOutput, pathAlias),
+                    undefined,
+                    'client.output is in another package than the app entry: name the module that exports the app, client.import, for the client to import it by.',
+                  )
+                : Effect.succeed(clientConfig.import),
+              {
+                baseUrl: clientConfig.baseUrl ?? localhost,
+                fallback: localhost,
+                sameOrigin: clientConfig.sameOrigin === true,
+                barrel: clientBarrel,
+              },
+            ),
         }
       : undefined,
     edenConfig

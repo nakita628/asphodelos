@@ -68,14 +68,16 @@ const OPENAPI = {
 
 /**
  * Decodes a config and runs every job it produces, inside a fresh directory — one `seed` may
- * first fill with what a project would already hold.
+ * first fill with what a project would already hold, and `cwd` names the subdirectory the
+ * generator runs from, for a layout of several packages.
  */
-async function runJobs(config: Record<string, unknown>, seed?: (dir: string) => void) {
+async function runJobs(config: Record<string, unknown>, seed?: (dir: string) => void, cwd = '.') {
   const dir = mkdtempSync(path.join(PKG_ROOT, 'tmp-jobs-'))
   workdirs.push(dir)
   seed?.(dir)
-  const cwd = process.cwd()
-  process.chdir(dir)
+  const previous = process.cwd()
+  mkdirSync(path.join(dir, cwd), { recursive: true })
+  process.chdir(path.join(dir, cwd))
   try {
     const decoded = Effect.runSync(parseConfig({ input: 'openapi.yaml', ...config }))
     const jobs = makeJob(OPENAPI, decoded)
@@ -93,7 +95,15 @@ async function runJobs(config: Record<string, unknown>, seed?: (dir: string) => 
       exists: (relative: string) => existsSync(path.join(dir, relative)),
     }
   } finally {
-    process.chdir(cwd)
+    process.chdir(previous)
+  }
+}
+
+/** Lays out one package per name under `dir`, each with an empty `package.json`. */
+function packages(dir: string, names: readonly string[]) {
+  for (const name of names) {
+    mkdirSync(path.join(dir, name), { recursive: true })
+    writeFileSync(path.join(dir, name, 'package.json'), '{}\n')
   }
 }
 
@@ -253,6 +263,67 @@ describe('makeJob — every job actually runs', () => {
     })
     expect(run.read('src/lib/index.ts')).not.toContain('export * from')
     expect(run.read('src/swr.ts')).toContain("import { client } from './lib/client'")
+  })
+
+  // Across packages — the nearest `package.json` says which one a file is in — the client imports
+  // the app by the module `client.import` names, and the files elsewhere import the client by its
+  // package name; a file in the client's own package still imports it relatively.
+  it('client: another package imports the client by its package name, and the client the app by its import', async () => {
+    const run = await runJobs(
+      {
+        output: 'src/index.ts',
+        client: {
+          output: '../client/src/lib/client.ts',
+          import: '@repo/server',
+          package: '@repo/client',
+        },
+        eden: { output: '../client/src/lib/eden.ts' },
+        'tanstack-query': { output: '../react/src/api/hooks.ts' },
+        swr: { output: 'src/hooks/swr.ts' },
+      },
+      (dir) => {
+        packages(dir, ['apps/elysia', 'apps/client', 'apps/react'])
+      },
+      'apps/elysia',
+    )
+    expect(run.read('apps/client/src/lib/client.ts')).toContain(
+      "import type { app } from '@repo/server'",
+    )
+    expect(run.read('apps/client/src/lib/eden.ts')).toContain("import { client } from './client'")
+    expect(run.read('apps/react/src/api/hooks.ts')).toContain(
+      "import { client } from '@repo/client'",
+    )
+    expect(run.read('apps/elysia/src/hooks/swr.ts')).toContain(
+      "import { client } from '@repo/client'",
+    )
+  })
+
+  // A crossing with no name to import by is refused, never written as a path into another package.
+  it('client: a package boundary with no name to cross it by is refused', async () => {
+    const layout = (dir: string) => {
+      packages(dir, ['apps/elysia', 'apps/client', 'apps/react'])
+    }
+    const failure = async (config: Record<string, unknown>) => {
+      try {
+        await runJobs(config, layout, 'apps/elysia')
+        return 'generated'
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error)
+      }
+    }
+    expect(
+      await failure({ client: { output: '../client/src/lib/client.ts', package: '@repo/client' } }),
+    ).toContain(
+      'client.output is in another package than the app entry: name the module that exports the app, client.import, for the client to import it by.',
+    )
+    expect(
+      await failure({
+        client: { output: '../client/src/lib/client.ts', import: '@repo/server' },
+        'tanstack-query': { output: '../react/src/api/hooks.ts' },
+      }),
+    ).toContain(
+      'tanstack-query.output is in another package than the client: name the package the client is published as, client.package, for the file to import it by.',
+    )
   })
 
   // `@/` stands for the app entry's directory; every import between generated files under it

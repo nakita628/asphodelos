@@ -264,6 +264,21 @@ const ClientOutputSchema = Schema.Struct({
     description: 'The `.ts` file the client is written to.',
     examples: ['./src/client.ts'],
   }),
+  import: Schema.optionalKey(
+    ImportSchema.annotate({
+      description:
+        "Module specifier the client imports the app entry from, for a client written into another package: the one that exports `app`. Left out, the client reaches the entry relatively or through the alias, and a client outside the entry's package is refused.",
+      examples: ['@repo/server'],
+    }),
+  ),
+  package: Schema.optionalKey(
+    ImportSchema.annotate({
+      title: 'Package name',
+      description:
+        "The name the generated files in other packages import the client by — the package it is published as, whose entry is the client or its barrel. Files in the client's own package import it relatively or through the alias. Left out, a file outside that package is refused.",
+      examples: ['@repo/client'],
+    }),
+  ),
   baseUrl: Schema.optionalKey(BaseUrlSchema),
   sameOrigin: Schema.optionalKey(
     Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
@@ -276,7 +291,10 @@ const ClientOutputSchema = Schema.Struct({
   title: 'Eden Treaty client',
   description:
     'The Eden Treaty client of the generated app, `treaty<typeof app>(baseUrl)`, typed by a type-only import of the app entry so the server never reaches a browser bundle. `eden` and the hooks import it unless they name an `import` of their own. Needs `@elysiajs/eden` in the project.',
-  examples: [{ output: './src/client.ts', baseUrl: 'http://localhost:3000', sameOrigin: true }],
+  examples: [
+    { output: './src/client.ts', baseUrl: 'http://localhost:3000', sameOrigin: true },
+    { output: '../client/src/lib/client.ts', import: '@repo/server', package: '@repo/client' },
+  ],
 })
 
 const HooksSchema = Schema.Struct({

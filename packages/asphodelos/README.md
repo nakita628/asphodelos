@@ -249,7 +249,9 @@ export const client = treaty<typeof app>(origin)
 ```
 
 The `index.ts` beside the client re-exports it, so it is imported as `./lib`; `eden` and the hooks
-import it from there. `baseUrl` left out is `http://localhost:<port>`.
+import it from there. In a monorepo, `import` names the package that exports `app` and `package`
+the one the client is published as, and the files in other packages import it by that name.
+`baseUrl` left out is `http://localhost:<port>`.
 `sameOrigin` suits an app a host framework such as TanStack Start or Next.js serves beside its
 pages, where the API shares the origin and CORS has nothing to allow. The project needs
 `@elysiajs/eden`.
@@ -479,6 +481,8 @@ export default defineConfig({
 
   client: {
     output: 'src/lib/client.ts', // re-exported by src/lib/index.ts
+    // import: '@repo/server', // where `app` comes from, for a client in another package
+    // package: '@repo/client', // what other packages import the client by
     baseUrl: 'http://localhost:3000', // `http://localhost:<port>` when left out
     // baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
     // baseUrl: { env: 'API_URL', import: '@/env', name: 'env' },
