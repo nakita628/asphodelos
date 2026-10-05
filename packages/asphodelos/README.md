@@ -263,7 +263,8 @@ are written.
   `@/components/schemas`.
 - In different packages (each with its own `package.json`), by the name the output is published
   as: the top-level `package` for the app entry, `client.package` for the client, and `package` on
-  a component section or on `components` for the schemas. A relative path never crosses a package.
+  each component section (`components.schemas.package`, `components.responses.package`, …), or on
+  `components` in single-file mode. A relative path never crosses a package.
 
 ```ts
 // apps/elysia/asphodelos.config.ts — the app, the client and the hooks in three packages
@@ -427,60 +428,73 @@ export default defineConfig({
   readonly: false, // wrap top-level schemas in t.Readonly(...)
   // format: {}, // oxfmt FormatConfig
 
-  // `exportTypes` adds `Static<typeof XSchema>` aliases.
+  // `exportTypes` adds `Static<typeof XSchema>` aliases. Every section, and `components` in
+  // single-file mode, takes a `package`: the name other packages import it by when it is written
+  // into a package of its own.
   components: {
-    // output: 'src/components.ts', // single-file mode; `package` names it for other packages
+    // output: 'src/components.ts', // single-file mode
+    // package: '@repo/components',
 
     schemas: {
       output: 'src/components/schemas',
       split: true,
       exportTypes: true,
-      // package: '@repo/schemas', // what other packages import this section by
+      // package: '@repo/schemas',
     },
     responses: {
       output: 'src/components/responses',
       split: true,
       exportTypes: true,
+      // package: '@repo/responses',
     },
     parameters: {
       output: 'src/components/parameters',
       split: true,
       exportTypes: true,
+      // package: '@repo/parameters',
     },
     requestBodies: {
       output: 'src/components/requestBodies',
       split: true,
       exportTypes: true,
+      // package: '@repo/requestBodies',
     },
     headers: {
       output: 'src/components/headers',
       split: true,
       exportTypes: true,
+      // package: '@repo/headers',
     },
     mediaTypes: {
       output: 'src/components/mediaTypes',
       split: true,
       exportTypes: true,
+      // package: '@repo/mediaTypes',
     },
     examples: {
       output: 'src/components/examples',
       split: true,
+      // package: '@repo/examples',
     },
     securitySchemes: {
       output: 'src/components/securitySchemes',
       split: true,
+      // package: '@repo/securitySchemes',
     },
     links: {
       output: 'src/components/links',
       split: true,
+      // package: '@repo/links',
     },
     callbacks: {
       output: 'src/components/callbacks',
       split: true,
+      // package: '@repo/callbacks',
     },
     pathItems: {
       output: 'src/components/pathItems',
       split: true,
+      // package: '@repo/pathItems',
     },
   },
 
