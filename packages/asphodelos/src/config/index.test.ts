@@ -193,21 +193,23 @@ describe('parseConfig', () => {
     it('takes the name a kind, or the single file, is imported by from other packages', () => {
       const perKind = decode({
         input: 'a.yaml',
-        components: { schemas: { output: '../schemas/src/schemas.ts', package: '@repo/schemas' } },
+        components: {
+          schemas: { output: '../schemas/src/schemas.ts', package: '@packages/schemas' },
+        },
       })
-      expect(perKind.components?.schemas?.package).toBe('@repo/schemas')
+      expect(perKind.components?.schemas?.package).toBe('@packages/schemas')
       const single = decode({
         input: 'a.yaml',
-        components: { output: '../schemas/src/index.ts', package: '@repo/schemas' },
+        components: { output: '../schemas/src/index.ts', package: '@packages/schemas' },
       })
-      expect(single.components?.package).toBe('@repo/schemas')
+      expect(single.components?.package).toBe('@packages/schemas')
     })
 
     it('rejects a package on the components block without a single-file output', () => {
       expect(
         decodeError({
           input: 'a.yaml',
-          components: { package: '@repo/schemas', schemas: { output: 'src/schemas.ts' } },
+          components: { package: '@packages/schemas', schemas: { output: 'src/schemas.ts' } },
         }).message,
       ).toBe(
         'Invalid config: components: package names the single-file output: set output, or name the package on each section.',
@@ -280,11 +282,11 @@ describe('parseConfig', () => {
     it('takes the name the client is imported by, and the app its package name', () => {
       const config = decode({
         input: 'a.yaml',
-        package: '@repo/elysia',
-        client: { output: '../client/src/client.ts', package: '@repo/client' },
+        package: '@packages/elysia',
+        client: { output: '../client/src/client.ts', package: '@packages/client' },
       })
-      expect(config.package).toBe('@repo/elysia')
-      expect(config.client?.package).toBe('@repo/client')
+      expect(config.package).toBe('@packages/elysia')
+      expect(config.client?.package).toBe('@packages/client')
       expect(
         decodeError({ input: 'a.yaml', client: { output: 'src/client.ts', package: 'a b' } })
           .message,
@@ -294,7 +296,7 @@ describe('parseConfig', () => {
       expect(
         decodeError({
           input: 'a.yaml',
-          client: { output: '../client/src/client.ts', import: '@repo/server' },
+          client: { output: '../client/src/client.ts', import: '@packages/server' },
         }).message,
       ).toBe(
         'Invalid config: client.import: import was removed: a client in another package imports the app by the top-level `package`, the name the app entry is published as. Delete the import and set package.',
@@ -403,8 +405,8 @@ describe('defineConfig', () => {
         schemas: { output: 'src/components/schemas', split: true, exportTypes: true },
         responses: { output: 'src/components/responses.ts' },
       },
-      package: '@repo/elysia',
-      client: { output: 'src/lib/client.ts', package: '@repo/client', sameOrigin: true },
+      package: '@packages/elysia',
+      client: { output: 'src/lib/client.ts', package: '@packages/client', sameOrigin: true },
       eden: { output: 'src/eden.ts' },
       types: { output: 'src/types.ts' },
       mock: { output: 'src/mock.ts', seed: 42, delay: { min: 100, max: 800 } },
@@ -490,7 +492,7 @@ describe('defineConfig', () => {
     const client = defineConfig({
       input: 'openapi.yaml',
       // @ts-expect-error -- `import` was removed
-      client: { output: 'src/client.ts', import: '@repo/elysia' },
+      client: { output: 'src/client.ts', import: '@packages/elysia' },
     })
     expect(client.input).toBe('openapi.yaml')
   })

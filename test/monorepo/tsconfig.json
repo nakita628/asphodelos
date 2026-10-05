@@ -7,8 +7,8 @@
     // client is typed by is the host app, whose routes are the document's and whose handlers are
     // written; the generated app is a scaffold whose handlers are not.
     "paths": {
-      "@repo/elysia": ["../hosts/users-app.ts"],
-      "@repo/eden": ["./apps/eden/__generated__/src/index.ts"]
+      "@packages/elysia": ["../hosts/users-app.ts"],
+      "@packages/eden": ["./apps/eden/__generated__/src/index.ts"]
     }
   },
   "include": [

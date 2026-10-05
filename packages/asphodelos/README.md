@@ -271,13 +271,13 @@ are written.
 export default defineConfig({
   input: 'openapi.yaml',
   output: 'src/index.ts',
-  package: '@repo/elysia', // the client imports `app` from here
-  client: { output: '../eden/src/client.ts', package: '@repo/eden' }, // the hooks import it from here
+  package: '@packages/elysia', // the client imports `app` from here
+  client: { output: '../eden/src/client.ts', package: '@packages/eden' }, // the hooks import it from here
   'tanstack-query': { output: '../react/src/api/hooks.ts' },
 })
 ```
 
-`@repo/elysia` exports `app` from its entry, `@repo/eden` exports the `index.ts` beside the client,
+`@packages/elysia` exports `app` from its entry, `@packages/eden` exports the `index.ts` beside the client,
 and `elysia` resolves to one copy across the workspace.
 
 ### Wrapper Functions
@@ -424,7 +424,7 @@ export default defineConfig({
   port: '3000',
   integration: false, // true: no .listen(), a host framework owns the server
   // pathAlias: '@/', // import prefix for the app entry's directory: `@/index`, `@/lib`
-  // package: '@repo/elysia', // the app's package name, for a client in another package
+  // package: '@packages/elysia', // the app's package name, for a client in another package
   readonly: false, // wrap top-level schemas in t.Readonly(...)
   // format: {}, // oxfmt FormatConfig
 
@@ -433,68 +433,68 @@ export default defineConfig({
   // into a package of its own.
   components: {
     // output: 'src/components.ts', // single-file mode
-    // package: '@repo/components',
+    // package: '@packages/components',
 
     schemas: {
       output: 'src/components/schemas',
       split: true,
       exportTypes: true,
-      // package: '@repo/schemas',
+      // package: '@packages/schemas',
     },
     responses: {
       output: 'src/components/responses',
       split: true,
       exportTypes: true,
-      // package: '@repo/responses',
+      // package: '@packages/responses',
     },
     parameters: {
       output: 'src/components/parameters',
       split: true,
       exportTypes: true,
-      // package: '@repo/parameters',
+      // package: '@packages/parameters',
     },
     requestBodies: {
       output: 'src/components/requestBodies',
       split: true,
       exportTypes: true,
-      // package: '@repo/requestBodies',
+      // package: '@packages/requestBodies',
     },
     headers: {
       output: 'src/components/headers',
       split: true,
       exportTypes: true,
-      // package: '@repo/headers',
+      // package: '@packages/headers',
     },
     mediaTypes: {
       output: 'src/components/mediaTypes',
       split: true,
       exportTypes: true,
-      // package: '@repo/mediaTypes',
+      // package: '@packages/mediaTypes',
     },
     examples: {
       output: 'src/components/examples',
       split: true,
-      // package: '@repo/examples',
+      // package: '@packages/examples',
     },
     securitySchemes: {
       output: 'src/components/securitySchemes',
       split: true,
-      // package: '@repo/securitySchemes',
+      // package: '@packages/securitySchemes',
     },
     links: {
       output: 'src/components/links',
       split: true,
-      // package: '@repo/links',
+      // package: '@packages/links',
     },
     callbacks: {
       output: 'src/components/callbacks',
       split: true,
-      // package: '@repo/callbacks',
+      // package: '@packages/callbacks',
     },
     pathItems: {
       output: 'src/components/pathItems',
       split: true,
-      // package: '@repo/pathItems',
+      // package: '@packages/pathItems',
     },
   },
 
@@ -504,7 +504,7 @@ export default defineConfig({
 
   client: {
     output: 'src/lib/client.ts', // re-exported by src/lib/index.ts
-    // package: '@repo/eden', // what other packages import the client by
+    // package: '@packages/eden', // what other packages import the client by
     baseUrl: 'http://localhost:3000', // `http://localhost:<port>` when left out
     // baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
     // baseUrl: { env: 'API_URL', import: '@/env', name: 'env' },

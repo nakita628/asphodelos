@@ -61,18 +61,18 @@ function setWindowUrl(url: string) {
 describe('a client in a package of its own', () => {
   it('imports the app by the name of its package, and is re-exported by the index.ts beside it', () => {
     expect(read('eden/__generated__/src/client.ts')).toContain(
-      "import type { app } from '@repo/elysia'",
+      "import type { app } from '@packages/elysia'",
     )
     expect(read('eden/__generated__/src/index.ts')).toBe("export * from './client'\n")
   })
 
   it('is imported by the hooks of another package by the name of its own', () => {
     expect(read('react/__generated__/src/hooks.ts')).toContain(
-      "import { client } from '@repo/eden'",
+      "import { client } from '@packages/eden'",
     )
   })
 
-  // `@repo/eden` is resolved through the tsconfig beside the generated files, as Bun resolves a
+  // `@packages/eden` is resolved through the tsconfig beside the generated files, as Bun resolves a
   // workspace package; the client reads the base URL from the environment, so the request lands
   // on the host app. The suite runs under happy-dom, whose fetch keeps to the page's origin, so
   // the window is pointed at the server first.

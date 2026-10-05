@@ -185,7 +185,7 @@ const PackageSchema = ImportSchema.annotate({
   title: 'Package name',
   description:
     'The name the generated files in other packages import this output by — the package it is published as, whose entry is this file or its barrel. Files in the same package import it relatively or through `pathAlias`. Left out, a file in another package is refused.',
-  examples: ['@repo/schemas'],
+  examples: ['@packages/schemas'],
 })
 
 const SECTION_IMPORT_REMOVED = removed(
@@ -294,7 +294,7 @@ const ClientOutputSchema = Schema.Struct({
       title: 'Package name',
       description:
         "The name the generated files in other packages import the client by — the package it is published as, whose entry is the client or its barrel. Files in the client's own package import it relatively or through the alias. Left out, a file outside that package is refused.",
-      examples: ['@repo/client'],
+      examples: ['@packages/client'],
     }),
   ),
   baseUrl: Schema.optionalKey(BaseUrlSchema),
@@ -311,7 +311,7 @@ const ClientOutputSchema = Schema.Struct({
     'The Eden Treaty client of the generated app, `treaty<typeof app>(baseUrl)`, typed by a type-only import of the app entry so the server never reaches a browser bundle. `eden` and the hooks import it unless they name an `import` of their own. Needs `@elysiajs/eden` in the project.',
   examples: [
     { output: './src/client.ts', baseUrl: 'http://localhost:3000', sameOrigin: true },
-    { output: '../client/src/lib/client.ts', package: '@repo/client' },
+    { output: '../client/src/lib/client.ts', package: '@packages/client' },
   ],
 })
 
@@ -485,7 +485,7 @@ const ConfigSchema = Schema.Struct({
       title: 'App package name',
       description:
         "The name the app entry's package is published as. A client written into another package imports `app` by it; left out, such a client is refused.",
-      examples: ['@repo/elysia'],
+      examples: ['@packages/elysia'],
     }),
   ),
   readonly: Schema.optionalKey(

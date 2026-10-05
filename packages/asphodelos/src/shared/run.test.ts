@@ -278,8 +278,8 @@ describe('makeJob — every job actually runs', () => {
     const run = await runJobs(
       {
         output: 'src/index.ts',
-        package: '@repo/server',
-        client: { output: '../client/src/lib/client.ts', package: '@repo/client' },
+        package: '@packages/server',
+        client: { output: '../client/src/lib/client.ts', package: '@packages/client' },
         eden: { output: '../client/src/lib/eden.ts' },
         'tanstack-query': { output: '../react/src/api/hooks.ts' },
         swr: { output: 'src/hooks/swr.ts' },
@@ -290,14 +290,14 @@ describe('makeJob — every job actually runs', () => {
       'apps/elysia',
     )
     expect(run.read('apps/client/src/lib/client.ts')).toContain(
-      "import type { app } from '@repo/server'",
+      "import type { app } from '@packages/server'",
     )
     expect(run.read('apps/client/src/lib/eden.ts')).toContain("import { client } from './client'")
     expect(run.read('apps/react/src/api/hooks.ts')).toContain(
-      "import { client } from '@repo/client'",
+      "import { client } from '@packages/client'",
     )
     expect(run.read('apps/elysia/src/hooks/swr.ts')).toContain(
-      "import { client } from '@repo/client'",
+      "import { client } from '@packages/client'",
     )
   })
 
@@ -315,13 +315,15 @@ describe('makeJob — every job actually runs', () => {
       }
     }
     expect(
-      await failure({ client: { output: '../client/src/lib/client.ts', package: '@repo/client' } }),
+      await failure({
+        client: { output: '../client/src/lib/client.ts', package: '@packages/client' },
+      }),
     ).toContain(
       'client.output is in another package than the app entry: name the package the app is published as, the top-level package, for the client to import it by.',
     )
     expect(
       await failure({
-        package: '@repo/server',
+        package: '@packages/server',
         client: { output: '../client/src/lib/client.ts' },
         'tanstack-query': { output: '../react/src/api/hooks.ts' },
       }),
@@ -337,7 +339,7 @@ describe('makeJob — every job actually runs', () => {
       {
         output: 'src/index.ts',
         components: {
-          schemas: { output: '../schemas/src/schemas.ts', package: '@repo/schemas' },
+          schemas: { output: '../schemas/src/schemas.ts', package: '@packages/schemas' },
           mediaTypes: { output: 'src/components/mediaTypes.ts' },
         },
       },
@@ -346,8 +348,10 @@ describe('makeJob — every job actually runs', () => {
       },
       'apps/elysia',
     )
-    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain("from '@repo/schemas'")
-    expect(run.read('apps/elysia/src/components/mediaTypes.ts')).toContain("from '@repo/schemas'")
+    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain("from '@packages/schemas'")
+    expect(run.read('apps/elysia/src/components/mediaTypes.ts')).toContain(
+      "from '@packages/schemas'",
+    )
   })
 
   // Which kinds a file imports depends on the document, so a kind with no package name cannot be
@@ -372,14 +376,14 @@ describe('makeJob — every job actually runs', () => {
     const run = await runJobs(
       {
         output: 'src/index.ts',
-        components: { output: '../schemas/src/index.ts', package: '@repo/schemas' },
+        components: { output: '../schemas/src/index.ts', package: '@packages/schemas' },
       },
       (dir) => {
         packages(dir, ['apps/elysia', 'apps/schemas'])
       },
       'apps/elysia',
     )
-    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain("from '@repo/schemas'")
+    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain("from '@packages/schemas'")
   })
 
   // Component kinds the config places under the app entry's directory go through the alias too,
