@@ -249,9 +249,24 @@ export const client = treaty<typeof app>(origin)
 ```
 
 The `index.ts` beside the client re-exports it, so it is imported as `./lib`; `eden` and the hooks
-import it from there. In a monorepo, `import` names the package that exports `app` and `package`
-the one the client is published as, and the files in other packages import it by that name.
-`baseUrl` left out is `http://localhost:<port>`.
+import it from there. `baseUrl` left out is `http://localhost:<port>`.
+
+In a workspace, the client can be a package of its own. `import` names the package that exports
+`app`, `package` the one the client is published as, and the files in other packages import it by
+that name — relative paths never cross a package:
+
+```ts
+// apps/elysia/asphodelos.config.ts
+export default defineConfig({
+  input: 'openapi.yaml',
+  output: 'src/index.ts',
+  client: { output: '../eden/src/client.ts', import: '@repo/elysia', package: '@repo/eden' },
+  'tanstack-query': { output: '../react/src/api/hooks.ts' }, // import { client } from '@repo/eden'
+})
+```
+
+`@repo/elysia` exports `app` from its entry, `@repo/eden` exports the `index.ts` beside the client,
+and `elysia` resolves to one copy across the workspace.
 `sameOrigin` suits an app a host framework such as TanStack Start or Next.js serves beside its
 pages, where the API shares the origin and CORS has nothing to allow. The project needs
 `@elysiajs/eden`.
