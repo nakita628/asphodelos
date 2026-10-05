@@ -395,9 +395,11 @@ declare answers `500` with an `application/problem+json` body saying what is mis
 
 ## Full Config Reference
 
-Every generator is opted in by adding its section. `defineConfig` checks the config while you type
-it, and the CLI checks it again when it runs:
+Every generator is opted in by adding its section. `defineConfig` types the config — a value of
+the wrong shape, an option that was removed, or hooks without the `client` block are refused as
+you type — and the CLI checks the rest when it runs:
 
+- A key the config does not know is an error, not a typo that is dropped.
 - Every generator needs its own `output`. Two generators writing to one path is an error.
 - `components.output` (one file) and the per-type `components.*` sections are mutually exclusive.
 - A component section with `split: true` writes one file per entry plus an `index.ts` barrel into a

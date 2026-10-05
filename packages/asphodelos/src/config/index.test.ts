@@ -20,6 +20,22 @@ describe('parseConfig', () => {
     expect(decodeError({})._tag).toBe('ConfigError')
   })
 
+  // A config file is written by hand; a key the schema does not know is a typo, and a typo that
+  // is dropped is a generator that silently does not run.
+  it('rejects an unknown key, at the top and inside a block', () => {
+    // cspell:ignore outpt
+    expect(decodeError({ input: 'a.yaml', outpt: 'src/index.ts' }).message).toBe(
+      'Invalid config: outpt: Expected no excess property',
+    )
+    expect(
+      decodeError({
+        input: 'a.yaml',
+        client: { output: 'src/client.ts' },
+        swr: { output: 'src/swr.ts', imports: './lib' },
+      }).message,
+    ).toBe('Invalid config: swr.imports: Expected no excess property')
+  })
+
   it('rejects when input lacks a recognized extension', () => {
     const result = decodeError({ input: 'openapi.txt' })
     expect(result._tag).toBe('ConfigError')
@@ -51,14 +67,12 @@ describe('parseConfig', () => {
     )
   })
 
-  it('strips the retired top-level export flags without erroring', () => {
-    const result = decode({
-      input: 'a.yaml',
-      exportSchemas: true,
-      exportMediaTypesTypes: true,
-    })
-    expect('exportSchemas' in result).toBe(false)
-    expect('exportMediaTypesTypes' in result).toBe(false)
+  // The retired top-level export flags are unknown keys like any other now: a config that still
+  // carries one is told, rather than left to wonder why `exportTypes` is off.
+  it('rejects the retired top-level export flags', () => {
+    expect(decodeError({ input: 'a.yaml', exportSchemas: true }).message).toBe(
+      'Invalid config: exportSchemas: Expected no excess property',
+    )
   })
 
   it('defaults component exportTypes to false and keeps an explicit value', () => {
@@ -428,35 +442,27 @@ describe('defineConfig', () => {
     expect(config.components.schemas.output).toBe('src/schemas')
   })
 
-  it('is a type error to misspell an option', () => {
-    const config = defineConfig({
+  // The hooks and the wrappers need the client block, and the type says so on their key.
+  it('is a type error to name the hooks or eden without the client', () => {
+    const hooks = defineConfig({
       input: 'openapi.yaml',
-      // cspell:ignore outpt
-      // @ts-expect-error -- `outpt` is not an option
-      outpt: 'src/index.ts',
+      // @ts-expect-error -- needs the top-level client
+      swr: { output: 'src/swr.ts' },
     })
-    expect(config.input).toBe('openapi.yaml')
-  })
-
-  it('is a type error to split a component target into a .ts file', () => {
-    const config = defineConfig({
+    expect(hooks.input).toBe('openapi.yaml')
+    const wrappers = defineConfig({
       input: 'openapi.yaml',
-      // @ts-expect-error -- split mode requires a directory
-      components: { schemas: { output: 'src/schemas.ts', split: true } },
+      // @ts-expect-error -- needs the top-level client
+      eden: { output: 'src/eden.ts' },
     })
-    expect(config.input).toBe('openapi.yaml')
-  })
-
-  // Both sides of a collision are reported, each naming the other.
-  it('is a type error to point two generators at one output', () => {
-    const config = defineConfig({
+    expect(wrappers.input).toBe('openapi.yaml')
+    const both = defineConfig({
       input: 'openapi.yaml',
-      // @ts-expect-error -- `src/api.ts` is also the output of eden
-      types: { output: 'src/api.ts' },
-      // @ts-expect-error -- `src/api.ts` is also the output of types
-      eden: { output: 'src/api.ts' },
+      client: { output: 'src/client.ts' },
+      swr: { output: 'src/swr.ts' },
+      eden: { output: 'src/eden.ts' },
     })
-    expect(config.input).toBe('openapi.yaml')
+    expect(both.client.output).toBe('src/client.ts')
   })
 
   // An option that was removed is typed `never`, so a config that carries one does not compile;
@@ -502,15 +508,6 @@ describe('defineConfig', () => {
       input: 'openapi.yaml',
       // @ts-expect-error -- docs was removed
       eden: { output: 'src/eden.ts', docs: true },
-    })
-    expect(config.input).toBe('openapi.yaml')
-  })
-
-  it('is a type error to leave the slash off the prefix', () => {
-    const config = defineConfig({
-      input: 'openapi.yaml',
-      // @ts-expect-error -- must start with '/'
-      prefix: 'api',
     })
     expect(config.input).toBe('openapi.yaml')
   })

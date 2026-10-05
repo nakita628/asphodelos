@@ -699,7 +699,9 @@ const ConfigSchema = Schema.Struct({
 export type Config = typeof ConfigSchema.Type
 
 // Built once and reused at the edge, as the Schema guide prescribes, rather than rebuilt per call.
-const decodeConfig = Schema.decodeUnknownEffect(ConfigSchema)
+// An unknown key is an error rather than dropped: a config file is written by hand, and a typo
+// that is silently ignored is a generator that silently does not run.
+const decodeConfig = Schema.decodeUnknownEffect(ConfigSchema, { onExcessProperty: 'error' })
 const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1()
 
 /**
@@ -805,119 +807,28 @@ export function readConfig(configPath?: string, reload = false) {
 
 type ConfigInput = typeof ConfigSchema.Encoded
 
-type ComponentKind = (typeof COMPONENT_KINDS)[number]
-
-type OptionOf<S> = S extends unknown ? keyof S : never
-
-type ValueOf<S, K> = S extends unknown ? (K extends keyof S ? S[K] : never) : never
+/**
+ * The hooks and the wrappers import the client the `client` block generates, so a config that
+ * names one of them without the block is refused as it is typed, the way `parseConfig` refuses
+ * it: the block's key is the message.
+ */
+type ClientRequired<T> = 'client' extends keyof T
+  ? unknown
+  : {
+      readonly [
+        K in (typeof HOOK_KINDS)[number] | 'eden'
+      ]?: 'needs the top-level client it imports: add client: { output }'
+    }
 
 /**
- * `T` with every key the schema does not know replaced by a sentence.
+ * The config as it is typed.
  *
- * The schema strips an unknown key at run time; here, while the config is typed, a typo is
- * reported on the key itself rather than accepted and ignored.
+ * `ConfigInput` is the schema's own input type, so an option that was removed — typed `never` —
+ * and a value of the wrong shape fail here. The rules that need the whole config at once are
+ * `parseConfig`'s, reported when the config is read: an unknown key, two generators on one
+ * output, a prefix without its slash. The one exception is the client the hooks need, which is
+ * told on the hook's key.
  */
-type Known<T, S> = T extends readonly unknown[]
-  ? T
-  : T extends object
-    ? {
-        readonly [K in keyof T]: K extends OptionOf<NonNullable<S>>
-          ? Known<T[K], ValueOf<NonNullable<S>, K>>
-          : 'is not an option'
-      }
-    : T
-
-type Replaced<V, P, M, S> = {
-  readonly [Q in keyof V]: Q extends P
-    ? M
-    : Q extends OptionOf<NonNullable<S>>
-      ? Known<V[Q], ValueOf<NonNullable<S>, Q>>
-      : 'is not an option'
-}
-
-/**
- * The `output` of a generator block, read without a conditional on the block itself.
- *
- * `T` is inferred from the argument through the mapped type below, and TypeScript leaves a
- * conditional on such an inferred property unresolved — `V extends { output: infer O }` never
- * answers for a block with more than one field. An indexed access does answer, and a block
- * without an `output` reads as `unknown`, which no literal output is.
- */
-type OutputOf<V> = (V & { readonly output?: unknown })['output']
-
-/** Every `[field, output]` pair the config declares, the app entry included. */
-type Outputs<T> = {
-  readonly [K in keyof T]: K extends 'output'
-    ? readonly ['output', T[K]]
-    : K extends 'components'
-      ? {
-          readonly [P in keyof T[K]]: P extends 'output'
-            ? readonly ['components.output', T[K][P]]
-            : readonly [`components.${P & string}`, OutputOf<T[K][P]>]
-        }[keyof T[K]]
-      : readonly [K, OutputOf<T[K]>]
-}[keyof T]
-
-type Sharing<T, F, O> = string extends O
-  ? never
-  : Extract<Exclude<Outputs<T>, readonly [F, unknown]>, readonly [unknown, O]>
-
-type Shared<T, F, O> = [Sharing<T, F, O>] extends [never]
-  ? never
-  : `is also the output of ${Sharing<T, F, O>[0] & string}: every generator needs its own output path`
-
-type SplitOf<V> = (V & { readonly split?: unknown })['split']
-
-type Collided<T, F, V, S> = [Shared<T, F, OutputOf<V>>] extends [never]
-  ? Known<V, S>
-  : Replaced<V, 'output', Shared<T, F, OutputOf<V>>, S>
-
-type Written<T, F, V, S> = [SplitOf<V>] extends [true]
-  ? [OutputOf<V>] extends [`${string}.ts`]
-    ? Replaced<V, 'output', 'split mode requires a directory, not a .ts file', S>
-    : Collided<T, F, V, S>
-  : Collided<T, F, V, S>
-
-type Single<T, O> = [Shared<T, 'output', O>] extends [never] ? O : Shared<T, 'output', O>
-
-type Mounted<P> = P extends `/${string}` ? P : string extends P ? P : "must start with '/'"
-
-type Composed<T, V, S> = {
-  readonly [P in keyof V]: P extends ComponentKind
-    ? [OutputOf<V>] extends [string]
-      ? 'components.output and the outputs of each type are mutually exclusive'
-      : Written<T, `components.${P}`, V[P], ValueOf<NonNullable<S>, P>>
-    : P extends 'output'
-      ? [Shared<T, 'components.output', V[P]>] extends [never]
-        ? V[P]
-        : Shared<T, 'components.output', V[P]>
-      : P extends OptionOf<NonNullable<S>>
-        ? Known<V[P], ValueOf<NonNullable<S>, P>>
-        : 'is not an option'
-}
-
-/**
- * The config as `defineConfig` checks it while it is typed.
- *
- * Every rule `parseConfig` applies at run time that can be told from the literal is told here,
- * on the field it concerns: an unknown key, a `.ts` output in split mode, an output two
- * generators share, and a prefix without its slash. An option that was removed is typed `never`
- * in `ConfigInput`, so a config that still carries one fails the constraint before any of this.
- */
-type Checked<T> = {
-  readonly [K in keyof T]: K extends keyof ConfigInput
-    ? K extends 'test'
-      ? 'is not an option: asphodelos no longer generates tests'
-      : K extends 'output'
-        ? Single<T, T[K]>
-        : K extends 'prefix'
-          ? Mounted<T[K]>
-          : K extends 'components'
-            ? Composed<T, T[K], ConfigInput[K]>
-            : Written<T, K, T[K], ConfigInput[K]>
-    : 'is not an option'
-}
-
-export function defineConfig<const T extends ConfigInput>(config: Checked<T>) {
+export function defineConfig<const T extends ConfigInput>(config: T & ClientRequired<T>) {
   return config
 }
