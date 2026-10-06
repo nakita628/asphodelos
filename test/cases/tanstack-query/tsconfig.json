@@ -12,6 +12,7 @@
     "asphodelos.config.ts",
     "../../__generated__/tanstack-query/client.ts",
     "../../__generated__/tanstack-query/hooks.ts",
+    "../../hosts/env.ts",
     "../../hosts/users-app.ts",
     "../../runtime/tanstack-query.test.ts",
     "../../runtime/tanstack-query-mutation.test.tsx",

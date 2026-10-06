@@ -8,9 +8,10 @@ export default defineConfig({
   input: '../../specs/users.yaml',
   output: './app/index.ts',
   package: '@asphodelos/host',
+  // The default source, `import.meta.env`, which Bun reads from the process environment.
   client: {
     output: '../../__generated__/swr/client.ts',
-    baseUrl: { env: 'ASPHODELOS_TEST_API_URL', source: 'process.env' },
+    baseUrl: { env: 'ASPHODELOS_TEST_API_URL' },
   },
   swr: { output: '../../__generated__/swr/hooks.ts' },
 })

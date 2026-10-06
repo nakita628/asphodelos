@@ -139,11 +139,11 @@ describe('asphodelos — what it does not take', () => {
     expect(result.ok).toBe(false)
   })
 
-  it('rejects an unknown flag', async () => {
+  it('rejects an unknown flag, the retired -o among them', async () => {
     project()
-    const result = await run(['--nope'])
-
-    expect(result.ok).toBe(false)
+    expect((await run(['--nope'])).ok).toBe(false)
+    expect((await run(['-o', 'src/index.ts'])).ok).toBe(false)
+    expect((await run(['--output', 'src/index.ts'])).ok).toBe(false)
   })
 })
 
@@ -163,7 +163,9 @@ describe('asphodelos — config mode', () => {
     expect(result.stdout).toContain('Generated 1 module(s) (items)')
     expect(result.stdout).toContain('Generated app type written to src/types.ts')
     expect(existsSync(path.join(dir, 'src/types.ts'))).toBe(true)
-  })
+    // The first pass in the file pays for the generators' imports — the OpenAPI parser, the
+    // TypeSpec compiler, ts-morph — which the default five seconds do not always cover.
+  }, 30_000)
 
   it("the config's format block reaches the generated source", async () => {
     const dir = project(

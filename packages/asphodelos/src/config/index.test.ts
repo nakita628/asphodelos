@@ -470,6 +470,22 @@ describe('defineConfig', () => {
     expect(config.components.schemas.output).toBe('src/schemas')
   })
 
+  // The address is the environment's: a URL in the config, or no address at all, does not compile.
+  it('is a type error to write a URL into the client, or to leave its address out', () => {
+    const url = defineConfig({
+      input: 'openapi.yaml',
+      // @ts-expect-error -- baseUrl names an environment variable or a module's value
+      client: { output: 'src/client.ts', baseUrl: 'http://localhost:3000' },
+    })
+    expect(url.input).toBe('openapi.yaml')
+    const none = defineConfig({
+      input: 'openapi.yaml',
+      // @ts-expect-error -- baseUrl is required
+      client: { output: 'src/client.ts' },
+    })
+    expect(none.input).toBe('openapi.yaml')
+  })
+
   // The hooks and the wrappers need the client block, and the type says so on their key.
   it('is a type error to name the hooks or eden without the client', () => {
     const hooks = defineConfig({

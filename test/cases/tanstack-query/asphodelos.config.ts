@@ -8,9 +8,10 @@ export default defineConfig({
   input: '../../specs/users.yaml',
   output: './app/index.ts',
   package: '@asphodelos/host',
+  // A value a module exports, imported by the specifier as written from where the client is.
   client: {
     output: '../../__generated__/tanstack-query/client.ts',
-    baseUrl: { env: 'ASPHODELOS_TEST_API_URL', source: 'process.env' },
+    baseUrl: { import: '../../hosts/env', value: 'env.API_URL' },
   },
   'tanstack-query': { output: '../../__generated__/tanstack-query/hooks.ts' },
 })
