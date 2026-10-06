@@ -30,7 +30,7 @@ describe('parseConfig', () => {
     expect(
       decodeError({
         input: 'a.yaml',
-        client: { output: 'src/client.ts' },
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
         swr: { output: 'src/swr.ts', imports: './lib' },
       }).message,
     ).toBe('Invalid config: swr.imports: Expected no excess property')
@@ -138,7 +138,7 @@ describe('parseConfig', () => {
     expect(
       decodeError({
         input: 'a.yaml',
-        client: { output: 'src/client.ts' },
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
         swr: { output: 'src/swr.ts', import: './lib' },
       }).message,
     ).toBe(
@@ -147,7 +147,7 @@ describe('parseConfig', () => {
     expect(
       decodeError({
         input: 'a.yaml',
-        client: { output: 'src/client.ts' },
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
         swr: { output: 'src/swr.ts', client: 'api' },
       }).message,
     ).toBe(
@@ -156,7 +156,7 @@ describe('parseConfig', () => {
     expect(
       decodeError({
         input: 'a.yaml',
-        client: { output: 'src/client.ts' },
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
         eden: { output: 'src/eden.ts', import: './lib' },
       }).message,
     ).toBe(
@@ -167,7 +167,7 @@ describe('parseConfig', () => {
   it('normalizes a hooks output that names a directory to its index.ts', () => {
     const result = decode({
       input: 'a.yaml',
-      client: { output: 'src/client.ts' },
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
       swr: { output: 'src/swr' },
     })
     expect(result.swr?.output).toBe('src/swr/index.ts')
@@ -178,7 +178,7 @@ describe('parseConfig', () => {
     expect(
       decodeError({
         input: 'a.yaml',
-        client: { output: 'src/client.ts' },
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
         'tanstack-query': { output: 'src/query', split: true },
       }).message,
     ).toBe(
@@ -243,27 +243,32 @@ describe('parseConfig', () => {
   })
 
   describe('client', () => {
-    it('takes an output alone: no base URL, same origin off', () => {
-      const config = decode({ input: 'a.yaml', client: { output: 'src/client.ts' } })
-      expect(config.client).toStrictEqual({ output: 'src/client.ts', sameOrigin: false })
+    it('needs a base URL, and takes no URL written into the file', () => {
+      expect(
+        decodeError({ input: 'a.yaml', client: { output: 'src/client.ts' } }).message,
+      ).toContain('Invalid config: client.baseUrl')
+      expect(
+        decodeError({
+          input: 'a.yaml',
+          client: { output: 'src/client.ts', baseUrl: 'https://api.example.com' },
+        }).message,
+      ).toContain('Invalid config: client.baseUrl')
+      const config = decode({
+        input: 'a.yaml',
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      })
+      expect(config.client).toStrictEqual({
+        output: 'src/client.ts',
+        baseUrl: { env: 'API_URL', source: 'process.env' },
+        sameOrigin: false,
+      })
     })
 
     it('rejects an output that is not a .ts file', () => {
-      expect(decodeError({ input: 'a.yaml', client: { output: 'src/client' } }).message).toBe(
-        'Invalid config: client.output: must be .ts file',
-      )
-    })
-
-    it('takes a URL as the base URL and rejects one with quotes', () => {
-      const config = decode({
-        input: 'a.yaml',
-        client: { output: 'src/client.ts', baseUrl: 'https://api.example.com', sameOrigin: true },
-      })
-      expect(config.client?.baseUrl).toBe('https://api.example.com')
-      expect(config.client?.sameOrigin).toBe(true)
       expect(
-        decodeError({ input: 'a.yaml', client: { output: 'src/client.ts', baseUrl: "'x'" } })._tag,
-      ).toBe('ConfigError')
+        decodeError({ input: 'a.yaml', client: { output: 'src/client', baseUrl: { env: 'X' } } })
+          .message,
+      ).toBe('Invalid config: client.output: must be .ts file')
     })
 
     it('takes an environment variable, read from import.meta.env unless told otherwise', () => {
@@ -285,32 +290,50 @@ describe('parseConfig', () => {
       ).toBe('ConfigError')
     })
 
-    it('takes an imported environment, exported as `env` unless named', () => {
+    it('takes a value a module exports, as the expression the client is created with', () => {
       const config = decode({
         input: 'a.yaml',
-        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', import: '@/env' } },
+        client: { output: 'src/client.ts', baseUrl: { import: '@/env', value: 'env.API_URL' } },
       })
-      expect(config.client?.baseUrl).toStrictEqual({ env: 'API_URL', import: '@/env', name: 'env' })
+      expect(config.client?.baseUrl).toStrictEqual({ import: '@/env', value: 'env.API_URL' })
+      expect(
+        decodeError({
+          input: 'a.yaml',
+          client: { output: 'src/client.ts', baseUrl: { import: '@/env', value: 'env[0]' } },
+        }).message,
+      ).toBe(
+        'Invalid config: client.baseUrl.value: must be an export of the module, with the property read from it: `env.API_URL`',
+      )
     })
 
     it('takes the name the client is imported by, and the app its package name', () => {
       const config = decode({
         input: 'a.yaml',
         package: '@packages/elysia',
-        client: { output: '../client/src/client.ts', package: '@packages/client' },
+        client: {
+          output: '../client/src/client.ts',
+          baseUrl: { env: 'API_URL' },
+          package: '@packages/client',
+        },
       })
       expect(config.package).toBe('@packages/elysia')
       expect(config.client?.package).toBe('@packages/client')
       expect(
-        decodeError({ input: 'a.yaml', client: { output: 'src/client.ts', package: 'a b' } })
-          .message,
+        decodeError({
+          input: 'a.yaml',
+          client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' }, package: 'a b' },
+        }).message,
       ).toBe(
         'Invalid config: client.package: must be a module specifier, with no whitespace or quotes',
       )
       expect(
         decodeError({
           input: 'a.yaml',
-          client: { output: '../client/src/client.ts', import: '@packages/server' },
+          client: {
+            output: '../client/src/client.ts',
+            baseUrl: { env: 'API_URL' },
+            import: '@packages/server',
+          },
         }).message,
       ).toBe(
         'Invalid config: client.import: import was removed: a client in another package imports the app by the top-level `package`, the name the app entry is published as. Delete the import and set package.',
@@ -321,7 +344,7 @@ describe('parseConfig', () => {
     it('takes eden and the hooks with an output alone', () => {
       const config = decode({
         input: 'a.yaml',
-        client: { output: 'src/client.ts' },
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
         eden: { output: 'src/eden.ts' },
         'tanstack-query': { output: 'src/tanstack-query.ts' },
       })
@@ -332,7 +355,7 @@ describe('parseConfig', () => {
     it('counts the client among the outputs that may not collide', () => {
       const error = decodeError({
         input: 'a.yaml',
-        client: { output: 'src/client.ts' },
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
         eden: { output: 'src/client.ts' },
       })
       expect(error.message).toBe(
@@ -345,7 +368,7 @@ describe('parseConfig', () => {
   it('rejects eden.docs, naming what happened to it', () => {
     const error = decodeError({
       input: 'a.yaml',
-      client: { output: 'src/client.ts' },
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
       eden: { output: 'src/eden.ts', docs: true },
     })
     expect(error.message).toBe(
@@ -420,7 +443,12 @@ describe('defineConfig', () => {
         responses: { output: 'src/components/responses.ts' },
       },
       package: '@packages/elysia',
-      client: { output: 'src/lib/client.ts', package: '@packages/client', sameOrigin: true },
+      client: {
+        output: 'src/lib/client.ts',
+        baseUrl: { env: 'API_URL' },
+        package: '@packages/client',
+        sameOrigin: true,
+      },
       eden: { output: 'src/eden.ts' },
       types: { output: 'src/types.ts' },
       mock: { output: 'src/mock.ts', seed: 42, delay: { min: 100, max: 800 } },
@@ -458,7 +486,7 @@ describe('defineConfig', () => {
     expect(wrappers.input).toBe('openapi.yaml')
     const both = defineConfig({
       input: 'openapi.yaml',
-      client: { output: 'src/client.ts' },
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' } },
       swr: { output: 'src/swr.ts' },
       eden: { output: 'src/eden.ts' },
     })
@@ -498,7 +526,7 @@ describe('defineConfig', () => {
     const client = defineConfig({
       input: 'openapi.yaml',
       // @ts-expect-error -- `import` was removed
-      client: { output: 'src/client.ts', import: '@packages/elysia' },
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL' }, import: '@packages/elysia' },
     })
     expect(client.input).toBe('openapi.yaml')
   })

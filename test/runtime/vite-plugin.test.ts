@@ -35,7 +35,7 @@ function writeConfig(swrOutput: string) {
 export default defineConfig({
   input: 'openapi.yaml',
   output: 'app/index.ts',
-  client: { output: 'lib/client.ts' },
+  client: { output: 'lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
   swr: { output: '${swrOutput}' },
 })
 `,

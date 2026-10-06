@@ -12,7 +12,7 @@
 // 2. `npm install` it into a fresh directory, with TypeScript and Vite as a user would have them;
 // 3. require exactly one installed version of `effect`;
 // 4. typecheck imports of both entry points under NodeNext and bundler resolution;
-// 5. run the CLI: `--version`, a one-shot generation, and a config-file run;
+// 5. run the CLI: `--version` and a config-file run;
 // 6. start a Vite dev server with the plugin and wait for it to generate.
 //
 // Needs network access for npm, and a built `dist` (`bun run test:pack` builds first).
@@ -167,14 +167,10 @@ export const plugin: unknown = asphodelosVite()
   })
 
   const cli = join(project, 'node_modules', '.bin', 'asphodelos')
-  step('the CLI runs a one-shot generation and a config file', () => {
+  step('the CLI runs a config file', () => {
     writeFileSync(join(project, 'openapi.yaml'), DOCUMENT)
     if (!/^asphodelos v\d/u.test(run(cli, ['--version'], project))) {
       throw new Error('--version did not print a version')
-    }
-    run(cli, ['openapi.yaml', '-o', 'one-shot/index.ts'], project)
-    if (!existsSync(join(project, 'one-shot/modules/ping/index.ts'))) {
-      throw new Error('one-shot generation wrote nothing')
     }
     writeFileSync(
       join(project, 'asphodelos.config.ts'),
@@ -183,7 +179,7 @@ export const plugin: unknown = asphodelosVite()
 export default defineConfig({
   input: 'openapi.yaml',
   output: 'src/index.ts',
-  client: { output: 'src/client.ts' },
+  client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
   swr: { output: 'src/hooks.ts' },
 })
 `,

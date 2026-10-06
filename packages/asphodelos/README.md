@@ -22,15 +22,9 @@ Asphodelos targets the [Bun](https://bun.sh/) runtime.
 bun add -D asphodelos
 ```
 
-### CLI
-
-```bash
-bunx asphodelos path/to/input.{yaml,json,tsp} -o path/to/output.ts
-```
-
 ### Configuration File
 
-Create `asphodelos.config.ts`:
+The CLI runs the config file in the working directory. Create `asphodelos.config.ts`:
 
 ```ts
 import { defineConfig } from 'asphodelos'
@@ -54,15 +48,11 @@ DESCRIPTION
   Asphodelos is a code generator from OpenAPI to Elysia
 
 USAGE
-  asphodelos [flags] [<input>]
-
-ARGUMENTS
-  input input.{yaml,json,tsp} OpenAPI (.yaml, .json) or TypeSpec (.tsp) document to generate from (optional)
+  asphodelos [flags]
 
 FLAGS
-  --output, -o output.ts    TypeScript file the generated app is written to
-  --config, -c file         Config file to run (default: ./asphodelos.config.ts)
-  --watch, -w               Rerun the config on every change to its documents or itself
+  --config, -c file    Config file to run (default: ./asphodelos.config.ts)
+  --watch, -w          Rerun the config on every change to its documents or itself
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information
@@ -72,9 +62,6 @@ GLOBAL FLAGS
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 
 EXAMPLES
-  # Generate a single app from one document
-  asphodelos openapi.yaml -o src/index.ts
-
   # Run every generator declared in ./asphodelos.config.ts
   asphodelos
 
@@ -85,8 +72,8 @@ EXAMPLES
   asphodelos --watch
 ```
 
-With an `<input>` the CLI generates one app and ignores any config file. With no `<input>` it
-runs the config file.
+The CLI runs the config file, `asphodelos.config.ts` in the working directory or the one
+`--config` names, and nothing else: every input and output is declared there.
 
 ### Watch Mode
 
@@ -98,7 +85,7 @@ Reruns the config on every change to the input documents or to the config itself
 watching when a run fails. The whole directory of the input document is watched, so TypeSpec
 imports and `$ref` files beside it trigger a rerun too — and so do the files a `$ref` or an import
 reaches outside that directory. An input directory that is removed and recreated, or that does not
-exist yet, is picked up when it appears. It cannot be combined with `<input>` / `--output`.
+exist yet, is picked up when it appears.
 
 ### Example
 
@@ -224,17 +211,14 @@ export default defineConfig({
 
 ### Generated Client
 
-Generate the Treaty client itself, typed by the app entry.
+Generate the Treaty client itself, typed by the app entry. Its address comes from the
+environment: `baseUrl` names the variable, and the generated file asserts it is set.
 
 ```ts
 export default defineConfig({
   input: 'openapi.yaml',
   output: 'src/index.ts',
-  client: {
-    output: 'src/lib/client.ts',
-    baseUrl: 'http://localhost:3000',
-    sameOrigin: true,
-  },
+  client: { output: 'src/lib/client.ts', baseUrl: { env: 'VITE_API_URL' } },
 })
 ```
 
@@ -243,24 +227,39 @@ export default defineConfig({
 import { treaty } from '@elysiajs/eden'
 import type { app } from '../index'
 
-const origin = typeof window === 'undefined' ? 'http://localhost:3000' : window.location.origin
+const origin = import.meta.env.VITE_API_URL!
 
 export const client = treaty<typeof app>(origin)
 ```
 
-The client is created once, when the module loads, from two settings:
+`source: 'process.env'` reads `process.env` instead, for code Node.js or Bun runs:
 
-| Setting      | What the client is created with                                                                                                                                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `baseUrl`    | `'http://localhost:3000'` — the URL as written. Left out: `http://localhost:<port>`, where the app entry listens.                                                                                            |
-|              | `{ env: 'VITE_API_URL' }` — `import.meta.env.VITE_API_URL`, read when the client is created, with that address as its fallback. `source: 'process.env'` reads `process.env` instead.                         |
-|              | `{ env: 'API_URL', import: '@/env' }` — `env.API_URL` from the module `@/env` (`name` renames the export).                                                                                                   |
-| `sameOrigin` | `true`: in a browser, `window.location.origin` — the page the client runs on; `baseUrl` only serves code without a window, such as a server render or a loader. `false` (the default): `baseUrl` everywhere. |
+```ts
+client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } }
+// const origin = process.env.API_URL!
+```
 
-`sameOrigin` suits an app a host framework such as TanStack Start or Next.js serves beside its
-pages, where the API shares the origin and CORS has nothing to allow; it needs the DOM lib. The
-`index.ts` beside the client re-exports it, so it is imported as `./lib` — that is what `eden` and
-the hooks do, and what your own code can do too:
+A value a module exports is used as written — `value` is the export followed by what is read
+from it, and the module answers for it being there:
+
+```ts
+client: { output: 'src/lib/client.ts', baseUrl: { import: '@/env', value: 'env.API_URL' } }
+// import { env } from '@/env'
+// const origin = env.API_URL
+```
+
+`sameOrigin: true` is for an app a host framework such as TanStack Start or Next.js serves beside
+its pages. In a browser the client sends to the page's own origin, so there is no CORS to
+configure; the variable is read only without a window, for a server render or a loader. Needs the
+DOM lib.
+
+```ts
+client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' }, sameOrigin: true }
+// const origin = typeof window === 'undefined' ? process.env.API_URL! : window.location.origin
+```
+
+The `index.ts` beside the client re-exports it, so it is imported as `./lib` — by `eden`, by the
+hooks, and by your own code:
 
 ```ts
 import { client } from './lib'
@@ -269,8 +268,7 @@ const { data, error } = await client.users({ id: '1' }).get()
 ```
 
 The app is imported for its type only, so a browser bundle never pulls the server in. The project
-needs `@elysiajs/eden`, and `elysia` has to resolve to one copy, or `typeof app` and the client's
-`Elysia` type will not agree.
+needs `@elysiajs/eden`, with `elysia` resolving to one copy.
 
 ### Imports Between Generated Files
 
@@ -291,7 +289,11 @@ export default defineConfig({
   input: 'openapi.yaml',
   output: 'src/index.ts',
   package: '@packages/elysia', // the client imports `app` from here
-  client: { output: '../eden/src/client.ts', package: '@packages/eden' }, // the hooks import it from here
+  client: {
+    output: '../eden/src/client.ts',
+    baseUrl: { env: 'VITE_API_URL' },
+    package: '@packages/eden', // the hooks import it from here
+  },
   'tanstack-query': { output: '../react/src/api/hooks.ts' },
 })
 ```
@@ -306,7 +308,7 @@ Generate one wrapper per operation over the generated client.
 ```ts
 export default defineConfig({
   input: 'openapi.yaml',
-  client: { output: 'src/lib/client.ts' },
+  client: { output: 'src/lib/client.ts', baseUrl: { env: 'VITE_API_URL' } },
   eden: { output: 'src/eden.ts' },
 })
 ```
@@ -318,7 +320,7 @@ Supported: SWR, TanStack Query, Preact Query, Solid Query, Vue Query, Svelte Que
 ```ts
 export default defineConfig({
   input: 'openapi.yaml',
-  client: { output: 'src/lib/client.ts' },
+  client: { output: 'src/lib/client.ts', baseUrl: { env: 'VITE_API_URL' } },
   'tanstack-query': { output: './src/tanstack-query.ts' },
 })
 ```
@@ -526,9 +528,8 @@ export default defineConfig({
   client: {
     output: 'src/lib/client.ts', // re-exported by src/lib/index.ts
     // package: '@packages/eden', // what other packages import the client by
-    baseUrl: 'http://localhost:3000', // `http://localhost:<port>` when left out
-    // baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
-    // baseUrl: { env: 'API_URL', import: '@/env', name: 'env' },
+    baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' }, // import.meta.env.VITE_API_URL!
+    // baseUrl: { import: '@/env', value: 'env.API_URL' }, // a value a module exports
     sameOrigin: false, // true: a browser uses window.location.origin, baseUrl is for the rest
   },
 

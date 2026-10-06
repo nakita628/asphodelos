@@ -409,14 +409,4 @@ describe('asphodelos --watch', () => {
       await stop(watch)
     }
   }, 60_000)
-
-  it('refuses to watch in argv mode, because a one-shot has no second pass', async () => {
-    project(SPEC(['ping']))
-
-    const watch = startWatch(['openapi.yaml', '-o', 'src/index.ts', '--watch'])
-    const exit = await Effect.runPromise(Fiber.await(watch.fiber))
-
-    expect(exit._tag).toBe('Failure')
-    expect(watch.output()).toContain('--watch runs a config file')
-  }, 60_000)
 })

@@ -26,7 +26,7 @@ describe('asphodelos CLI binary', () => {
 
       expect(result.status).toBe(0)
       expect(result.stdout).toContain('USAGE')
-      expect(result.stdout).toContain('asphodelos [flags] [<input>]')
+      expect(result.stdout).toContain('asphodelos [flags]')
     },
     SPAWN_TIMEOUT_MS,
   )

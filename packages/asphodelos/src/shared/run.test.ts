@@ -199,7 +199,7 @@ describe('makeJob — every job actually runs', () => {
 
   it('eden: writes per-operation wrappers importing the generated client', async () => {
     const run = await runJobs({
-      client: { output: 'src/client.ts' },
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
       eden: { output: 'src/api/eden.ts' },
     })
     expect(run.names).toContain('eden')
@@ -208,22 +208,23 @@ describe('makeJob — every job actually runs', () => {
     expect(eden).toContain('listItems')
   })
 
-  // The client imports the app entry for its type and is created with the address the entry
-  // listens on, so a config with nothing but `client: { output }` yields a client that works
-  // against `bun run src/index.ts`.
-  it('client: writes a treaty client typed by the app entry, aimed at the configured port', async () => {
-    const run = await runJobs({ client: { output: 'src/lib/client.ts' }, port: '4000' })
+  // The client imports the app entry for its type and is created with the environment's address,
+  // asserted to be set: nothing in the file says where the server is.
+  it('client: writes a treaty client typed by the app entry, created with the environment', async () => {
+    const run = await runJobs({
+      client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+    })
     expect(run.names).toContain('client')
     const code = run.read('src/lib/client.ts')
     expect(code).toContain("import type { app } from '../index'")
-    expect(code).toContain("treaty<typeof app>('http://localhost:4000')")
+    expect(code).toContain('const origin = process.env.API_URL!')
   })
 
   // A file that names no import reads the generated client, from wherever it is written. Beside
   // the app entry the client has no barrel — the `index.ts` there is the entry.
   it('client: eden and the hooks import the generated client when they name no import', async () => {
     const run = await runJobs({
-      client: { output: 'src/client.ts' },
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
       eden: { output: 'src/api/eden.ts' },
       swr: { output: 'src/swr.ts' },
     })
@@ -236,7 +237,7 @@ describe('makeJob — every job actually runs', () => {
   // elsewhere import that directory; a file beside the client imports the client itself.
   it('client: a barrel beside the client re-exports it, and the other files import the directory', async () => {
     const run = await runJobs({
-      client: { output: 'src/lib/client.ts' },
+      client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
       eden: { output: 'src/lib/eden.ts' },
       swr: { output: 'src/hooks/swr.ts' },
     })
@@ -248,22 +249,32 @@ describe('makeJob — every job actually runs', () => {
   // The barrel is written through the formatter like every generated file, so what was there is
   // kept as the formatter spells it.
   it('client: a barrel that is there already keeps its exports and gains the client once', async () => {
-    const run = await runJobs({ client: { output: 'src/lib/client.ts' } }, (dir) => {
-      mkdirSync(path.join(dir, 'src/lib'), { recursive: true })
-      writeFileSync(path.join(dir, 'src/lib/index.ts'), "export * from './env';\n")
-    })
+    const run = await runJobs(
+      {
+        client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      },
+      (dir) => {
+        mkdirSync(path.join(dir, 'src/lib'), { recursive: true })
+        writeFileSync(path.join(dir, 'src/lib/index.ts'), "export * from './env';\n")
+      },
+    )
     expect(run.read('src/lib/index.ts')).toBe("export * from './env'\nexport * from './client'\n")
-    const again = await runJobs({ client: { output: 'src/lib/client.ts' } }, (dir) => {
-      mkdirSync(path.join(dir, 'src/lib'), { recursive: true })
-      writeFileSync(path.join(dir, 'src/lib/index.ts'), 'export * from "./client"\n')
-    })
+    const again = await runJobs(
+      {
+        client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      },
+      (dir) => {
+        mkdirSync(path.join(dir, 'src/lib'), { recursive: true })
+        writeFileSync(path.join(dir, 'src/lib/index.ts'), 'export * from "./client"\n')
+      },
+    )
     expect(again.read('src/lib/index.ts')).toBe('export * from "./client"\n')
   })
 
   // The `index.ts` beside the client is left alone when another generator writes it.
   it('client: no barrel where another generator writes the index.ts beside the client', async () => {
     const run = await runJobs({
-      client: { output: 'src/lib/client.ts' },
+      client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
       eden: { output: 'src/lib/index.ts' },
       swr: { output: 'src/swr.ts' },
     })
@@ -279,7 +290,11 @@ describe('makeJob — every job actually runs', () => {
       {
         output: 'src/index.ts',
         package: '@packages/server',
-        client: { output: '../client/src/lib/client.ts', package: '@packages/client' },
+        client: {
+          output: '../client/src/lib/client.ts',
+          baseUrl: { env: 'API_URL', source: 'process.env' },
+          package: '@packages/client',
+        },
         eden: { output: '../client/src/lib/eden.ts' },
         'tanstack-query': { output: '../react/src/api/hooks.ts' },
         swr: { output: 'src/hooks/swr.ts' },
@@ -316,7 +331,11 @@ describe('makeJob — every job actually runs', () => {
     }
     expect(
       await failure({
-        client: { output: '../client/src/lib/client.ts', package: '@packages/client' },
+        client: {
+          output: '../client/src/lib/client.ts',
+          baseUrl: { env: 'API_URL', source: 'process.env' },
+          package: '@packages/client',
+        },
       }),
     ).toContain(
       'client.output is in another package than the app entry: name the package the app is published as, the top-level package, for the client to import it by.',
@@ -324,7 +343,10 @@ describe('makeJob — every job actually runs', () => {
     expect(
       await failure({
         package: '@packages/server',
-        client: { output: '../client/src/lib/client.ts' },
+        client: {
+          output: '../client/src/lib/client.ts',
+          baseUrl: { env: 'API_URL', source: 'process.env' },
+        },
         'tanstack-query': { output: '../react/src/api/hooks.ts' },
       }),
     ).toContain(
@@ -408,7 +430,7 @@ describe('makeJob — every job actually runs', () => {
     const run = await runJobs({
       output: 'src/index.ts',
       pathAlias: '@/',
-      client: { output: 'src/lib/client.ts' },
+      client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
       'tanstack-query': { output: 'src/hooks.ts' },
       swr: { output: 'web/swr.ts' },
     })
@@ -422,7 +444,7 @@ describe('makeJob — every job actually runs', () => {
     const run = await runJobs({
       output: 'server/index.ts',
       pathAlias: '~/',
-      client: { output: 'web/lib/client.ts' },
+      client: { output: 'web/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
       swr: { output: 'web/swr.ts' },
     })
     expect(run.read('web/lib/client.ts')).toContain("import type { app } from '~/index'")
@@ -456,7 +478,10 @@ describe('makeJob — every job actually runs', () => {
     const config = Object.fromEntries(
       libraries.map((library) => [library, { output: `src/${library}.ts` }]),
     )
-    const run = await runJobs({ client: { output: 'src/client.ts' }, ...config })
+    const run = await runJobs({
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      ...config,
+    })
     for (const library of libraries) {
       expect(run.names).toContain(library)
       // Every library's file imports the generated client beside it, under its one export name.
@@ -466,7 +491,7 @@ describe('makeJob — every job actually runs', () => {
 
   it('hook libraries: a directory output is written as its index.ts', async () => {
     const run = await runJobs({
-      client: { output: 'src/client.ts' },
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
       swr: { output: 'src/swr' },
     })
     expect(run.exists('src/swr/index.ts')).toBe(true)

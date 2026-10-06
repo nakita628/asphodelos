@@ -8,6 +8,9 @@ export default defineConfig({
   input: '../../specs/users.yaml',
   output: './app/index.ts',
   package: '@asphodelos/host',
-  client: { output: '../../__generated__/solid-query/client.ts' },
+  client: {
+    output: '../../__generated__/solid-query/client.ts',
+    baseUrl: { env: 'ASPHODELOS_TEST_API_URL', source: 'process.env' },
+  },
   'solid-query': { output: '../../__generated__/solid-query/hooks.ts' },
 })

@@ -213,41 +213,23 @@ const ExportTypesOutputSchema = splitUnion({
  * other would accept the object as well and leave `import` out.
  */
 const BaseUrlSchema = Schema.Union([
-  Schema.String.check(
-    Schema.isPattern(/^[^\s'"`\\]+$/u, { message: 'must be a URL, with no whitespace or quotes' }),
-  ).annotate({
-    title: 'URL',
-    description: 'The origin the client sends its requests to, written into the file as it stands.',
-    examples: ['http://localhost:3000', 'https://api.example.com'],
-  }),
   Schema.Struct({
-    env: Schema.String.check(
-      Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u, {
-        message: 'must be the name of an environment variable',
-      }),
-    ).annotate({
-      title: 'Environment variable',
-      description: 'The property of the imported environment the base URL is read from.',
-      examples: ['API_URL'],
-    }),
     import: ImportSchema.annotate({
       title: 'Import specifier',
       description:
-        'The module that exports the environment, written into the client file as it stands. One that validates what it exports hands out a value that is there, so nothing stands in for it.',
+        'The module the base URL is read from, written into the client file as it stands: one that validates its environment and exports it.',
       examples: ['@/env', '../env'],
     }),
-    name: Schema.String.check(
-      Schema.isPattern(/^[A-Za-z_$][A-Za-z0-9_$]*$/u, {
-        message: 'must be a JavaScript identifier',
+    value: Schema.String.check(
+      Schema.isPattern(/^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/u, {
+        message: 'must be an export of the module, with the property read from it: `env.API_URL`',
       }),
-    )
-      .pipe(Schema.withDecodingDefault(Effect.succeed('env')))
-      .annotate({
-        title: 'Environment export name',
-        description:
-          'Named export to import from `import` as the environment, `env` when left out.',
-        examples: ['env'],
-      }),
+    ).annotate({
+      title: 'Value',
+      description:
+        'The expression the client is created with, as it is written: the export of `import` followed by the property read from it. `env.API_URL` imports `env` and reads `env.API_URL`; `apiUrl` imports and uses `apiUrl` itself.',
+      examples: ['env.API_URL', 'apiUrl'],
+    }),
   }),
   Schema.Struct({
     env: Schema.String.check(
@@ -257,7 +239,7 @@ const BaseUrlSchema = Schema.Union([
     ).annotate({
       title: 'Environment variable',
       description:
-        'The variable the base URL is read from when the client is created, with `http://localhost:<port>` in its place when it is not set.',
+        'The variable the base URL is read from when the client is created, asserted to be set: `process.env.API_URL!`.',
       examples: ['VITE_API_URL', 'API_URL'],
     }),
     source: Schema.Literals(['import.meta.env', 'process.env'])
@@ -272,11 +254,10 @@ const BaseUrlSchema = Schema.Union([
 ]).annotate({
   title: 'Base URL',
   description:
-    'What the client is created with, `treaty<typeof app>(baseUrl)`: a URL written into the file, an environment variable read when the client is created, or a property of an environment a module exports. `http://localhost:<port>` when left out, the address the app entry listens on.',
+    "What the client is created with, `treaty<typeof app>(baseUrl)`: an environment variable read when the client is created, or a value a module exports. Never a URL written into the file — the address is the environment's to say.",
   examples: [
-    'http://localhost:3000',
     { env: 'VITE_API_URL', source: 'import.meta.env' },
-    { env: 'API_URL', import: '@/env', name: 'env' },
+    { import: '@/env', value: 'env.API_URL' },
   ],
 })
 
@@ -297,7 +278,7 @@ const ClientOutputSchema = Schema.Struct({
       examples: ['@packages/client'],
     }),
   ),
-  baseUrl: Schema.optionalKey(BaseUrlSchema),
+  baseUrl: BaseUrlSchema,
   sameOrigin: Schema.optionalKey(
     Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
       title: 'Same origin in the browser',
@@ -310,8 +291,16 @@ const ClientOutputSchema = Schema.Struct({
   description:
     'The Eden Treaty client of the generated app, `treaty<typeof app>(baseUrl)`, typed by a type-only import of the app entry so the server never reaches a browser bundle. `eden` and the hooks import it unless they name an `import` of their own. Needs `@elysiajs/eden` in the project.',
   examples: [
-    { output: './src/client.ts', baseUrl: 'http://localhost:3000', sameOrigin: true },
-    { output: '../client/src/lib/client.ts', package: '@packages/client' },
+    {
+      output: './src/client.ts',
+      baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
+      sameOrigin: true,
+    },
+    {
+      output: '../client/src/lib/client.ts',
+      baseUrl: { env: 'API_URL', source: 'process.env' },
+      package: '@packages/client',
+    },
   ],
 })
 

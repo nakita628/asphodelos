@@ -235,9 +235,6 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
     config.pathAlias === undefined
       ? undefined
       : { prefix: config.pathAlias.replace(/\/+$/u, ''), directory: baseDir }
-  // The address the app entry listens on: what the client is created with when the config names
-  // no base URL, and what an environment variable left unset falls back to.
-  const localhost = `http://localhost:${config.port ?? '3000'}`
   // A client that is not an `index.ts` is re-exported by the `index.ts` beside it, and imported
   // through it — unless that file is what another generator writes.
   const clientBarrel = (() => {
@@ -349,8 +346,7 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
                 'client.output is in another package than the app entry: name the package the app is published as, the top-level package, for the client to import it by.',
               ),
               {
-                baseUrl: clientConfig.baseUrl ?? localhost,
-                fallback: localhost,
+                baseUrl: clientConfig.baseUrl,
                 sameOrigin: clientConfig.sameOrigin === true,
                 barrel: clientBarrel,
               },

@@ -38,7 +38,7 @@ describe('makeJob', () => {
       parseConfig({
         input: 'api.yaml',
         output: 'src/index.ts',
-        client: { output: 'src/client.ts' },
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
         eden: { output: 'src/eden.ts' },
         types: { output: 'src/types.ts' },
         swr: { output: 'src/swr.ts' },
@@ -102,7 +102,7 @@ describe('makeJob', () => {
     const parsed = Effect.runSync(
       parseConfig({
         input: 'api.yaml',
-        client: { output: 'src/client.ts' },
+        client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
         'preact-query': { output: 'src/preact' },
       }),
     )

@@ -83,7 +83,7 @@ afterAll(() => {
 })
 
 describe('asphodelos --help / --version', () => {
-  it('describes both modes and every flag', async () => {
+  it('describes the config mode and every flag', async () => {
     project()
     const result = await run(['--help'])
 
@@ -95,12 +95,11 @@ describe('asphodelos --help / --version', () => {
       .filter((line) => line.startsWith('  --'))
       .map((line) => line.trim().replaceAll(/ {2,}/gu, '  '))
     expect(flags).toStrictEqual([
-      '--output, -o output.ts  TypeScript file the generated app is written to',
       '--config, -c file  Config file to run (default: ./asphodelos.config.ts)',
       '--watch, -w  Rerun the config on every change to its documents or itself',
     ])
     // The examples are the command's own documentation of what it accepts.
-    expect(result.stdout).toContain('asphodelos openapi.yaml -o src/index.ts')
+    expect(result.stdout).toContain('asphodelos --config config/api.config.ts')
     expect(result.stdout).toContain('asphodelos --watch')
   })
 
@@ -131,78 +130,20 @@ describe('asphodelos --help / --version', () => {
   })
 })
 
-describe('asphodelos <input> -o <output> — one-shot', () => {
-  it('generates the app and its modules from the document', async () => {
-    const dir = project()
-    const result = await run(['openapi.yaml', '-o', 'src/index.ts'])
-
-    expect(result.ok).toBe(true)
-    expect(result.stdout).toContain('Generated 1 module(s) (items)')
-    expect(existsSync(path.join(dir, 'src/index.ts'))).toBe(true)
-    expect(existsSync(path.join(dir, 'src/modules/items/index.ts'))).toBe(true)
-  })
-
-  it('consults no config file, even when one is sitting there', async () => {
-    const dir = project(configSource(`{ input: 'openapi.yaml', output: 'src/fromConfig.ts' }`))
-    const result = await run(['openapi.yaml', '-o', 'src/fromArgv.ts'])
-
-    expect(result.ok).toBe(true)
-    expect(existsSync(path.join(dir, 'src/fromArgv.ts'))).toBe(true)
-    expect(existsSync(path.join(dir, 'src/fromConfig.ts'))).toBe(false)
-  })
-
-  it('rejects an input whose extension is not one it can read', async () => {
-    const dir = project()
-    writeFileSync(path.join(dir, 'openapi.txt'), SPEC)
-    const result = await run(['openapi.txt', '-o', 'src/index.ts'])
-
-    expect(result.ok).toBe(false)
-    expect(result.stderr).toContain('an OpenAPI (.yaml, .json) or TypeSpec (.tsp) document')
-    expect(existsSync(path.join(dir, 'src'))).toBe(false)
-  })
-
-  it('rejects an output that is not a .ts file', async () => {
-    const dir = project()
-    const result = await run(['openapi.yaml', '-o', 'src/index.js'])
-
-    expect(result.ok).toBe(false)
-    expect(result.stderr).toContain('a TypeScript file path ending in .ts')
-    expect(existsSync(path.join(dir, 'src'))).toBe(false)
-  })
-
-  it('rejects an input that is not there', async () => {
+describe('asphodelos — what it does not take', () => {
+  // There is one mode, the config file; a document on the command line has nowhere to go.
+  it('rejects a positional argument', async () => {
     project()
-    expect((await run(['missing.yaml', '-o', 'src/index.ts'])).ok).toBe(false)
+    const result = await run(['openapi.yaml'])
+
+    expect(result.ok).toBe(false)
   })
 
   it('rejects an unknown flag', async () => {
     project()
-    const result = await run(['openapi.yaml', '-o', 'src/index.ts', '--nope'])
+    const result = await run(['--nope'])
 
     expect(result.ok).toBe(false)
-  })
-
-  it('refuses each half of the pair without the other', async () => {
-    project()
-    const withoutOutput = await run(['openapi.yaml'])
-    const withoutInput = await run(['-o', 'src/index.ts'])
-
-    // The rejection goes to stderr and the usage block to stdout, so a shell pipeline keeps the
-    // two apart.
-    expect(withoutOutput.ok).toBe(false)
-    expect(withoutOutput.stderr).toContain('<input> requires -o <output.ts>.')
-    expect(withoutOutput.stdout).toContain('USAGE')
-    expect(withoutInput.ok).toBe(false)
-    expect(withoutInput.stderr).toContain('-o <output.ts> requires an <input> document.')
-  })
-
-  it('surfaces a parse failure from the input document', async () => {
-    const dir = project()
-    writeFileSync(path.join(dir, 'openapi.yaml'), 'openapi: [not a document\n')
-    const result = await run(['openapi.yaml', '-o', 'src/index.ts'])
-
-    expect(result.ok).toBe(false)
-    expect(existsSync(path.join(dir, 'src'))).toBe(false)
   })
 })
 
@@ -337,23 +278,5 @@ describe('asphodelos — config mode', () => {
 
     // A path the caller typed is wrong in a way the usage block cannot help with.
     expect(result.ok).toBe(false)
-  })
-})
-
-describe('asphodelos — combinations it refuses', () => {
-  it('refuses --config alongside <input> or --output', async () => {
-    project(configSource(`{ input: 'openapi.yaml' }`), 'other.config.ts')
-    const result = await run(['openapi.yaml', '-o', 'src/index.ts', '-c', 'other.config.ts'])
-
-    expect(result.ok).toBe(false)
-    expect(result.stderr).toContain('--config cannot be combined with <input> or --output.')
-  })
-
-  it('refuses --watch alongside the one-shot arguments', async () => {
-    project()
-    const result = await run(['openapi.yaml', '-o', 'src/index.ts', '--watch'])
-
-    expect(result.ok).toBe(false)
-    expect(result.stderr).toContain('--watch runs a config file')
   })
 })

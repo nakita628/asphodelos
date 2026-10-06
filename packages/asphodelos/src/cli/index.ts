@@ -1,5 +1,5 @@
-import { Console, Effect, FileSystem, Option, Path, Ref, Schema, Stream } from 'effect'
-import { Argument, CliError, Command, Flag } from 'effect/cli'
+import { Console, Effect, FileSystem, Option, Path, Ref, Stream } from 'effect'
+import { CliError, Command, Flag } from 'effect/cli'
 
 import manifest from '../../package.json' with { type: 'json' }
 
@@ -11,53 +11,11 @@ const DEFAULT_CONFIG_FILE = 'asphodelos.config.ts'
 /** Extensions a change has to carry to be worth regenerating for. */
 const INPUT_EXTENSIONS = ['.yaml', '.json', '.tsp'] as const
 
-// `Schema.refine` both rejects the value at runtime and narrows the parsed type, so a wrong
-// extension never reaches the generators and the ones that do arrive as `${string}.ts` without a
-// cast. The template literal alone would do the same check but reports "Expected a string
-// matching template literal parts"; wrapping it in `Schema.is` and refining with it is what buys
-// the sentence below.
-const DocumentPathSchema = Schema.String.pipe(
-  Schema.refine(
-    Schema.is(Schema.TemplateLiteral([Schema.String, Schema.Literals(INPUT_EXTENSIONS)])),
-    { message: 'an OpenAPI (.yaml, .json) or TypeSpec (.tsp) document' },
-  ),
-).annotate({
-  title: 'Input document',
-  description: 'OpenAPI or TypeSpec document the one-shot mode generates from.',
-  examples: ['openapi.yaml', './spec/openapi.json', './spec/main.tsp'],
-})
-
-const TypeScriptPathSchema = Schema.String.pipe(
-  Schema.refine(Schema.is(Schema.TemplateLiteral([Schema.String, '.ts'])), {
-    message: 'a TypeScript file path ending in .ts',
-  }),
-).annotate({
-  title: 'App entry output file',
-  description: 'TypeScript file the one-shot mode writes the generated app entry to.',
-  examples: ['./src/index.ts', 'src/api/index.ts'],
-})
-
 /**
  * The command line itself: what `asphodelos` accepts, what each piece means, and the schema every
  * value is decoded through before {@link generate} ever sees it.
  */
 const commandLine = {
-  input: Argument.File('input', { mustExist: true }).pipe(
-    Argument.withSchema(DocumentPathSchema),
-    Argument.withDescription('OpenAPI (.yaml, .json) or TypeSpec (.tsp) document to generate from'),
-    Argument.withMetavar('input.{yaml,json,tsp}'),
-    Argument.optional,
-  ),
-  // `Flag.String`, not `Flag.File`: the file primitive rewrites its value to an absolute path, and
-  // `--output` is echoed back in the "Generated … → " message, which should read as the path the
-  // caller typed.
-  output: Flag.String('output').pipe(
-    Flag.withAlias('o'),
-    Flag.withSchema(TypeScriptPathSchema),
-    Flag.withDescription('TypeScript file the generated app is written to'),
-    Flag.withMetavar('output.ts'),
-    Flag.optional,
-  ),
   config: Flag.File('config', { mustExist: true }).pipe(
     Flag.withAlias('c'),
     Flag.withDescription(`Config file to run (default: ./${DEFAULT_CONFIG_FILE})`),
@@ -350,50 +308,14 @@ function watchConfig(configPath: string, target: WatchTarget | undefined) {
 /**
  * Everything the command does once the command line has parsed.
  *
- * It resolves to one of two modes and nothing else: an `<input>` with an `-o` writes a single app
- * from a single document, and anything else runs a config file — which is what opts in the
- * components, eden, types, mock and client-hook generators. `--config` and `<input>` are mutually
- * exclusive, and each of `<input>` / `--output` is meaningless without the other.
- *
- * Everything past the guard clauses fails with something carrying a `message`, so the single
- * `mapError` at the end is where all of it turns into rendered CLI output.
+ * The command runs a config file — the one `--config` names, or `asphodelos.config.ts` in the
+ * working directory — once, or under `--watch` on every change. Everything past the first line
+ * fails with something carrying a `message`, so the single `mapError` at the end is where all of
+ * it turns into rendered CLI output.
  */
 function generate(args: Command.Command.Config.Infer<typeof commandLine>) {
   return Effect.gen(function* () {
-    const input = Option.getOrUndefined(args.input)
-    const output = Option.getOrUndefined(args.output)
     const configPath = Option.getOrUndefined(args.config)
-    // Neither mode is described. `ShowHelp` is how the runner is asked for the help it renders for
-    // a parse failure, so a failure caught here reads the same as one caught a layer earlier — and
-    // the command describes itself in exactly one place.
-    const conflicts: readonly (readonly [rejected: boolean, message: string])[] = [
-      [
-        configPath !== undefined && (input !== undefined || output !== undefined),
-        '--config cannot be combined with <input> or --output. A config file already names its own input and outputs.',
-      ],
-      [input !== undefined && output === undefined, '<input> requires -o <output.ts>.'],
-      [output !== undefined && input === undefined, '-o <output.ts> requires an <input> document.'],
-      // One-shot writes one app from one document and is done; there is no second pass for a
-      // change to trigger.
-      [
-        args.watch && (input !== undefined || output !== undefined),
-        '--watch runs a config file, so it cannot be combined with <input> or --output.',
-      ],
-    ]
-    const conflict = conflicts.find(([rejected]) => rejected)?.[1]
-    if (conflict !== undefined) {
-      return yield* new CliError.ShowHelp({
-        commandPath: [COMMAND_NAME],
-        errors: [new CliError.UserError({ cause: new Error(conflict), userMessage: conflict })],
-      })
-    }
-    // One-shot: no config file is consulted, even when one sits in the working directory.
-    if (input !== undefined && output !== undefined) {
-      const [{ parseOpenAPI }, { elysia }] = yield* Effect.promise(() =>
-        Promise.all([import('../openapi/index.js'), import('../core/index.js')]),
-      )
-      return yield* Console.log(yield* elysia(yield* parseOpenAPI(input), { output }))
-    }
     const resolvedConfig = configPath ?? DEFAULT_CONFIG_FILE
     // Under `--watch` the first pass is a pass like any other: the caller asked for a command that
     // stays up and reacts to edits, and a config that does not validate yet is the first edit to
@@ -441,10 +363,6 @@ function makeCli() {
   return Command.make(COMMAND_NAME, commandLine, generate).pipe(
     Command.withDescription(manifest.description),
     Command.withExamples([
-      {
-        command: 'asphodelos openapi.yaml -o src/index.ts',
-        description: 'Generate a single app from one document',
-      },
       {
         command: 'asphodelos',
         description: `Run every generator declared in ./${DEFAULT_CONFIG_FILE}`,
