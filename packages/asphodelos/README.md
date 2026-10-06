@@ -232,8 +232,8 @@ export default defineConfig({
   output: 'src/index.ts',
   client: {
     output: 'src/lib/client.ts',
-    baseUrl: 'http://localhost:3000', // or { env: 'VITE_API_URL' }, or { env: 'API_URL', import: '@/env' }
-    sameOrigin: true, // in a browser, the page's own origin; baseUrl is for code without a window
+    baseUrl: 'http://localhost:3000',
+    sameOrigin: true,
   },
 })
 ```
@@ -248,10 +248,29 @@ const origin = typeof window === 'undefined' ? 'http://localhost:3000' : window.
 export const client = treaty<typeof app>(origin)
 ```
 
-The `index.ts` beside the client re-exports it, so it is imported as `./lib`; `eden` and the hooks
-import it from there. `baseUrl` left out is `http://localhost:<port>`. `sameOrigin` suits an app a
-host framework such as TanStack Start or Next.js serves beside its pages, where the API shares the
-origin and CORS has nothing to allow. The project needs `@elysiajs/eden`.
+The client is created once, when the module loads, from two settings:
+
+| Setting      | What the client is created with                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `baseUrl`    | `'http://localhost:3000'` — the URL as written. Left out: `http://localhost:<port>`, where the app entry listens.                                                                                            |
+|              | `{ env: 'VITE_API_URL' }` — `import.meta.env.VITE_API_URL`, read when the client is created, with that address as its fallback. `source: 'process.env'` reads `process.env` instead.                         |
+|              | `{ env: 'API_URL', import: '@/env' }` — `env.API_URL` from the module `@/env` (`name` renames the export).                                                                                                   |
+| `sameOrigin` | `true`: in a browser, `window.location.origin` — the page the client runs on; `baseUrl` only serves code without a window, such as a server render or a loader. `false` (the default): `baseUrl` everywhere. |
+
+`sameOrigin` suits an app a host framework such as TanStack Start or Next.js serves beside its
+pages, where the API shares the origin and CORS has nothing to allow; it needs the DOM lib. The
+`index.ts` beside the client re-exports it, so it is imported as `./lib` — that is what `eden` and
+the hooks do, and what your own code can do too:
+
+```ts
+import { client } from './lib'
+
+const { data, error } = await client.users({ id: '1' }).get()
+```
+
+The app is imported for its type only, so a browser bundle never pulls the server in. The project
+needs `@elysiajs/eden`, and `elysia` has to resolve to one copy, or `typeof app` and the client's
+`Elysia` type will not agree.
 
 ### Imports Between Generated Files
 
