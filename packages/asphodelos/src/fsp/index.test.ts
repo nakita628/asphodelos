@@ -1,20 +1,29 @@
 // Accented text is the input under test.
 // cspell:ignore émojis
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { runGenerator, runGeneratorError } from '../testing/index.js'
 import { mkdir, readdir, readFile, unlink, writeFile } from './index.js'
 
-const TEST_DIR = path.join(process.cwd(), 'test-tmp-dir')
+// A directory of this file's own, under the system's temporary directory rather than the working
+// directory: other suites in the process change the working directory and remove what they made
+// there, and a path read off it at load time can point into what they remove.
+const ROOT = fs.mkdtempSync(path.join(tmpdir(), 'asphodelos-fsp-'))
+const TEST_DIR = path.join(ROOT, 'test-tmp-dir')
 
 describe('fsp', () => {
   afterEach(async () => {
     if (fs.existsSync(TEST_DIR)) {
       await fsp.rm(TEST_DIR, { recursive: true })
     }
+  })
+
+  afterAll(() => {
+    fs.rmSync(ROOT, { recursive: true, force: true })
   })
 
   describe('mkdir', () => {
