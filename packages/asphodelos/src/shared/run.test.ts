@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { Effect } from 'effect'
+import { Effect, Result } from 'effect'
 
 import { parseConfig } from '../config/index.js'
 import type { OpenAPI } from '../openapi/index.js'
@@ -66,21 +66,32 @@ const OPENAPI = {
   },
 } as unknown as OpenAPI
 
-/** Decodes a config and runs every job it produces, inside a fresh directory. */
-async function runJobs(config: Record<string, unknown>) {
+/**
+ * Decodes a config and runs every job it produces, inside a fresh directory — one `seed` may
+ * first fill with what a project would already hold, and `cwd` names the subdirectory the
+ * generator runs from, for a layout of several packages.
+ */
+async function runJobs(config: Record<string, unknown>, seed?: (dir: string) => void, cwd = '.') {
   const dir = mkdtempSync(path.join(PKG_ROOT, 'tmp-jobs-'))
   workdirs.push(dir)
-  const cwd = process.cwd()
-  process.chdir(dir)
+  seed?.(dir)
+  const previous = process.cwd()
+  mkdirSync(path.join(dir, cwd), { recursive: true })
+  process.chdir(path.join(dir, cwd))
   try {
     const decoded = Effect.runSync(parseConfig({ input: 'openapi.yaml', ...config }))
     const jobs = makeJob(OPENAPI, decoded)
-    const logs = await runGenerator(
+    // Every job runs to its end before a failure is reported: the jobs write relative to the
+    // working directory, and one still writing after it is restored would land in the package.
+    const results = await runGenerator(
       Effect.all(
         jobs.map((job) => job.run(job.output)),
-        { concurrency: 'unbounded' },
+        { concurrency: 'unbounded', mode: 'result' },
       ),
     )
+    const failed = results.find((result) => Result.isFailure(result))
+    if (failed) throw failed.failure
+    const logs = results.map((result) => Result.getOrThrow(result))
     return {
       dir,
       logs,
@@ -89,7 +100,15 @@ async function runJobs(config: Record<string, unknown>) {
       exists: (relative: string) => existsSync(path.join(dir, relative)),
     }
   } finally {
-    process.chdir(cwd)
+    process.chdir(previous)
+  }
+}
+
+/** Lays out one package per name under `dir`, each with an empty `package.json`. */
+function packages(dir: string, names: readonly string[]) {
+  for (const name of names) {
+    mkdirSync(path.join(dir, name), { recursive: true })
+    writeFileSync(path.join(dir, name, 'package.json'), '{}\n')
   }
 }
 
@@ -178,50 +197,264 @@ describe('makeJob — every job actually runs', () => {
     expect(run.exists('src/schemas/index.ts')).toBe(true)
   })
 
-  it('eden: writes per-operation wrappers importing the configured client', async () => {
+  it('eden: writes per-operation wrappers importing the generated client', async () => {
     const run = await runJobs({
-      eden: { output: 'src/eden.ts', import: './lib', client: 'api' },
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      eden: { output: 'src/api/eden.ts' },
     })
     expect(run.names).toContain('eden')
-    const eden = run.read('src/eden.ts')
-    expect(eden).toContain("import { api } from './lib'")
+    const eden = run.read('src/api/eden.ts')
+    expect(eden).toContain("import { client } from '../client'")
     expect(eden).toContain('listItems')
   })
 
-  it('eden: docs: true prepends JSDoc to each wrapper', async () => {
+  // The client imports the app entry for its type and is created with the environment's address,
+  // asserted to be set: nothing in the file says where the server is.
+  it('client: writes a treaty client typed by the app entry, created with the environment', async () => {
     const run = await runJobs({
-      eden: { output: 'src/eden.ts', import: './lib', docs: true },
+      client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
     })
-    expect(run.read('src/eden.ts')).toContain('/**')
+    expect(run.names).toContain('client')
+    const code = run.read('src/lib/client.ts')
+    expect(code).toContain("import type { app } from '../index'")
+    expect(code).toContain('const origin = process.env.API_URL!')
+  })
+
+  // A file that names no import reads the generated client, from wherever it is written. Beside
+  // the app entry the client has no barrel — the `index.ts` there is the entry.
+  it('client: eden and the hooks import the generated client when they name no import', async () => {
+    const run = await runJobs({
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      eden: { output: 'src/api/eden.ts' },
+      swr: { output: 'src/swr.ts' },
+    })
+    expect(run.read('src/api/eden.ts')).toContain("import { client } from '../client'")
+    expect(run.read('src/swr.ts')).toContain("import { client } from './client'")
+    expect(run.read('src/index.ts')).not.toContain('export * from')
+  })
+
+  // A client in a directory of its own is re-exported by the `index.ts` beside it, and the files
+  // elsewhere import that directory; a file beside the client imports the client itself.
+  it('client: a barrel beside the client re-exports it, and the other files import the directory', async () => {
+    const run = await runJobs({
+      client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      eden: { output: 'src/lib/eden.ts' },
+      swr: { output: 'src/hooks/swr.ts' },
+    })
+    expect(run.read('src/lib/index.ts')).toBe("export * from './client'\n")
+    expect(run.read('src/lib/eden.ts')).toContain("import { client } from './client'")
+    expect(run.read('src/hooks/swr.ts')).toContain("import { client } from '../lib'")
+  })
+
+  // The barrel is written through the formatter like every generated file, so what was there is
+  // kept as the formatter spells it.
+  it('client: a barrel that is there already keeps its exports and gains the client once', async () => {
+    const run = await runJobs(
+      {
+        client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      },
+      (dir) => {
+        mkdirSync(path.join(dir, 'src/lib'), { recursive: true })
+        writeFileSync(path.join(dir, 'src/lib/index.ts'), "export * from './env';\n")
+      },
+    )
+    expect(run.read('src/lib/index.ts')).toBe("export * from './env'\nexport * from './client'\n")
+    const again = await runJobs(
+      {
+        client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      },
+      (dir) => {
+        mkdirSync(path.join(dir, 'src/lib'), { recursive: true })
+        writeFileSync(path.join(dir, 'src/lib/index.ts'), 'export * from "./client"\n')
+      },
+    )
+    expect(again.read('src/lib/index.ts')).toBe('export * from "./client"\n')
+  })
+
+  // The `index.ts` beside the client is left alone when another generator writes it.
+  it('client: no barrel where another generator writes the index.ts beside the client', async () => {
+    const run = await runJobs({
+      client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      eden: { output: 'src/lib/index.ts' },
+      swr: { output: 'src/swr.ts' },
+    })
+    expect(run.read('src/lib/index.ts')).not.toContain('export * from')
+    expect(run.read('src/swr.ts')).toContain("import { client } from './lib/client'")
+  })
+
+  // Across packages — the nearest `package.json` says which one a file is in — the client imports
+  // the app by the name the top-level `package` gives the app, and the files elsewhere import the
+  // client by its own; a file in the client's own package still imports it relatively.
+  it("client: another package imports the client by its package name, and the client the app by the app's", async () => {
+    const run = await runJobs(
+      {
+        output: 'src/index.ts',
+        package: '@packages/server',
+        client: {
+          output: '../client/src/lib/client.ts',
+          baseUrl: { env: 'API_URL', source: 'process.env' },
+          package: '@packages/client',
+        },
+        eden: { output: '../client/src/lib/eden.ts' },
+        'tanstack-query': { output: '../react/src/api/hooks.ts' },
+        swr: { output: 'src/hooks/swr.ts' },
+      },
+      (dir) => {
+        packages(dir, ['apps/elysia', 'apps/client', 'apps/react'])
+      },
+      'apps/elysia',
+    )
+    expect(run.read('apps/client/src/lib/client.ts')).toContain(
+      "import type { app } from '@packages/server'",
+    )
+    expect(run.read('apps/client/src/lib/eden.ts')).toContain("import { client } from './client'")
+    expect(run.read('apps/react/src/api/hooks.ts')).toContain(
+      "import { client } from '@packages/client'",
+    )
+    expect(run.read('apps/elysia/src/hooks/swr.ts')).toContain(
+      "import { client } from '@packages/client'",
+    )
+  })
+
+  // A crossing with no name to import by is refused, never written as a path into another package.
+  it('client: a package boundary with no name to cross it by is refused', async () => {
+    const layout = (dir: string) => {
+      packages(dir, ['apps/elysia', 'apps/client', 'apps/react'])
+    }
+    const failure = async (config: Record<string, unknown>) => {
+      try {
+        await runJobs(config, layout, 'apps/elysia')
+        return 'generated'
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error)
+      }
+    }
+    expect(
+      await failure({
+        client: {
+          output: '../client/src/lib/client.ts',
+          baseUrl: { env: 'API_URL', source: 'process.env' },
+          package: '@packages/client',
+        },
+      }),
+    ).toContain(
+      'client.output is in another package than the app entry: name the package the app is published as, the top-level package, for the client to import it by.',
+    )
+    expect(
+      await failure({
+        package: '@packages/server',
+        client: {
+          output: '../client/src/lib/client.ts',
+          baseUrl: { env: 'API_URL', source: 'process.env' },
+        },
+        'tanstack-query': { output: '../react/src/api/hooks.ts' },
+      }),
+    ).toContain(
+      'tanstack-query.output is in another package than the client: name the package the client is published as, client.package, for the file to import it by.',
+    )
+  })
+
+  // A component kind in a package of its own is imported by its package name from the modules and
+  // from the other kinds; a kind in the same package stays relative.
+  it('components: a kind in another package is imported by its package name', async () => {
+    const run = await runJobs(
+      {
+        output: 'src/index.ts',
+        components: {
+          schemas: { output: '../schemas/src/schemas.ts', package: '@packages/schemas' },
+          mediaTypes: { output: 'src/components/mediaTypes.ts' },
+        },
+      },
+      (dir) => {
+        packages(dir, ['apps/elysia', 'apps/schemas'])
+      },
+      'apps/elysia',
+    )
+    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain("from '@packages/schemas'")
+    expect(run.read('apps/elysia/src/components/mediaTypes.ts')).toContain(
+      "from '@packages/schemas'",
+    )
+  })
+
+  // Which kinds a file imports depends on the document, so a kind with no package name cannot be
+  // refused ahead of generation; it is imported relatively, as before.
+  it('components: a kind in another package with no package name is imported relatively', async () => {
+    const run = await runJobs(
+      {
+        output: 'src/index.ts',
+        components: { schemas: { output: '../schemas/src/schemas.ts' } },
+      },
+      (dir) => {
+        packages(dir, ['apps/elysia', 'apps/schemas'])
+      },
+      'apps/elysia',
+    )
+    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain(
+      "from '../../../../schemas/src/schemas'",
+    )
+  })
+
+  it('components: the single file in another package is imported by its package name', async () => {
+    const run = await runJobs(
+      {
+        output: 'src/index.ts',
+        components: { output: '../schemas/src/index.ts', package: '@packages/schemas' },
+      },
+      (dir) => {
+        packages(dir, ['apps/elysia', 'apps/schemas'])
+      },
+      'apps/elysia',
+    )
+    expect(run.read('apps/elysia/src/modules/items/index.ts')).toContain("from '@packages/schemas'")
+  })
+
+  // Component kinds the config places under the app entry's directory go through the alias too,
+  // from the modules and from each other.
+  it('pathAlias: component kinds under the app directory are imported through it', async () => {
+    const run = await runJobs({
+      output: 'src/index.ts',
+      pathAlias: '@/',
+      components: {
+        schemas: { output: 'src/components/schemas', split: true },
+        mediaTypes: { output: 'src/components/mediaTypes.ts' },
+      },
+    })
+    expect(run.read('src/modules/items/index.ts')).toContain("from '@/components/schemas'")
+    expect(run.read('src/components/mediaTypes.ts')).toContain("from '@/components/schemas'")
+  })
+
+  // `@/` stands for the app entry's directory; every import between generated files under it
+  // goes through the alias, the module's import of the schemas included. A file outside that
+  // directory is imported relatively, since the alias does not reach it.
+  it('pathAlias: the generated files under the app directory import each other through it', async () => {
+    const run = await runJobs({
+      output: 'src/index.ts',
+      pathAlias: '@/',
+      client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      'tanstack-query': { output: 'src/hooks.ts' },
+      swr: { output: 'web/swr.ts' },
+    })
+    expect(run.read('src/lib/client.ts')).toContain("import type { app } from '@/index'")
+    expect(run.read('src/hooks.ts')).toContain("import { client } from '@/lib'")
+    expect(run.read('web/swr.ts')).toContain("import { client } from '@/lib'")
+    expect(run.read('src/modules/items/index.ts')).toContain("from '@/components/schemas'")
+  })
+
+  it('pathAlias: a client outside the app directory is imported relatively', async () => {
+    const run = await runJobs({
+      output: 'server/index.ts',
+      pathAlias: '~/',
+      client: { output: 'web/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      swr: { output: 'web/swr.ts' },
+    })
+    expect(run.read('web/lib/client.ts')).toContain("import type { app } from '~/index'")
+    expect(run.read('web/swr.ts')).toContain("import { client } from './lib'")
   })
 
   it('types: writes the self-contained App type', async () => {
     const run = await runJobs({ types: { output: 'src/types.ts' } })
     expect(run.names).toContain('types')
     expect(run.read('src/types.ts')).toContain('export type App')
-  })
-
-  it('test (single file): writes one suite importing the assembled app', async () => {
-    const run = await runJobs({ test: { output: 'src/app.test.ts' } })
-    expect(run.names).toContain('test')
-    const suite = run.read('src/app.test.ts')
-    expect(suite).toContain("from 'bun:test'")
-    expect(suite).toContain("from './index'")
-  })
-
-  it('test (split): co-locates a suite in each module directory', async () => {
-    const run = await runJobs({ test: { split: true } })
-    const job = makeJob(
-      OPENAPI,
-      Effect.runSync(parseConfig({ input: 'a.yaml', test: { split: true } })),
-    )
-    expect(job.find((j) => j.name === 'test')?.split).toBe(true)
-    expect(run.exists('src/modules/items/index.test.ts')).toBe(true)
-  })
-
-  it('test: pathAlias rewrites the app import in the generated suite', async () => {
-    const run = await runJobs({ test: { output: 'src/app.test.ts', pathAlias: '@/src' } })
-    expect(run.read('src/app.test.ts')).toContain("from '@/src/index'")
   })
 
   it('mock: writes a faker-backed server at the configured output', async () => {
@@ -243,21 +476,26 @@ describe('makeJob — every job actually runs', () => {
       'angular-query',
     ] as const
     const config = Object.fromEntries(
-      libraries.map((library) => [library, { output: `src/${library}.ts`, import: './lib' }]),
+      libraries.map((library) => [library, { output: `src/${library}.ts` }]),
     )
-    const run = await runJobs(config)
+    const run = await runJobs({
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      ...config,
+    })
     for (const library of libraries) {
       expect(run.names).toContain(library)
-      expect(run.exists(`src/${library}.ts`)).toBe(true)
+      // Every library's file imports the generated client beside it, under its one export name.
+      expect(run.read(`src/${library}.ts`)).toContain("import { client } from './client'")
     }
   })
 
-  it('hook libraries: split writes one file per operation plus a barrel', async () => {
+  it('hook libraries: a directory output is written as its index.ts', async () => {
     const run = await runJobs({
-      swr: { split: true, output: 'src/swr', import: './lib' },
+      client: { output: 'src/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+      swr: { output: 'src/swr' },
     })
-    expect(run.exists('src/swr/listItems.ts')).toBe(true)
     expect(run.exists('src/swr/index.ts')).toBe(true)
+    expect(run.read('src/swr/index.ts')).toContain('useGetItems')
   })
 
   it('every job answers with the log line the CLI prints', async () => {

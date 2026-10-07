@@ -1,16 +1,21 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    // `@asphodelos/host` is the app the generated client is typed by: the host app, whose routes
+    // are the document's and whose handlers are written.
+    "paths": {
+      "@asphodelos/host": ["../../hosts/users-app.ts"]
+    }
   },
   "include": [
     "asphodelos.config.ts",
+    "../../__generated__/swr/client.ts",
     "../../__generated__/swr/hooks.ts",
     "../../hosts/users-app.ts",
-    "../../hosts/users-client.ts",
     "../../runtime/swr.test.tsx",
     "../../types/swr.ts",
     "../../types/assert.ts"
   ],
-  "exclude": ["../../__generated__/swr/app/**"]
+  "exclude": ["app/**"]
 }

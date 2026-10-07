@@ -107,7 +107,7 @@ function primaryType(schema: Schema) {
 // A concrete number that satisfies minimum/maximum/exclusive*/multipleOf, biased
 // to a large value unlikely to map to a real record. Returns `undefined` when the
 // constraints admit no value (e.g. no multiple in range) so the caller can drop
-// the 404 test instead of emitting one the host rejects with 422.
+// the 404 guard instead of emitting one the host rejects with 422.
 function nonExistentNumber(schema: Schema, isInt: boolean) {
   const bounds = normalizeBounds(schema)
   const epsilon = isInt ? 1 : 0.01
@@ -149,7 +149,7 @@ function nonExistentStringLiteral(schema: Schema) {
 // a `literal` to splice into the URL, an `expr` (faker) to bind and interpolate
 // when only a runtime value can satisfy a `pattern`, or `undefined` when the
 // schema admits no valid-yet-non-existent value (enum/const, empty numeric range)
-// — the caller then omits the 404 test rather than emit a guaranteed 422.
+// — the caller then omits the 404 guard rather than emit a guaranteed 422.
 export function nonExistentPathValue(
   schema: Schema,
 ):

@@ -11,7 +11,7 @@ import packageConfig from '../packages/asphodelos/oxlint.config.ts'
 export default defineConfig({
   ...packageConfig,
   jsPlugins: ['../packages/asphodelos/lint/custom.js'],
-  ignorePatterns: ['**/node_modules/**', '__generated__/**'],
+  ignorePatterns: ['**/node_modules/**', '**/__generated__/**'],
   overrides: [
     ...(packageConfig.overrides ?? []).filter((override) =>
       override.files.every((glob) => glob.startsWith('**/')),

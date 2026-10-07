@@ -17,31 +17,44 @@ here rather than in someone's project — and the packaged Vite plugin inside a 
 (`runtime/vite-plugin.test.ts`): it generates on start, regenerates on a document edit, and reloads
 an edited config.
 
+Two self-contained suites, `query-params/` and `path-params/`, send every parameter shape the
+generator supports through a real Elysia app built on the generated models: a query string or a
+path segment in, the JavaScript type and value that reached the handler out. HTTP carries every
+parameter as text, so a schema Elysia cannot read back into its type rejects its own input, and
+that is what these catch. Each holds the requests that are accepted, the ones that are rejected,
+and compile-time assertions about the generated types.
+
 ## Layout
 
 ```text
 cases/<name>/     one asphodelos.config.ts + tsconfig.json per client library
 specs/            the OpenAPI documents the cases generate from
-hosts/            the Elysia app and Eden client the generated hooks talk to
+hosts/            the Elysia app the generated hooks talk to, in memory or in a process of its own
 runtime/          tests that execute the generated hooks, and the Vite plugin in a dev server
 types/            compile-time assertions about the generics
-scripts/          generate.ts, typecheck.ts, pretest.ts
-__generated__/    output; gitignored, refreshed before every run
+query-params/     a self-contained case: document, config, echo app and tests, in one directory
+path-params/      the same for path parameters
+client/           the generated Eden Treaty client, under a path alias, driven over HTTP against
+                  hosts/users-server.ts in a process of its own
+monorepo/         the client in a package of its own: apps/elysia, apps/eden and apps/react reach
+                  each other by package name, mapped in the case's tsconfig
+scripts/          cases.ts, generate.ts, typecheck.ts, pretest.ts
+__generated__/    output; gitignored, refreshed before every run (a root-level case has its own)
 ```
 
 ## Coverage per library
 
-| Library          | Generated & typechecked | Generic assertions | Executed              |
-| ---------------- | ----------------------- | ------------------ | --------------------- |
-| `swr`            | ✅                      | ✅                 | ✅ React + happy-dom  |
-| `tanstack-query` | ✅                      | ✅                 | ✅ real `QueryClient` |
-| `preact-query`   | ✅                      | ✅                 | —                     |
-| `vue-query`      | ✅                      | ✅                 | —                     |
-| `solid-query`    | ✅                      | ✅                 | —                     |
-| `svelte-query`   | ✅                      | ✅                 | —                     |
-| `angular-query`  | ✅                      | ✅                 | —                     |
+| Library          | Generated & typechecked | Generic assertions | Executed                                 |
+| ---------------- | ----------------------- | ------------------ | ---------------------------------------- |
+| `swr`            | ✅                      | ✅                 | ✅ React + happy-dom                     |
+| `tanstack-query` | ✅                      | ✅                 | ✅ real `QueryClient`, React + happy-dom |
+| `preact-query`   | ✅                      | ✅                 | —                                        |
+| `vue-query`      | ✅                      | ✅                 | ✅ Vue app context                       |
+| `solid-query`    | ✅                      | ✅                 | —                                        |
+| `svelte-query`   | ✅                      | ✅                 | —                                        |
+| `angular-query`  | ✅                      | ✅                 | —                                        |
 
-The five that are not executed need a framework runtime this suite does not host; they are
+The four that are not executed need a framework runtime this suite does not host; they are
 compiled against the real library types, which is what catches a wrong generic.
 
 ## Running it

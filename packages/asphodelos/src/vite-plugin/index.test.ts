@@ -50,6 +50,12 @@ paths:
       responses: { '200': { description: OK } }
 `
 
+/** The same document with a component, for the cases that write a split schemas directory. */
+const WITH_SCHEMAS = `${OPENAPI}components:
+  schemas:
+    Item: { type: object, properties: { id: { type: string } } }
+`
+
 const CONFIG = `import { defineConfig } from '${PKG_ROOT}/src/config/index.js'
 export default defineConfig({ input: 'openapi.yaml', output: 'src/index.ts' })
 `
@@ -347,23 +353,24 @@ export default defineConfig({ input: 'missing.yaml', output: 'src/index.ts' })
       'empties a split directory before refilling it, keeping what is not generated',
       async () => {
         const dir = project()
-        const hooks = path.join(dir, 'src/hooks')
-        mkdirSync(hooks, { recursive: true })
-        writeFileSync(path.join(hooks, 'stale.ts'), '// an operation the document no longer has')
-        writeFileSync(path.join(hooks, 'README.md'), 'keep')
+        writeFileSync(path.join(dir, 'openapi.yaml'), WITH_SCHEMAS)
+        const schemas = path.join(dir, 'src/schemas')
+        mkdirSync(schemas, { recursive: true })
+        writeFileSync(path.join(schemas, 'stale.ts'), '// a schema the document no longer has')
+        writeFileSync(path.join(schemas, 'README.md'), 'keep')
         await start(() => ({
           input: 'openapi.yaml',
           output: 'src/index.ts',
-          swr: { output: 'src/hooks', split: true, import: '../lib' },
-          types: { output: 'src/hooks/types.ts' },
+          components: { schemas: { output: 'src/schemas', split: true } },
+          types: { output: 'src/schemas/types.ts' },
         }))
 
-        expect(recorder.lines).toContain('✅ swr (split) -> src/hooks')
-        expect(existsSync(path.join(hooks, 'stale.ts'))).toBe(false)
-        expect(existsSync(path.join(hooks, 'index.ts'))).toBe(true)
-        expect(existsSync(path.join(hooks, 'README.md'))).toBe(true)
+        expect(recorder.lines).toContain('✅ schemas (split) -> src/schemas')
+        expect(existsSync(path.join(schemas, 'stale.ts'))).toBe(false)
+        expect(existsSync(path.join(schemas, 'index.ts'))).toBe(true)
+        expect(existsSync(path.join(schemas, 'README.md'))).toBe(true)
         // A single-file output of another job inside the split directory survives the clean.
-        expect(existsSync(path.join(hooks, 'types.ts'))).toBe(true)
+        expect(existsSync(path.join(schemas, 'types.ts'))).toBe(true)
       },
       TIMEOUT_MS,
     )
@@ -448,6 +455,43 @@ export default defineConfig({ input: 'missing.yaml', output: 'src/index.ts' })
         await sleep(500)
 
         expect(passes(recorder.lines)).toBe(1)
+      },
+      TIMEOUT_MS,
+    )
+
+    // A `$ref` can point at a file anywhere on disk, so the directory the document sits in does
+    // not cover every edit that changes the output.
+    it(
+      'regenerates when a file referenced from outside the input directory changes',
+      async () => {
+        const dir = project()
+        const shared = path.join(dir, 'shared', 'item.yaml')
+        mkdirSync(path.join(dir, 'spec'), { recursive: true })
+        mkdirSync(path.join(dir, 'shared'), { recursive: true })
+        writeFileSync(shared, 'type: object\nproperties:\n  id: { type: string }\n')
+        writeFileSync(
+          path.join(dir, 'spec', 'openapi.yaml'),
+          `${OPENAPI}components:
+  schemas:
+    Item: { $ref: '../shared/item.yaml' }
+`,
+        )
+        const { fire, watched } = await start(() => ({
+          input: 'spec/openapi.yaml',
+          output: 'src/index.ts',
+          components: { schemas: { output: 'src/schemas.ts' } },
+        }))
+        // The referenced file is watched by name, since the directory globs do not reach it.
+        expect(watched).toContain(shared)
+        expect(readFileSync(path.join(dir, 'src/schemas.ts'), 'utf8')).toContain('id')
+
+        writeFileSync(shared, 'type: object\nproperties:\n  renamed: { type: number }\n')
+        fire(shared)
+        await waitFor(() => finished(recorder.lines) === 2)
+        await settle(recorder.lines)
+
+        expect(passes(recorder.lines)).toBe(2)
+        expect(readFileSync(path.join(dir, 'src/schemas.ts'), 'utf8')).toContain('renamed')
       },
       TIMEOUT_MS,
     )
@@ -580,24 +624,26 @@ export default defineConfig({ input: 'missing.yaml', output: 'src/index.ts' })
       'keeps the barrel when a single-file output turns into a split directory',
       async () => {
         const dir = project()
+        writeFileSync(path.join(dir, 'openapi.yaml'), WITH_SCHEMAS)
         const config: { current: unknown } = {
           current: {
             input: 'openapi.yaml',
-            swr: { output: 'src/hooks/index.ts', import: '../lib' },
+            components: { schemas: { output: 'src/schemas/index.ts' } },
           },
         }
         const { fire } = await start(() => config.current)
 
         config.current = {
           input: 'openapi.yaml',
-          swr: { output: 'src/hooks', split: true, import: '../lib' },
+          components: { schemas: { output: 'src/schemas', split: true } },
         }
         fire(path.join(dir, 'asphodelos.config.ts'))
         await waitFor(() => finished(recorder.lines) === 2)
         await settle(recorder.lines)
 
         expect(recorder.lines.filter((line) => line.startsWith('🧹'))).toStrictEqual([])
-        expect(existsSync(path.join(dir, 'src/hooks/index.ts'))).toBe(true)
+        expect(existsSync(path.join(dir, 'src/schemas/index.ts'))).toBe(true)
+        expect(existsSync(path.join(dir, 'src/schemas/item.ts'))).toBe(true)
       },
       TIMEOUT_MS,
     )

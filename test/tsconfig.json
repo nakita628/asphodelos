@@ -7,7 +7,24 @@
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     // oxlint.config.ts reuses the package config by its `.ts` path.
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // The generated clients are typed by the host app under this name; the cases map it the same.
+    "paths": {
+      "@asphodelos/host": ["./hosts/users-app.ts"]
+    }
   },
-  "include": ["*.ts", "hosts", "runtime", "scripts", "types"]
+  "include": [
+    "*.ts",
+    "client",
+    "hosts",
+    "monorepo",
+    "path-params",
+    "query-params",
+    "runtime",
+    "scripts",
+    "types"
+  ],
+  // The client and monorepo cases' generated apps are scaffolds whose handlers are not written,
+  // and the monorepo's package names resolve only through its own tsconfig; each says so.
+  "exclude": ["client/__generated__", "monorepo/apps"]
 }

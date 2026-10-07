@@ -5,6 +5,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   capitalize,
   filterDefined,
+  methodPath,
   pascalCase,
   resourcePrefix,
   safeStatusKey,
@@ -159,5 +160,30 @@ describe('resourcePrefix', () => {
 
   it('falls back to empty string for the root path', () => {
     expect(resourcePrefix('/')).toBe('')
+  })
+})
+
+describe('methodPath', () => {
+  it('joins the method and the capitalized words of the path', () => {
+    expect(methodPath('get', '/users/{id}')).toBe('getUsersId')
+    expect(methodPath('post', '/users')).toBe('postUsers')
+  })
+
+  it('names a path by its words alone when the method is left out', () => {
+    expect(methodPath('', '/users')).toBe('Users')
+    expect(methodPath('', '/users/{id}/posts')).toBe('UsersIdPosts')
+  })
+
+  it('breaks a word at every character that is not a letter or digit', () => {
+    expect(methodPath('get', '/user-profiles/{profile_id}.json')).toBe(
+      'getUserProfilesProfileIdJson',
+    )
+    expect(methodPath('get', '/v1/pet/findByStatus')).toBe('getV1PetFindByStatus')
+  })
+
+  it('tells a trailing slash apart from its absence, and names the root Index', () => {
+    expect(methodPath('get', '/users/')).toBe('getUsersIndex')
+    expect(methodPath('get', '/')).toBe('getIndex')
+    expect(methodPath('', '/')).toBe('Index')
   })
 })

@@ -1,15 +1,19 @@
 #!/usr/bin/env bun
 import { spawn } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 
+import { listGeneratedCases } from './cases.ts'
+
 /**
- * Regenerates `__generated__` from `specs/` by running the CLI over every case.
+ * Regenerates every case's output by running the CLI over its config.
  *
  * The packaged CLI from `dist`, not the source entry: each case's config imports `asphodelos` by
  * name, so this exercises the published `exports` map too — a packaging regression fails here
  * rather than in someone's project. Each case runs with its own directory as the working
- * directory, which is what makes the relative paths in its config resolve.
+ * directory, which is what makes the relative paths in its config resolve. The cases under
+ * `cases/` write into the shared `__generated__`; a self-contained case at the root writes into
+ * its own.
  */
 const testRoot = path.resolve(import.meta.dir, '..')
 const cli = path.resolve(testRoot, '..', 'packages', 'asphodelos', 'dist', 'cli.mjs')
@@ -18,13 +22,11 @@ if (!existsSync(cli)) {
   process.exit(1)
 }
 
-const cases = readdirSync(path.join(testRoot, 'cases'))
-  .filter((name) => existsSync(path.join(testRoot, 'cases', name, 'asphodelos.config.ts')))
-  .toSorted()
+const cases = listGeneratedCases(testRoot)
 
-function generate(name: string) {
+function generate({ name, dir }: { readonly name: string; readonly dir: string }) {
   return new Promise<{ name: string; ok: boolean; output: string }>((resolve) => {
-    const child = spawn('bun', [cli], { cwd: path.join(testRoot, 'cases', name) })
+    const child = spawn('bun', [cli], { cwd: dir })
     const chunks: Buffer[] = []
     child.stdout.on('data', (chunk: Buffer) => {
       chunks.push(chunk)

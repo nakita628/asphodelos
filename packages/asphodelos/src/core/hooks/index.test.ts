@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test'
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { makeQueryHooks } from '../../helper/query.js'
 import type { OpenAPI } from '../../openapi/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
+import { runGenerator } from '../../testing/index.js'
 import { HOOK_CONFIGS } from './index.js'
 
 describe('swr generator', () => {
@@ -15,8 +15,7 @@ describe('swr generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS.swr, client, basePath, split)
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS.swr, client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()
@@ -42,62 +41,74 @@ describe('swr generator', () => {
       },
     })
     const expected = `import useSWR from 'swr'
-import type { SWRConfiguration } from 'swr'
 import useSWRImmutable from 'swr/immutable'
+import type { Key, SWRConfiguration } from 'swr'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getGetItemsKey() {
   return ['items', '/items'] as const
 }
 
-export function useListItems<
+export function useGetItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  config?: SWRConfiguration<
+>(options?: {
+  swr?: SWRConfiguration<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
     TError
-  >,
-) {
-  return useSWR<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError
-  >(
-    listItemsQueryKey(),
-    async () => {
-      const { data, error } = await client.items.get(options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
+  > & { swrKey?: Key; enabled?: boolean }
+  options?: Parameters<typeof client.items.get>[0]
+}) {
+  const { swr: swrOptions, options: clientOptions } = options ?? {}
+  const { swrKey: customKey, enabled, ...restSwrOptions } = swrOptions ?? {}
+  const swrKey = enabled !== false ? (customKey === undefined ? getGetItemsKey() : customKey) : null
+  return {
+    swrKey,
+    ...useSWR<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError
+    >(
+      swrKey,
+      async () => {
+        const { data, error } = await client.items.get(clientOptions)
+        if (error) throw error
+        return data
+      },
+      restSwrOptions,
+    ),
+  }
 }
 
-export function useImmutableListItems<
+export function useImmutableGetItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  config?: SWRConfiguration<
+>(options?: {
+  swr?: SWRConfiguration<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
     TError
-  >,
-) {
-  return useSWRImmutable<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError
-  >(
-    listItemsQueryKey(),
-    async () => {
-      const { data, error } = await client.items.get(options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
+  > & { swrKey?: Key; enabled?: boolean }
+  options?: Parameters<typeof client.items.get>[0]
+}) {
+  const { swr: swrOptions, options: clientOptions } = options ?? {}
+  const { swrKey: customKey, enabled, ...restSwrOptions } = swrOptions ?? {}
+  const swrKey = enabled !== false ? (customKey === undefined ? getGetItemsKey() : customKey) : null
+  return {
+    swrKey,
+    ...useSWRImmutable<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError
+    >(
+      swrKey,
+      async () => {
+        const { data, error } = await client.items.get(clientOptions)
+        if (error) throw error
+        return data
+      },
+      restSwrOptions,
+    ),
+  }
 }
 `
     expect(code).toBe(expected)
@@ -123,69 +134,91 @@ export function useImmutableListItems<
       },
     })
     const expected = `import useSWR from 'swr'
-import type { SWRConfiguration } from 'swr'
 import useSWRImmutable from 'swr/immutable'
+import type { Key, SWRConfiguration } from 'swr'
 import { client } from './lib'
 
 export function getSearchKey() {
   return ['search'] as const
 }
 
-export function searchQueryKey(options?: Parameters<typeof client.search.get>[0]) {
-  const { headers: _h, fetch: _f, throwHttpError: _t, ...keyArgs } = options ?? {}
+export function getGetSearchKey(options: Parameters<typeof client.search.get>[0]) {
+  const { headers: _a, fetch: _b, throwHttpError: _c, ...keyArgs } = options ?? {}
   return ['search', '/search', keyArgs] as const
 }
 
-export function useSearch<
+export function useGetSearch<
   TError = Exclude<Awaited<ReturnType<typeof client.search.get>>['error'], null>,
->(
-  options: Parameters<typeof client.search.get>[0],
-  config?: SWRConfiguration<
+>(options: {
+  swr?: SWRConfiguration<
     Extract<Awaited<ReturnType<typeof client.search.get>>, { error: null }>['data'],
     TError
-  >,
-) {
-  return useSWR<
-    Extract<Awaited<ReturnType<typeof client.search.get>>, { error: null }>['data'],
-    TError
-  >(
-    searchQueryKey(options),
-    async () => {
-      const { data, error } = await client.search.get(options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
+  > & { swrKey?: Key; enabled?: boolean }
+  options: Parameters<typeof client.search.get>[0]
+}) {
+  const { swr: swrOptions, options: clientOptions } = options
+  const { swrKey: customKey, enabled, ...restSwrOptions } = swrOptions ?? {}
+  const swrKey =
+    enabled !== false
+      ? customKey === undefined
+        ? getGetSearchKey(clientOptions)
+        : customKey
+      : null
+  return {
+    swrKey,
+    ...useSWR<
+      Extract<Awaited<ReturnType<typeof client.search.get>>, { error: null }>['data'],
+      TError
+    >(
+      swrKey,
+      async () => {
+        const { data, error } = await client.search.get(clientOptions)
+        if (error) throw error
+        return data
+      },
+      restSwrOptions,
+    ),
+  }
 }
 
-export function useImmutableSearch<
+export function useImmutableGetSearch<
   TError = Exclude<Awaited<ReturnType<typeof client.search.get>>['error'], null>,
->(
-  options: Parameters<typeof client.search.get>[0],
-  config?: SWRConfiguration<
+>(options: {
+  swr?: SWRConfiguration<
     Extract<Awaited<ReturnType<typeof client.search.get>>, { error: null }>['data'],
     TError
-  >,
-) {
-  return useSWRImmutable<
-    Extract<Awaited<ReturnType<typeof client.search.get>>, { error: null }>['data'],
-    TError
-  >(
-    searchQueryKey(options),
-    async () => {
-      const { data, error } = await client.search.get(options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
+  > & { swrKey?: Key; enabled?: boolean }
+  options: Parameters<typeof client.search.get>[0]
+}) {
+  const { swr: swrOptions, options: clientOptions } = options
+  const { swrKey: customKey, enabled, ...restSwrOptions } = swrOptions ?? {}
+  const swrKey =
+    enabled !== false
+      ? customKey === undefined
+        ? getGetSearchKey(clientOptions)
+        : customKey
+      : null
+  return {
+    swrKey,
+    ...useSWRImmutable<
+      Extract<Awaited<ReturnType<typeof client.search.get>>, { error: null }>['data'],
+      TError
+    >(
+      swrKey,
+      async () => {
+        const { data, error } = await client.search.get(clientOptions)
+        if (error) throw error
+        return data
+      },
+      restSwrOptions,
+    ),
+  }
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('GET with x-pagination: also emits useSWRInfinite with buildInit + per-page key', async () => {
+  it('GET with x-pagination: also emits an infinite key getter + useSWRInfinite with pagination.getRequestArgs', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -200,8 +233,8 @@ export function useImmutableSearch<
       },
     })
     const expected = `import useSWR from 'swr'
-import type { SWRConfiguration } from 'swr'
 import useSWRImmutable from 'swr/immutable'
+import type { Key, SWRConfiguration } from 'swr'
 import useSWRInfinite from 'swr/infinite'
 import type { SWRInfiniteConfiguration } from 'swr/infinite'
 import { client } from './lib'
@@ -210,93 +243,110 @@ export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getGetItemsKey() {
   return ['items', '/items'] as const
 }
 
-export function useListItems<
+export function useGetItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  config?: SWRConfiguration<
+>(options?: {
+  swr?: SWRConfiguration<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
     TError
-  >,
-) {
-  return useSWR<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError
-  >(
-    listItemsQueryKey(),
-    async () => {
-      const { data, error } = await client.items.get(options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
-}
-
-export function useImmutableListItems<
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  config?: SWRConfiguration<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError
-  >,
-) {
-  return useSWRImmutable<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError
-  >(
-    listItemsQueryKey(),
-    async () => {
-      const { data, error } = await client.items.get(options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
-}
-
-export function useListItemsInfinite<
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  buildInit: (
-    pageIndex: number,
-    previousPage:
-      | Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data']
-      | null,
-  ) => Parameters<typeof client.items.get>[0] | null,
-  config?: SWRInfiniteConfiguration<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError
-  >,
-) {
-  const getKey = (
-    pageIndex: number,
-    previousPage:
-      | Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data']
-      | null,
-  ) => {
-    const options = buildInit(pageIndex, previousPage)
-    if (options === null) return null
-    const { headers: _h, fetch: _f, throwHttpError: _t, ...keyArgs } = options ?? {}
-    return ['items', '/items', 'infinite', pageIndex, keyArgs] as const
+  > & { swrKey?: Key; enabled?: boolean }
+  options?: Parameters<typeof client.items.get>[0]
+}) {
+  const { swr: swrOptions, options: clientOptions } = options ?? {}
+  const { swrKey: customKey, enabled, ...restSwrOptions } = swrOptions ?? {}
+  const swrKey = enabled !== false ? (customKey === undefined ? getGetItemsKey() : customKey) : null
+  return {
+    swrKey,
+    ...useSWR<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError
+    >(
+      swrKey,
+      async () => {
+        const { data, error } = await client.items.get(clientOptions)
+        if (error) throw error
+        return data
+      },
+      restSwrOptions,
+    ),
   }
-  return useSWRInfinite<
+}
+
+export function useImmutableGetItems<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: {
+  swr?: SWRConfiguration<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    typeof getKey
-  >(
-    getKey,
-    async ([_resource, _opId, _infinite, _pageIndex, keyArgs]) => {
-      const { data, error } = await client.items.get(keyArgs)
+    TError
+  > & { swrKey?: Key; enabled?: boolean }
+  options?: Parameters<typeof client.items.get>[0]
+}) {
+  const { swr: swrOptions, options: clientOptions } = options ?? {}
+  const { swrKey: customKey, enabled, ...restSwrOptions } = swrOptions ?? {}
+  const swrKey = enabled !== false ? (customKey === undefined ? getGetItemsKey() : customKey) : null
+  return {
+    swrKey,
+    ...useSWRImmutable<
+      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+      TError
+    >(
+      swrKey,
+      async () => {
+        const { data, error } = await client.items.get(clientOptions)
+        if (error) throw error
+        return data
+      },
+      restSwrOptions,
+    ),
+  }
+}
+
+export function getGetItemsInfiniteKey() {
+  return ['items', '/items', 'infinite'] as const
+}
+
+export function useInfiniteGetItems<
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options: {
+  swr?: SWRInfiniteConfiguration<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError
+  > & {
+    swrKey?: (
+      index: number,
+      previousPageData:
+        | Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data']
+        | null,
+    ) => readonly [...ReturnType<typeof getGetItemsInfiniteKey>, number] | null
+    enabled?: boolean
+  }
+  options?: Parameters<typeof client.items.get>[0]
+  pagination: {
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      index: number,
+    ) => Parameters<typeof client.items.get>[0]
+  }
+}) {
+  const { swr: swrOptions, options: clientOptions, pagination } = options
+  const { swrKey: customKeyLoader, enabled, ...restSwrOptions } = swrOptions ?? {}
+  const keyLoader =
+    enabled !== false
+      ? (customKeyLoader ?? ((index: number) => [...getGetItemsInfiniteKey(), index] as const))
+      : () => null
+  return useSWRInfinite(
+    keyLoader,
+    async ([, , , index]: readonly [...ReturnType<typeof getGetItemsInfiniteKey>, number]) => {
+      const page = pagination.getRequestArgs(clientOptions, index)
+      const { data, error } = await client.items.get(page)
       if (error) throw error
       return data
     },
-    config,
+    restSwrOptions,
   )
 }
 `
@@ -314,70 +364,88 @@ export function useListItemsInfinite<
       },
     })
     const expected = `import useSWR from 'swr'
-import type { SWRConfiguration } from 'swr'
 import useSWRImmutable from 'swr/immutable'
+import type { Key, SWRConfiguration } from 'swr'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function getItemQueryKey(params: Parameters<typeof client.items>[0]) {
+export function getGetItemsIdKey(params: Parameters<typeof client.items>[0]) {
   return ['items', '/items/{id}', params] as const
 }
 
-export function useGetItem<
+export function useGetItemsId<
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
 >(
   params: Parameters<typeof client.items>[0],
-  options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  config?: SWRConfiguration<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError
-  >,
+  options?: {
+    swr?: SWRConfiguration<
+      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+      TError
+    > & { swrKey?: Key; enabled?: boolean }
+    options?: Parameters<ReturnType<typeof client.items>['get']>[0]
+  },
 ) {
-  return useSWR<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError
-  >(
-    getItemQueryKey(params),
-    async () => {
-      const { data, error } = await client.items(params).get(options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
+  const { swr: swrOptions, options: clientOptions } = options ?? {}
+  const { swrKey: customKey, enabled, ...restSwrOptions } = swrOptions ?? {}
+  const swrKey =
+    enabled !== false ? (customKey === undefined ? getGetItemsIdKey(params) : customKey) : null
+  return {
+    swrKey,
+    ...useSWR<
+      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+      TError
+    >(
+      swrKey,
+      async () => {
+        const { data, error } = await client.items(params).get(clientOptions)
+        if (error) throw error
+        return data
+      },
+      restSwrOptions,
+    ),
+  }
 }
 
-export function useImmutableGetItem<
+export function useImmutableGetItemsId<
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
 >(
   params: Parameters<typeof client.items>[0],
-  options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  config?: SWRConfiguration<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError
-  >,
+  options?: {
+    swr?: SWRConfiguration<
+      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+      TError
+    > & { swrKey?: Key; enabled?: boolean }
+    options?: Parameters<ReturnType<typeof client.items>['get']>[0]
+  },
 ) {
-  return useSWRImmutable<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError
-  >(
-    getItemQueryKey(params),
-    async () => {
-      const { data, error } = await client.items(params).get(options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
+  const { swr: swrOptions, options: clientOptions } = options ?? {}
+  const { swrKey: customKey, enabled, ...restSwrOptions } = swrOptions ?? {}
+  const swrKey =
+    enabled !== false ? (customKey === undefined ? getGetItemsIdKey(params) : customKey) : null
+  return {
+    swrKey,
+    ...useSWRImmutable<
+      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+      TError
+    >(
+      swrKey,
+      async () => {
+        const { data, error } = await client.items(params).get(clientOptions)
+        if (error) throw error
+        return data
+      },
+      restSwrOptions,
+    ),
+  }
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('POST (body method): emits useSWRMutation with `{ body, options? }` ExtraArg', async () => {
+  it('POST (body method): emits useSWRMutation with `{ body, options? }` variables and a swrKey override', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -387,7 +455,8 @@ export function useImmutableGetItem<
         },
       },
     })
-    const expected = `import useSWRMutation from 'swr/mutation'
+    const expected = `import type { Key } from 'swr'
+import useSWRMutation from 'swr/mutation'
 import type { SWRMutationConfiguration } from 'swr/mutation'
 import { client } from './lib'
 
@@ -395,56 +464,62 @@ export function getItemsKey() {
   return ['items'] as const
 }
 
-export function createItemMutationKey() {
+export function getPostItemsKey() {
   return ['items', '/items', 'POST'] as const
 }
 
-export function useCreateItem<
+export function usePostItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
->(
-  config?: SWRMutationConfiguration<
+>(options?: {
+  mutation?: SWRMutationConfiguration<
     Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
     TError,
-    ReturnType<typeof createItemMutationKey>,
+    Key,
     {
-      body: Parameters<typeof client.items.post>[0]
+      body?: Parameters<typeof client.items.post>[0]
       options?: Parameters<typeof client.items.post>[1]
     }
-  >,
-) {
-  return useSWRMutation<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    ReturnType<typeof createItemMutationKey>,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >(
-    createItemMutationKey(),
-    async (
-      _key: ReturnType<typeof createItemMutationKey>,
+  > & { swrKey?: Key; throwOnError?: boolean }
+}) {
+  const { mutation: mutationOptions } = options ?? {}
+  const { swrKey: customKey, ...restMutationOptions } = mutationOptions ?? {}
+  const swrKey = customKey ?? getPostItemsKey()
+  return {
+    swrKey,
+    ...useSWRMutation<
+      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+      TError,
+      Key,
       {
-        arg,
-      }: {
-        arg: {
-          body: Parameters<typeof client.items.post>[0]
-          options?: Parameters<typeof client.items.post>[1]
-        }
+        body?: Parameters<typeof client.items.post>[0]
+        options?: Parameters<typeof client.items.post>[1]
+      }
+    >(
+      swrKey,
+      async (
+        _key: Key,
+        {
+          arg,
+        }: {
+          arg: {
+            body?: Parameters<typeof client.items.post>[0]
+            options?: Parameters<typeof client.items.post>[1]
+          }
+        },
+      ) => {
+        const { data, error } = await client.items.post(arg.body, arg.options)
+        if (error) throw error
+        return data
       },
-    ) => {
-      const { data, error } = await client.items.post(arg.body, arg.options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
+      restMutationOptions,
+    ),
+  }
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('DELETE (body method): emits useSWRMutation with `{ body; options? }` ExtraArg (eden delete takes body, options)', async () => {
+  it('DELETE (body method, no request body): emits useSWRMutation with `{ body?; options? }` variables', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -454,7 +529,8 @@ export function useCreateItem<
         },
       },
     })
-    const expected = `import useSWRMutation from 'swr/mutation'
+    const expected = `import type { Key } from 'swr'
+import useSWRMutation from 'swr/mutation'
 import type { SWRMutationConfiguration } from 'swr/mutation'
 import { client } from './lib'
 
@@ -462,57 +538,65 @@ export function getItemsKey() {
   return ['items'] as const
 }
 
-export function deleteItemMutationKey(params: Parameters<typeof client.items>[0]) {
-  return ['items', '/items/{id}', 'DELETE', params] as const
+export function getDeleteItemsIdKey() {
+  return ['items', '/items/{id}', 'DELETE'] as const
 }
 
-export function useDeleteItem<
+export function useDeleteItemsId<
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>['error'], null>,
 >(
   params: Parameters<typeof client.items>[0],
-  config?: SWRMutationConfiguration<
-    Extract<
-      Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
-      { error: null }
-    >['data'],
-    TError,
-    ReturnType<typeof deleteItemMutationKey>,
-    {
-      body: Parameters<ReturnType<typeof client.items>['delete']>[0]
-      options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
-    }
-  >,
-) {
-  return useSWRMutation<
-    Extract<
-      Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
-      { error: null }
-    >['data'],
-    TError,
-    ReturnType<typeof deleteItemMutationKey>,
-    {
-      body: Parameters<ReturnType<typeof client.items>['delete']>[0]
-      options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
-    }
-  >(
-    deleteItemMutationKey(params),
-    async (
-      _key: ReturnType<typeof deleteItemMutationKey>,
+  options?: {
+    mutation?: SWRMutationConfiguration<
+      Extract<
+        Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
+        { error: null }
+      >['data'],
+      TError,
+      Key,
       {
-        arg,
-      }: {
-        arg: {
-          body: Parameters<ReturnType<typeof client.items>['delete']>[0]
-          options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
-        }
+        body?: Parameters<ReturnType<typeof client.items>['delete']>[0]
+        options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
+      }
+    > & { swrKey?: Key; throwOnError?: boolean }
+  },
+) {
+  const { mutation: mutationOptions } = options ?? {}
+  const { swrKey: customKey, ...restMutationOptions } = mutationOptions ?? {}
+  const swrKey = customKey ?? getDeleteItemsIdKey()
+  return {
+    swrKey,
+    ...useSWRMutation<
+      Extract<
+        Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
+        { error: null }
+      >['data'],
+      TError,
+      Key,
+      {
+        body?: Parameters<ReturnType<typeof client.items>['delete']>[0]
+        options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
+      }
+    >(
+      swrKey,
+      async (
+        _key: Key,
+        {
+          arg,
+        }: {
+          arg: {
+            body?: Parameters<ReturnType<typeof client.items>['delete']>[0]
+            options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
+          }
+        },
+      ) => {
+        const { data, error } = await client.items(params).delete(arg.body, arg.options)
+        if (error) throw error
+        return data
       },
-    ) => {
-      const { data, error } = await client.items(params).delete(arg.body, arg.options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
+      restMutationOptions,
+    ),
+  }
 }
 `
     expect(code).toBe(expected)
@@ -529,165 +613,52 @@ export function useDeleteItem<
     expect(result).toStrictEqual('No operations found')
   })
 
-  it('split mode: emits one file per operation + index.ts barrel with selective per-file imports', async () => {
+  // Eden cannot type a segment that mixes a parameter with static text, so the hook falls back
+  // to `fetch` and names its data by the response's component — which has to be imported from
+  // the schemas module the config writes.
+  it('imports the response component a fetch fallback hook is typed by', async () => {
     const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-split-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-fetch-'))
     process.chdir(dir)
     try {
-      const outDir = path.join(dir, 'src/swr')
       await runGenerator(
-        swr(
+        makeQueryHooks(
           {
             openapi: '3.1.0',
             info: { title: 'T', version: '0' },
             paths: {
-              '/items': {
-                get: { operationId: 'listItems', responses: { '200': { description: 'ok' } } },
-                post: { operationId: 'createItem', responses: { '201': { description: 'ok' } } },
+              '/Accounts/{Sid}.json': {
+                get: {
+                  operationId: 'fetchAccount',
+                  parameters: [
+                    { name: 'Sid', in: 'path', required: true, schema: { type: 'string' } },
+                  ],
+                  responses: {
+                    '200': {
+                      description: 'ok',
+                      content: {
+                        'application/json': {
+                          schema: { $ref: '#/components/schemas/Account' },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
+            components: { schemas: { Account: { type: 'object' } } },
           },
-          outDir,
-          './lib',
+          'src/hooks/swr.ts',
+          '../client',
+          HOOK_CONFIGS.swr,
+          'client',
           undefined,
-          undefined,
-          true,
+          '../components/schemas',
         ),
       )
-      const files = readdirSync(outDir).toSorted()
-      expect(files).toStrictEqual(['createItem.ts', 'index.ts', 'keys.ts', 'listItems.ts'])
-
-      const expectedIndex = `export * from './keys'
-export * from './listItems'
-export * from './createItem'
-`
-      expect(readFileSync(path.join(outDir, 'index.ts'), 'utf8')).toBe(expectedIndex)
-
-      const expectedKeys = `export function getItemsKey() {
-  return ['items'] as const
-}
-`
-      expect(readFileSync(path.join(outDir, 'keys.ts'), 'utf8')).toBe(expectedKeys)
-
-      // Mutation file imports ONLY swr/mutation — no swr/swr/infinite.
-      const expectedCreateItem = `import useSWRMutation from 'swr/mutation'
-import type { SWRMutationConfiguration } from 'swr/mutation'
-import { client } from './lib'
-
-export function createItemMutationKey() {
-  return ['items', '/items', 'POST'] as const
-}
-
-export function useCreateItem<
-  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
->(
-  config?: SWRMutationConfiguration<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    ReturnType<typeof createItemMutationKey>,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >,
-) {
-  return useSWRMutation<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    ReturnType<typeof createItemMutationKey>,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >(
-    createItemMutationKey(),
-    async (
-      _key: ReturnType<typeof createItemMutationKey>,
-      {
-        arg,
-      }: {
-        arg: {
-          body: Parameters<typeof client.items.post>[0]
-          options?: Parameters<typeof client.items.post>[1]
-        }
-      },
-    ) => {
-      const { data, error } = await client.items.post(arg.body, arg.options)
-      if (error) throw error
-      return data
-    },
-    config,
-  )
-}
-`
-      expect(readFileSync(path.join(outDir, 'createItem.ts'), 'utf8')).toBe(expectedCreateItem)
-    } finally {
-      process.chdir(cwd)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('split mode: errors when an operation resolves to the reserved keys.ts file name', async () => {
-    const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-keys-collision-'))
-    process.chdir(dir)
-    try {
-      const result = await runGeneratorError(
-        swr(
-          {
-            openapi: '3.1.0',
-            info: { title: 'T', version: '0' },
-            paths: {
-              '/keys': {
-                get: { operationId: 'keys', responses: { '200': { description: 'ok' } } },
-              },
-            },
-          },
-          path.join(dir, 'src/swr'),
-          './lib',
-          undefined,
-          undefined,
-          true,
-        ),
-      )
-      expect(result.message).toStrictEqual(
-        "Operation file name 'keys.ts' collides with the aggregated cache-key file. Rename the operation (operationId) that resolves to 'keys'.",
-      )
-    } finally {
-      process.chdir(cwd)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('split mode: emits no keys.ts (and no barrel entry) when there are no prefixes', async () => {
-    const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-no-prefix-'))
-    process.chdir(dir)
-    try {
-      const outDir = path.join(dir, 'src/swr')
-      await runGenerator(
-        swr(
-          {
-            openapi: '3.1.0',
-            info: { title: 'T', version: '0' },
-            paths: {
-              '/': {
-                get: { operationId: 'getRoot', responses: { '200': { description: 'ok' } } },
-              },
-            },
-          },
-          outDir,
-          './lib',
-          undefined,
-          undefined,
-          true,
-        ),
-      )
-      const files = readdirSync(outDir).toSorted()
-      expect(files).toStrictEqual(['getRoot.ts', 'index.ts'])
-      expect(readFileSync(path.join(outDir, 'index.ts'), 'utf8')).toBe(
-        `export * from './getRoot'\n`,
-      )
+      const code = readFileSync(path.join(dir, 'src/hooks/swr.ts'), 'utf8')
+      expect(code).toContain("import type { Account } from '../components/schemas'")
+      expect(code).toContain('useSWR<Account, TError>')
     } finally {
       process.chdir(cwd)
       rmSync(dir, { recursive: true, force: true })
@@ -702,7 +673,6 @@ describe('tanstack-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
     packageName?: string,
   ) =>
     makeQueryHooks(
@@ -714,7 +684,6 @@ describe('tanstack-query generator', () => {
         : HOOK_CONFIGS['tanstack-query'],
       client,
       basePath,
-      split,
     )
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
@@ -730,30 +699,7 @@ describe('tanstack-query generator', () => {
     }
   }
 
-  const generateSplitAndRead = async (
-    api: OpenAPI,
-  ): Promise<{ files: string[]; index: string; perOp: Record<string, string> }> => {
-    const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-tq-split-'))
-    process.chdir(dir)
-    try {
-      const outDir = path.join(dir, 'src/tanstack')
-      await runGenerator(tanstackQuery(api, outDir, './lib', undefined, undefined, true))
-      const files = readdirSync(outDir).toSorted()
-      const perOp: Record<string, string> = {}
-      for (const f of files) {
-        if (f === 'index.ts') continue
-        perOp[f] = readFileSync(path.join(outDir, f), 'utf8')
-      }
-      const index = readFileSync(path.join(outDir, 'index.ts'), 'utf8')
-      return { files, index, perOp }
-    } finally {
-      process.chdir(cwd)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-
-  it('GET (simple, no tags, no pagination): emits keyGetter + queryOptions factory + useQuery + useSuspenseQuery', async () => {
+  it('GET (simple, no pagination): emits keyGetter + queryOptions factory + useQuery + useSuspenseQuery taking `{ query, options }` and a queryClient', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -764,20 +710,28 @@ describe('tanstack-query generator', () => {
       },
     })
     const expected = `import { useQuery, useSuspenseQuery, queryOptions } from '@tanstack/react-query'
-import type { UseQueryOptions, UseSuspenseQueryOptions } from '@tanstack/react-query'
+import type { UseQueryOptions, UseSuspenseQueryOptions, QueryClient } from '@tanstack/react-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: Parameters<typeof client.items.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsQueryKey>
+  >({
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -789,68 +743,54 @@ export function listItemsQueryOptions(options?: Parameters<typeof client.items.g
   })
 }
 
-export function useListItems<
+export function useItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useQuery<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useQuery(
+    { ...getItemsQueryOptions<TData, TError>(clientOptions), ...queryOptions },
+    queryClient,
+  )
 }
 
-export function useSuspenseListItems<
+export function useSuspenseItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseSuspenseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseSuspenseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useSuspenseQuery<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useSuspenseQuery(
+    { ...getItemsQueryOptions<TData, TError>(clientOptions), ...queryOptions },
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
@@ -870,32 +810,44 @@ export function useSuspenseListItems<
         },
       },
     })
-    const expected = `import { useQuery, useSuspenseQuery, queryOptions } from '@tanstack/react-query'
-import type { UseQueryOptions, UseSuspenseQueryOptions } from '@tanstack/react-query'
-import {
+    const expected = `import {
+  useQuery,
+  useSuspenseQuery,
   useInfiniteQuery,
   useSuspenseInfiniteQuery,
+  queryOptions,
   infiniteQueryOptions,
 } from '@tanstack/react-query'
 import type {
+  UseQueryOptions,
+  QueryFunctionContext,
+  UseSuspenseQueryOptions,
   UseInfiniteQueryOptions,
-  InfiniteData,
   UseSuspenseInfiniteQueryOptions,
+  InfiniteData,
+  QueryClient,
 } from '@tanstack/react-query'
-import type { QueryFunctionContext } from '@tanstack/react-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: Parameters<typeof client.items.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsQueryKey>
+  >({
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -907,77 +859,68 @@ export function listItemsQueryOptions(options?: Parameters<typeof client.items.g
   })
 }
 
-export function useListItems<
+export function useItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useQuery<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useQuery(
+    { ...getItemsQueryOptions<TData, TError>(clientOptions), ...queryOptions },
+    queryClient,
+  )
 }
 
-export function useSuspenseListItems<
+export function useSuspenseItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseSuspenseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseSuspenseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useSuspenseQuery<
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useSuspenseQuery(
+    { ...getItemsQueryOptions<TData, TError>(clientOptions), ...queryOptions },
+    queryClient,
+  )
+}
+
+export function getItemsInfiniteQueryKey() {
+  return ['items', '/items', 'infinite'] as const
+}
+
+export function getItemsInfiniteQueryOptions<
+  TPageParam = unknown,
+  TData = InfiniteData<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
-}
-
-export function listItemsInfiniteQueryKey(options?: Parameters<typeof client.items.get>[0]) {
-  const { headers: _h, fetch: _f, throwHttpError: _t, ...keyArgs } = options ?? {}
-  return ['items', '/items', 'infinite', keyArgs] as const
-}
-
-export function listItemsInfiniteQueryOptions<TPageParam>(
-  options: Parameters<typeof client.items.get>[0] | undefined,
+    TPageParam
+  >,
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
   pagination: {
     initialPageParam: TPageParam
     getNextPageParam: (
@@ -986,29 +929,27 @@ export function listItemsInfiniteQueryOptions<TPageParam>(
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined | null
-    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
   },
+  options?: Parameters<typeof client.items.get>[0],
 ) {
   return infiniteQueryOptions<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
-    InfiniteData<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TPageParam
-    >,
-    ReturnType<typeof listItemsInfiniteQueryKey>,
+    TError,
+    TData,
+    ReturnType<typeof getItemsInfiniteQueryKey>,
     TPageParam
   >({
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({ pageParam, signal }) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
+    queryKey: getItemsInfiniteQueryKey(),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof getItemsInfiniteQueryKey>, TPageParam>) => {
+      const page = pagination.getRequestArgs(options, pageParam)
+      const { data, error } = await client.items.get({ ...page, fetch: { ...page?.fetch, signal } })
       if (error) throw error
       return data
     },
@@ -1017,7 +958,7 @@ export function listItemsInfiniteQueryOptions<TPageParam>(
   })
 }
 
-export function useListItemsInfinite<
+export function useInfiniteItems<
   TPageParam = unknown,
   TData = InfiniteData<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
@@ -1025,7 +966,6 @@ export function useListItemsInfinite<
   >,
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options: Parameters<typeof client.items.get>[0] | undefined,
   pagination: {
     initialPageParam: TPageParam
     getNextPageParam: (
@@ -1034,43 +974,37 @@ export function useListItemsInfinite<
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined | null
-    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
   },
-  queryOptions?: Omit<
-    UseInfiniteQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData,
-      ReturnType<typeof listItemsInfiniteQueryKey>,
-      TPageParam
-    >,
-    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
-  >,
+  options?: {
+    query?: Omit<
+      UseInfiniteQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsInfiniteQueryKey>,
+        TPageParam
+      >,
+      'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useInfiniteQuery({
-    ...queryOptions,
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({
-      pageParam,
-      signal,
-    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
-      if (error) throw error
-      return data
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useInfiniteQuery(
+    {
+      ...getItemsInfiniteQueryOptions<TPageParam, TData, TError>(pagination, clientOptions),
+      ...queryOptions,
     },
-    initialPageParam: pagination.initialPageParam,
-    getNextPageParam: pagination.getNextPageParam,
-  })
+    queryClient,
+  )
 }
 
-export function useSuspenseListItemsInfinite<
+export function useSuspenseInfiniteItems<
   TPageParam = unknown,
   TData = InfiniteData<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
@@ -1078,7 +1012,6 @@ export function useSuspenseListItemsInfinite<
   >,
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options: Parameters<typeof client.items.get>[0] | undefined,
   pagination: {
     initialPageParam: TPageParam
     getNextPageParam: (
@@ -1087,40 +1020,34 @@ export function useSuspenseListItemsInfinite<
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined | null
-    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
   },
-  queryOptions?: Omit<
-    UseSuspenseInfiniteQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData,
-      ReturnType<typeof listItemsInfiniteQueryKey>,
-      TPageParam
-    >,
-    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
-  >,
+  options?: {
+    query?: Omit<
+      UseSuspenseInfiniteQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsInfiniteQueryKey>,
+        TPageParam
+      >,
+      'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useSuspenseInfiniteQuery({
-    ...queryOptions,
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({
-      pageParam,
-      signal,
-    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
-      if (error) throw error
-      return data
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useSuspenseInfiniteQuery(
+    {
+      ...getItemsInfiniteQueryOptions<TPageParam, TData, TError>(pagination, clientOptions),
+      ...queryOptions,
     },
-    initialPageParam: pagination.initialPageParam,
-    getNextPageParam: pagination.getNextPageParam,
-  })
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
@@ -1137,23 +1064,34 @@ export function useSuspenseListItemsInfinite<
       },
     })
     const expected = `import { useQuery, useSuspenseQuery, queryOptions } from '@tanstack/react-query'
-import type { UseQueryOptions, UseSuspenseQueryOptions } from '@tanstack/react-query'
+import type { UseQueryOptions, UseSuspenseQueryOptions, QueryClient } from '@tanstack/react-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function getItemQueryKey(params: Parameters<typeof client.items>[0]) {
+export function getItemsIdQueryKey(params: Parameters<typeof client.items>[0]) {
   return ['items', '/items/{id}', params] as const
 }
 
-export function getItemQueryOptions(
+export function getItemsIdQueryOptions<
+  TData = Extract<
+    Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+    { error: null }
+  >['data'],
+  TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
+>(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
 ) {
-  return queryOptions({
-    queryKey: getItemQueryKey(params),
+  return queryOptions<
+    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsIdQueryKey>
+  >({
+    queryKey: getItemsIdQueryKey(params),
     queryFn: async ({ signal }) => {
       const { data, error } = await client
         .items(params)
@@ -1164,7 +1102,7 @@ export function getItemQueryOptions(
   })
 }
 
-export function useGetItem<
+export function useItemsId<
   TData = Extract<
     Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
     { error: null }
@@ -1172,34 +1110,31 @@ export function useGetItem<
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
 >(
   params: Parameters<typeof client.items>[0],
-  options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: Omit<
-    UseQueryOptions<
-      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseQueryOptions<
+        Extract<
+          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+          { error: null }
+        >['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsIdQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<ReturnType<typeof client.items>['get']>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useQuery<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: getItemQueryKey(params),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client
-        .items(params)
-        .get({ ...options, fetch: { ...options?.fetch, signal } })
-      if (error) throw error
-      return data
-    },
-  })
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useQuery(
+    { ...getItemsIdQueryOptions<TData, TError>(params, clientOptions), ...queryOptions },
+    queryClient,
+  )
 }
 
-export function useSuspenseGetItem<
+export function useSuspenseItemsId<
   TData = Extract<
     Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
     { error: null }
@@ -1207,37 +1142,34 @@ export function useSuspenseGetItem<
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
 >(
   params: Parameters<typeof client.items>[0],
-  options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: Omit<
-    UseSuspenseQueryOptions<
-      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseSuspenseQueryOptions<
+        Extract<
+          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+          { error: null }
+        >['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsIdQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<ReturnType<typeof client.items>['get']>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useSuspenseQuery<
-    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: getItemQueryKey(params),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client
-        .items(params)
-        .get({ ...options, fetch: { ...options?.fetch, signal } })
-      if (error) throw error
-      return data
-    },
-  })
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useSuspenseQuery(
+    { ...getItemsIdQueryOptions<TData, TError>(params, clientOptions), ...queryOptions },
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('GET on /v1/widgets: version segment is skipped during resource derivation (`widgets` wins, not `v1`)', async () => {
+  it('GET on /v1/widgets: the raw first segment is the prefix (`v1`), and the name carries the whole path', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -1248,20 +1180,28 @@ export function useSuspenseGetItem<
       },
     })
     const expected = `import { useQuery, useSuspenseQuery, queryOptions } from '@tanstack/react-query'
-import type { UseQueryOptions, UseSuspenseQueryOptions } from '@tanstack/react-query'
+import type { UseQueryOptions, UseSuspenseQueryOptions, QueryClient } from '@tanstack/react-query'
 import { client } from './lib'
 
 export function getV1Key() {
   return ['v1'] as const
 }
 
-export function listWidgetsQueryKey() {
+export function getV1WidgetsQueryKey() {
   return ['v1', '/v1/widgets'] as const
 }
 
-export function listWidgetsQueryOptions(options?: Parameters<typeof client.v1.widgets.get>[0]) {
-  return queryOptions({
-    queryKey: listWidgetsQueryKey(),
+export function getV1WidgetsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.v1.widgets.get>>['error'], null>,
+>(options?: Parameters<typeof client.v1.widgets.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getV1WidgetsQueryKey>
+  >({
+    queryKey: getV1WidgetsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.v1.widgets.get({
         ...options,
@@ -1273,68 +1213,54 @@ export function listWidgetsQueryOptions(options?: Parameters<typeof client.v1.wi
   })
 }
 
-export function useListWidgets<
+export function useV1Widgets<
   TData = Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.v1.widgets.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.v1.widgets.get>[0],
-  queryOptions?: Omit<
-    UseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getV1WidgetsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.v1.widgets.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useQuery<
-    Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listWidgetsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.v1.widgets.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useQuery(
+    { ...getV1WidgetsQueryOptions<TData, TError>(clientOptions), ...queryOptions },
+    queryClient,
+  )
 }
 
-export function useSuspenseListWidgets<
+export function useSuspenseV1Widgets<
   TData = Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.v1.widgets.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.v1.widgets.get>[0],
-  queryOptions?: Omit<
-    UseSuspenseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseSuspenseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getV1WidgetsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.v1.widgets.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useSuspenseQuery<
-    Extract<Awaited<ReturnType<typeof client.v1.widgets.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listWidgetsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.v1.widgets.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useSuspenseQuery(
+    { ...getV1WidgetsQueryOptions<TData, TError>(clientOptions), ...queryOptions },
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
@@ -1351,29 +1277,31 @@ export function useSuspenseListWidgets<
       },
     })
     const expected = `import { useMutation, mutationOptions } from '@tanstack/react-query'
-import type { UseMutationOptions } from '@tanstack/react-query'
+import type { UseMutationOptions, QueryClient } from '@tanstack/react-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function createItemMutationKey() {
+export function getPostItemsMutationKey() {
   return ['items', '/items', 'POST'] as const
 }
 
-export function createItemMutationOptions<
+export function getPostItemsMutationOptions<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >() {
   return mutationOptions<
     Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
     TError,
     {
-      body: Parameters<typeof client.items.post>[0]
+      body?: Parameters<typeof client.items.post>[0]
       options?: Parameters<typeof client.items.post>[1]
-    }
+    },
+    TOnMutateResult
   >({
-    mutationKey: createItemMutationKey(),
+    mutationKey: getPostItemsMutationKey(),
     mutationFn: async ({ body, options }) => {
       const { data, error } = await client.items.post(body, options)
       if (error) throw error
@@ -1382,35 +1310,42 @@ export function createItemMutationOptions<
   })
 }
 
-export function useCreateItem<
+export function usePostItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >(
-  mutationOptions?: Omit<
-    UseMutationOptions<
-      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-      TError,
-      {
-        body: Parameters<typeof client.items.post>[0]
-        options?: Parameters<typeof client.items.post>[1]
-      }
-    >,
-    'mutationKey' | 'mutationFn'
-  >,
+  options?: {
+    mutation?: Omit<
+      UseMutationOptions<
+        Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+        TError,
+        {
+          body?: Parameters<typeof client.items.post>[0]
+          options?: Parameters<typeof client.items.post>[1]
+        },
+        TOnMutateResult
+      >,
+      'mutationFn'
+    >
+  },
+  queryClient?: QueryClient,
 ) {
-  return useMutation<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
+  const { mutation } = options ?? {}
+  const mutationDefaults = getPostItemsMutationOptions<TError, TOnMutateResult>()
+  return useMutation(
     {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >({ ...mutationOptions, ...createItemMutationOptions<TError>() })
+      ...mutation,
+      ...mutationDefaults,
+      mutationKey: mutation?.mutationKey ?? mutationDefaults.mutationKey,
+    },
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('DELETE (body method): emits mutationOptions factory + useMutation with `{ body; options? }` variables (eden delete takes body, options)', async () => {
+  it('DELETE (body method, no request body): emits mutationOptions factory + useMutation with `{ body?; options? }` variables', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -1421,19 +1356,20 @@ export function useCreateItem<
       },
     })
     const expected = `import { useMutation, mutationOptions } from '@tanstack/react-query'
-import type { UseMutationOptions } from '@tanstack/react-query'
+import type { UseMutationOptions, QueryClient } from '@tanstack/react-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function deleteItemMutationKey(params: Parameters<typeof client.items>[0]) {
-  return ['items', '/items/{id}', 'DELETE', params] as const
+export function getDeleteItemsIdMutationKey() {
+  return ['items', '/items/{id}', 'DELETE'] as const
 }
 
-export function deleteItemMutationOptions<
+export function getDeleteItemsIdMutationOptions<
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>['error'], null>,
+  TOnMutateResult = unknown,
 >(params: Parameters<typeof client.items>[0]) {
   return mutationOptions<
     Extract<
@@ -1442,11 +1378,12 @@ export function deleteItemMutationOptions<
     >['data'],
     TError,
     {
-      body: Parameters<ReturnType<typeof client.items>['delete']>[0]
+      body?: Parameters<ReturnType<typeof client.items>['delete']>[0]
       options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
-    }
+    },
+    TOnMutateResult
   >({
-    mutationKey: deleteItemMutationKey(params),
+    mutationKey: getDeleteItemsIdMutationKey(),
     mutationFn: async ({ body, options }) => {
       const { data, error } = await client.items(params).delete(body, options)
       if (error) throw error
@@ -1455,36 +1392,40 @@ export function deleteItemMutationOptions<
   })
 }
 
-export function useDeleteItem<
+export function useDeleteItemsId<
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>['error'], null>,
+  TOnMutateResult = unknown,
 >(
   params: Parameters<typeof client.items>[0],
-  mutationOptions?: Omit<
-    UseMutationOptions<
-      Extract<
-        Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
-        { error: null }
-      >['data'],
-      TError,
-      {
-        body: Parameters<ReturnType<typeof client.items>['delete']>[0]
-        options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
-      }
-    >,
-    'mutationKey' | 'mutationFn'
-  >,
+  options?: {
+    mutation?: Omit<
+      UseMutationOptions<
+        Extract<
+          Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
+          { error: null }
+        >['data'],
+        TError,
+        {
+          body?: Parameters<ReturnType<typeof client.items>['delete']>[0]
+          options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
+        },
+        TOnMutateResult
+      >,
+      'mutationFn'
+    >
+  },
+  queryClient?: QueryClient,
 ) {
-  return useMutation<
-    Extract<
-      Awaited<ReturnType<ReturnType<typeof client.items>['delete']>>,
-      { error: null }
-    >['data'],
-    TError,
+  const { mutation } = options ?? {}
+  const mutationDefaults = getDeleteItemsIdMutationOptions<TError, TOnMutateResult>(params)
+  return useMutation(
     {
-      body: Parameters<ReturnType<typeof client.items>['delete']>[0]
-      options?: Parameters<ReturnType<typeof client.items>['delete']>[1]
-    }
-  >({ ...mutationOptions, ...deleteItemMutationOptions<TError>(params) })
+      ...mutation,
+      ...mutationDefaults,
+      mutationKey: mutation?.mutationKey ?? mutationDefaults.mutationKey,
+    },
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
@@ -1501,177 +1442,7 @@ export function useDeleteItem<
     expect(result).toStrictEqual('No operations found')
   })
 
-  it('split mode: emits one file per operation + index.ts barrel with selective per-file imports', async () => {
-    const { files, index, perOp } = await generateSplitAndRead({
-      openapi: '3.1.0',
-      info: { title: 'T', version: '0' },
-      paths: {
-        '/items': {
-          get: { operationId: 'listItems', responses: { '200': { description: 'ok' } } },
-          post: { operationId: 'createItem', responses: { '201': { description: 'ok' } } },
-        },
-      },
-    })
-    expect(files).toStrictEqual(['createItem.ts', 'index.ts', 'keys.ts', 'listItems.ts'])
-    const expectedIndex = `export * from './keys'
-export * from './listItems'
-export * from './createItem'
-`
-    expect(index).toBe(expectedIndex)
-
-    const expectedKeys = `export function getItemsKey() {
-  return ['items'] as const
-}
-`
-    expect(perOp['keys.ts']).toBe(expectedKeys)
-
-    const expectedListItems = `import { useQuery, useSuspenseQuery, queryOptions } from '@tanstack/react-query'
-import type { UseQueryOptions, UseSuspenseQueryOptions } from '@tanstack/react-query'
-import { client } from './lib'
-
-export function listItemsQueryKey() {
-  return ['items', '/items'] as const
-}
-
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
-}
-
-export function useListItems<
-  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
-) {
-  return useQuery<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
-}
-
-export function useSuspenseListItems<
-  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseSuspenseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
-) {
-  return useSuspenseQuery<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
-}
-`
-    expect(perOp['listItems.ts']).toBe(expectedListItems)
-
-    // Mutation file imports ONLY the mutation hook, helper and option type — no useQuery
-    // / queryOptions (selective per-file imports proves the import scoping).
-    const expectedCreateItem = `import { useMutation, mutationOptions } from '@tanstack/react-query'
-import type { UseMutationOptions } from '@tanstack/react-query'
-import { client } from './lib'
-
-export function createItemMutationKey() {
-  return ['items', '/items', 'POST'] as const
-}
-
-export function createItemMutationOptions<
-  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
->() {
-  return mutationOptions<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >({
-    mutationKey: createItemMutationKey(),
-    mutationFn: async ({ body, options }) => {
-      const { data, error } = await client.items.post(body, options)
-      if (error) throw error
-      return data
-    },
-  })
-}
-
-export function useCreateItem<
-  TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
->(
-  mutationOptions?: Omit<
-    UseMutationOptions<
-      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-      TError,
-      {
-        body: Parameters<typeof client.items.post>[0]
-        options?: Parameters<typeof client.items.post>[1]
-      }
-    >,
-    'mutationKey' | 'mutationFn'
-  >,
-) {
-  return useMutation<
-    Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-    TError,
-    {
-      body: Parameters<typeof client.items.post>[0]
-      options?: Parameters<typeof client.items.post>[1]
-    }
-  >({ ...mutationOptions, ...createItemMutationOptions<TError>() })
-}
-`
-    expect(perOp['createItem.ts']).toBe(expectedCreateItem)
-  })
-
-  it('packageName arg flows into emitted import (non-default package, non-split mode)', async () => {
+  it('packageName arg flows into emitted import (non-default package)', async () => {
     const cwd = process.cwd()
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-tq-pkg-'))
     process.chdir(dir)
@@ -1691,26 +1462,33 @@ export function useCreateItem<
           './lib',
           undefined,
           undefined,
-          false,
           '@example/custom-query',
         ),
       )
       const code = readFileSync(path.join(dir, 'src/tanstack.ts'), 'utf8')
       const expected = `import { useQuery, useSuspenseQuery, queryOptions } from '@example/custom-query'
-import type { UseQueryOptions, UseSuspenseQueryOptions } from '@example/custom-query'
+import type { UseQueryOptions, UseSuspenseQueryOptions, QueryClient } from '@example/custom-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: Parameters<typeof client.items.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsQueryKey>
+  >({
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -1722,68 +1500,54 @@ export function listItemsQueryOptions(options?: Parameters<typeof client.items.g
   })
 }
 
-export function useListItems<
+export function useItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useQuery<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useQuery(
+    { ...getItemsQueryOptions<TData, TError>(clientOptions), ...queryOptions },
+    queryClient,
+  )
 }
 
-export function useSuspenseListItems<
+export function useSuspenseItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    UseSuspenseQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: {
+    query?: Omit<
+      UseSuspenseQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useSuspenseQuery<
-    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    TError,
-    TData
-  >({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useSuspenseQuery(
+    { ...getItemsQueryOptions<TData, TError>(clientOptions), ...queryOptions },
+    queryClient,
+  )
 }
 `
       expect(code).toBe(expected)
@@ -1824,21 +1588,26 @@ describe('preact-query generator', () => {
       )
       const code = readFileSync(path.join(dir, 'src/preact.ts'), 'utf8')
       const header = code.slice(0, code.indexOf("import { client } from './lib'"))
-      const expected = `import { useQuery, useSuspenseQuery, queryOptions } from '@tanstack/preact-query'
-import type { UseQueryOptions, UseSuspenseQueryOptions } from '@tanstack/preact-query'
-import {
+      const expected = `import {
+  useQuery,
+  useSuspenseQuery,
   useInfiniteQuery,
   useSuspenseInfiniteQuery,
+  useMutation,
+  queryOptions,
   infiniteQueryOptions,
+  mutationOptions,
 } from '@tanstack/preact-query'
 import type {
+  UseQueryOptions,
+  QueryFunctionContext,
+  UseSuspenseQueryOptions,
   UseInfiniteQueryOptions,
-  InfiniteData,
   UseSuspenseInfiniteQueryOptions,
+  InfiniteData,
+  UseMutationOptions,
+  QueryClient,
 } from '@tanstack/preact-query'
-import { useMutation, mutationOptions } from '@tanstack/preact-query'
-import type { UseMutationOptions } from '@tanstack/preact-query'
-import type { QueryFunctionContext } from '@tanstack/preact-query'
 `
       expect(header).toBe(expected)
     } finally {
@@ -1855,9 +1624,7 @@ describe('vue-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) =>
-    makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['vue-query'], client, basePath, split)
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['vue-query'], client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()
@@ -1872,7 +1639,7 @@ describe('vue-query generator', () => {
     }
   }
 
-  it('GET emits useQuery hook with use<Op> naming + 5-generic UseQueryOptions', async () => {
+  it('GET emits useQuery hook named by path + 5-generic UseQueryOptions', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -1882,55 +1649,21 @@ describe('vue-query generator', () => {
         },
       },
     })
-    const expected = `import { useQuery, queryOptions } from '@tanstack/vue-query'
-import type { UseQueryOptions } from '@tanstack/vue-query'
-import type { QueryFunctionContext } from '@tanstack/vue-query'
+    const expected = `import { useQuery } from '@tanstack/vue-query'
+import type { UseQueryOptions, QueryFunctionContext, QueryClient } from '@tanstack/vue-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
-}
-
-export function useListItems<
-  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    Extract<
-      UseQueryOptions<
-        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-        TError,
-        TData,
-        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-        ReturnType<typeof listItemsQueryKey>
-      >,
-      { queryKey: unknown }
-    >,
-    'queryKey' | 'queryFn'
-  >,
-) {
-  return useQuery({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
+  return {
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }: QueryFunctionContext) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -1939,7 +1672,47 @@ export function useListItems<
       if (error) throw error
       return data
     },
-  })
+  }
+}
+
+export function useItems<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
+  options?: {
+    query?: Omit<
+      Extract<
+        UseQueryOptions<
+          Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+          TError,
+          TData,
+          Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+          ReturnType<typeof getItemsQueryKey>
+        >,
+        { queryKey: unknown }
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
+) {
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useQuery(
+    {
+      ...queryOptions,
+      queryKey: getItemsQueryKey(),
+      queryFn: async ({ signal }) => {
+        const { data, error } = await client.items.get({
+          ...clientOptions,
+          fetch: { ...clientOptions?.fetch, signal },
+        })
+        if (error) throw error
+        return data
+      },
+    },
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
@@ -1966,81 +1739,89 @@ export function useListItems<
         },
       },
     })
-    const expected = `import { useQuery, queryOptions } from '@tanstack/vue-query'
-import type { UseQueryOptions } from '@tanstack/vue-query'
-import type { QueryFunctionContext } from '@tanstack/vue-query'
+    const expected = `import { useQuery } from '@tanstack/vue-query'
+import type { UseQueryOptions, QueryFunctionContext, QueryClient } from '@tanstack/vue-query'
+import { computed, toValue } from 'vue'
+import type { MaybeRefOrGetter } from 'vue'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function getItemQueryKey(params: Parameters<typeof client.items>[0]) {
-  return ['items', '/items/{id}', params] as const
+export function getItemsIdQueryKey(params: MaybeRefOrGetter<Parameters<typeof client.items>[0]>) {
+  return ['items', '/items/{id}', toValue(params)] as const
 }
 
-export function getItemQueryOptions(
-  params: Parameters<typeof client.items>[0],
+export function getItemsIdQueryOptions(
+  params: MaybeRefOrGetter<Parameters<typeof client.items>[0]>,
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
 ) {
-  return queryOptions({
-    queryKey: getItemQueryKey(params),
-    queryFn: async ({ signal }) => {
+  return {
+    queryKey: computed(() => getItemsIdQueryKey(params)),
+    queryFn: async ({ signal }: QueryFunctionContext) => {
       const { data, error } = await client
-        .items(params)
+        .items(toValue(params))
         .get({ ...options, fetch: { ...options?.fetch, signal } })
       if (error) throw error
       return data
     },
-  })
+  }
 }
 
-export function useGetItem<
+export function useItemsId<
   TData = Extract<
     Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
     { error: null }
   >['data'],
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
 >(
-  params: Parameters<typeof client.items>[0],
-  options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: Omit<
-    Extract<
-      UseQueryOptions<
-        Extract<
-          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
-          { error: null }
-        >['data'],
-        TError,
-        TData,
-        Extract<
-          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
-          { error: null }
-        >['data'],
-        ReturnType<typeof getItemQueryKey>
+  params: MaybeRefOrGetter<Parameters<typeof client.items>[0]>,
+  options?: {
+    query?: Omit<
+      Extract<
+        UseQueryOptions<
+          Extract<
+            Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+            { error: null }
+          >['data'],
+          TError,
+          TData,
+          Extract<
+            Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+            { error: null }
+          >['data'],
+          ReturnType<typeof getItemsIdQueryKey>
+        >,
+        { queryKey: unknown }
       >,
-      { queryKey: unknown }
-    >,
-    'queryKey' | 'queryFn'
-  >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<ReturnType<typeof client.items>['get']>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useQuery({
-    ...queryOptions,
-    queryKey: getItemQueryKey(params),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client
-        .items(params)
-        .get({ ...options, fetch: { ...options?.fetch, signal } })
-      if (error) throw error
-      return data
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useQuery(
+    {
+      ...queryOptions,
+      queryKey: computed(() => getItemsIdQueryKey(params)),
+      queryFn: async ({ signal }) => {
+        const { data, error } = await client
+          .items(toValue(params))
+          .get({ ...clientOptions, fetch: { ...clientOptions?.fetch, signal } })
+        if (error) throw error
+        return data
+      },
     },
-  })
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
   })
 
-  it('GET with x-pagination: also emits Infinite key getter + useInfiniteQuery hook taking `pagination.buildInit`', async () => {
+  it('GET with x-pagination: also emits Infinite key getter + plain factory + useInfiniteQuery hook taking `pagination.getRequestArgs`', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -2054,57 +1835,27 @@ export function useGetItem<
         },
       },
     })
-    const expected = `import { useQuery, queryOptions } from '@tanstack/vue-query'
-import type { UseQueryOptions } from '@tanstack/vue-query'
-import { useInfiniteQuery } from '@tanstack/vue-query'
-import type { UseInfiniteQueryOptions, InfiniteData } from '@tanstack/vue-query'
-import type { QueryFunctionContext } from '@tanstack/vue-query'
+    const expected = `import { useQuery, useInfiniteQuery } from '@tanstack/vue-query'
+import type {
+  UseQueryOptions,
+  QueryFunctionContext,
+  UseInfiniteQueryOptions,
+  InfiniteData,
+  QueryClient,
+} from '@tanstack/vue-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  })
-}
-
-export function useListItems<
-  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
->(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    Extract<
-      UseQueryOptions<
-        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-        TError,
-        TData,
-        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-        ReturnType<typeof listItemsQueryKey>
-      >,
-      { queryKey: unknown }
-    >,
-    'queryKey' | 'queryFn'
-  >,
-) {
-  return useQuery({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
+  return {
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }: QueryFunctionContext) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -2113,15 +1864,77 @@ export function useListItems<
       if (error) throw error
       return data
     },
-  })
+  }
 }
 
-export function listItemsInfiniteQueryKey(options?: Parameters<typeof client.items.get>[0]) {
-  const { headers: _h, fetch: _f, throwHttpError: _t, ...keyArgs } = options ?? {}
-  return ['items', '/items', 'infinite', keyArgs] as const
+export function useItems<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
+  options?: {
+    query?: Omit<
+      Extract<
+        UseQueryOptions<
+          Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+          TError,
+          TData,
+          Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+          ReturnType<typeof getItemsQueryKey>
+        >,
+        { queryKey: unknown }
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
+) {
+  const { query: queryOptions, options: clientOptions } = options ?? {}
+  return useQuery(
+    {
+      ...queryOptions,
+      queryKey: getItemsQueryKey(),
+      queryFn: async ({ signal }) => {
+        const { data, error } = await client.items.get({
+          ...clientOptions,
+          fetch: { ...clientOptions?.fetch, signal },
+        })
+        if (error) throw error
+        return data
+      },
+    },
+    queryClient,
+  )
 }
 
-export function useListItemsInfinite<
+export function getItemsInfiniteQueryKey() {
+  return ['items', '/items', 'infinite'] as const
+}
+
+export function getItemsInfiniteQueryOptions<TPageParam = unknown>(
+  pagination: {
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
+  },
+  options?: Parameters<typeof client.items.get>[0],
+) {
+  return {
+    queryKey: getItemsInfiniteQueryKey(),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof getItemsInfiniteQueryKey>, TPageParam>) => {
+      const page = pagination.getRequestArgs(options, pageParam)
+      const { data, error } = await client.items.get({ ...page, fetch: { ...page?.fetch, signal } })
+      if (error) throw error
+      return data
+    },
+  }
+}
+
+export function useInfiniteItems<
   TPageParam = unknown,
   TData = InfiniteData<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
@@ -2129,38 +1942,50 @@ export function useListItemsInfinite<
   >,
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options: Parameters<typeof client.items.get>[0] | undefined,
-  pagination: { buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0] },
-  queryOptions: Omit<
-    Extract<
-      UseInfiniteQueryOptions<
-        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-        TError,
-        TData,
-        ReturnType<typeof listItemsInfiniteQueryKey>,
-        TPageParam
+  pagination: {
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
+  },
+  options: {
+    query: Omit<
+      Extract<
+        UseInfiniteQueryOptions<
+          Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+          TError,
+          TData,
+          ReturnType<typeof getItemsInfiniteQueryKey>,
+          TPageParam
+        >,
+        { queryKey: unknown }
       >,
-      { queryKey: unknown }
-    >,
-    'queryKey' | 'queryFn'
-  >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: QueryClient,
 ) {
-  return useInfiniteQuery({
-    ...queryOptions,
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({ pageParam, signal }: QueryFunctionContext) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
-      if (error) throw error
-      return data
+  const { query: queryOptions, options: clientOptions } = options
+  return useInfiniteQuery(
+    {
+      ...queryOptions,
+      queryKey: getItemsInfiniteQueryKey(),
+      queryFn: async ({
+        pageParam,
+        signal,
+      }: QueryFunctionContext<ReturnType<typeof getItemsInfiniteQueryKey>, TPageParam>) => {
+        const page = pagination.getRequestArgs(clientOptions, pageParam)
+        const { data, error } = await client.items.get({
+          ...page,
+          fetch: { ...page?.fetch, signal },
+        })
+        if (error) throw error
+        return data
+      },
     },
-  })
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
@@ -2177,29 +2002,31 @@ export function useListItemsInfinite<
       },
     })
     const expected = `import { useMutation, mutationOptions } from '@tanstack/vue-query'
-import type { UseMutationOptions } from '@tanstack/vue-query'
+import type { UseMutationOptions, QueryClient } from '@tanstack/vue-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function createItemMutationKey() {
+export function getPostItemsMutationKey() {
   return ['items', '/items', 'POST'] as const
 }
 
-export function createItemMutationOptions<
+export function getPostItemsMutationOptions<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >() {
   return mutationOptions<
     Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
     TError,
     {
-      body: Parameters<typeof client.items.post>[0]
+      body?: Parameters<typeof client.items.post>[0]
       options?: Parameters<typeof client.items.post>[1]
-    }
+    },
+    TOnMutateResult
   >({
-    mutationKey: createItemMutationKey(),
+    mutationKey: getPostItemsMutationKey(),
     mutationFn: async ({ body, options }) => {
       const { data, error } = await client.items.post(body, options)
       if (error) throw error
@@ -2208,25 +2035,39 @@ export function createItemMutationOptions<
   })
 }
 
-export function useCreateItem<
+export function usePostItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >(
-  mutationOptions?: Omit<
-    Extract<
-      UseMutationOptions<
-        Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-        TError,
-        {
-          body: Parameters<typeof client.items.post>[0]
-          options?: Parameters<typeof client.items.post>[1]
-        }
+  options?: {
+    mutation?: Omit<
+      Extract<
+        UseMutationOptions<
+          Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+          TError,
+          {
+            body?: Parameters<typeof client.items.post>[0]
+            options?: Parameters<typeof client.items.post>[1]
+          },
+          TOnMutateResult
+        >,
+        { mutationFn?: unknown }
       >,
-      { mutationKey?: unknown }
-    >,
-    'mutationKey' | 'mutationFn'
-  >,
+      'mutationFn'
+    >
+  },
+  queryClient?: QueryClient,
 ) {
-  return useMutation({ ...mutationOptions, ...createItemMutationOptions<TError>() })
+  const { mutation } = options ?? {}
+  const mutationDefaults = getPostItemsMutationOptions<TError, TOnMutateResult>()
+  return useMutation(
+    {
+      ...mutation,
+      ...mutationDefaults,
+      mutationKey: mutation?.mutationKey ?? mutationDefaults.mutationKey,
+    },
+    queryClient,
+  )
 }
 `
     expect(code).toBe(expected)
@@ -2240,17 +2081,7 @@ describe('solid-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) =>
-    makeQueryHooks(
-      openAPI,
-      output,
-      importPath,
-      HOOK_CONFIGS['solid-query'],
-      client,
-      basePath,
-      split,
-    )
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['solid-query'], client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()
@@ -2265,7 +2096,7 @@ describe('solid-query generator', () => {
     }
   }
 
-  it('GET emits createQuery hook with create<Op> naming + accessor wrap', async () => {
+  it('GET emits createQuery hook named by path + accessor wrap', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -2276,21 +2107,28 @@ describe('solid-query generator', () => {
       },
     })
     const expected = `import { createQuery, queryOptions } from '@tanstack/solid-query'
-import type { UndefinedInitialDataOptions } from '@tanstack/solid-query'
-import type { QueryFunctionContext } from '@tanstack/solid-query'
+import type { UndefinedInitialDataOptions, QueryClient } from '@tanstack/solid-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: Parameters<typeof client.items.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsQueryKey>
+  >({
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -2302,35 +2140,30 @@ export function listItemsQueryOptions(options?: Parameters<typeof client.items.g
   })
 }
 
-export function createListItems<
+export function createItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: () => Omit<
-    ReturnType<
-      UndefinedInitialDataOptions<
-        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-        TError,
-        TData,
-        ReturnType<typeof listItemsQueryKey>
-      >
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: () => {
+    query?: Omit<
+      ReturnType<
+        UndefinedInitialDataOptions<
+          Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+          TError,
+          TData,
+          ReturnType<typeof getItemsQueryKey>
+        >
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createQuery(() => ({
-    ...queryOptions?.(),
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  }))
+  return createQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return { ...getItemsQueryOptions<TData, TError>(clientOptions), ...query }
+  }, queryClient)
 }
 `
     expect(code).toBe(expected)
@@ -2358,24 +2191,34 @@ export function createListItems<
       },
     })
     const expected = `import { createQuery, queryOptions } from '@tanstack/solid-query'
-import type { UndefinedInitialDataOptions } from '@tanstack/solid-query'
-import type { QueryFunctionContext } from '@tanstack/solid-query'
+import type { UndefinedInitialDataOptions, QueryClient } from '@tanstack/solid-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function getItemQueryKey(params: Parameters<typeof client.items>[0]) {
+export function getItemsIdQueryKey(params: Parameters<typeof client.items>[0]) {
   return ['items', '/items/{id}', params] as const
 }
 
-export function getItemQueryOptions(
+export function getItemsIdQueryOptions<
+  TData = Extract<
+    Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+    { error: null }
+  >['data'],
+  TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
+>(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
 ) {
-  return queryOptions({
-    queryKey: getItemQueryKey(params),
+  return queryOptions<
+    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsIdQueryKey>
+  >({
+    queryKey: getItemsIdQueryKey(params),
     queryFn: async ({ signal }) => {
       const { data, error } = await client
         .items(params)
@@ -2386,41 +2229,37 @@ export function getItemQueryOptions(
   })
 }
 
-export function createGetItem<
+export function createItemsId<
   TData = Extract<
     Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
     { error: null }
   >['data'],
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
 >(
-  params: Parameters<typeof client.items>[0],
-  options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: () => Omit<
-    ReturnType<
-      UndefinedInitialDataOptions<
-        Extract<
-          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
-          { error: null }
-        >['data'],
-        TError,
-        TData,
-        ReturnType<typeof getItemQueryKey>
-      >
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  params: () => Parameters<typeof client.items>[0],
+  options?: () => {
+    query?: Omit<
+      ReturnType<
+        UndefinedInitialDataOptions<
+          Extract<
+            Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+            { error: null }
+          >['data'],
+          TError,
+          TData,
+          ReturnType<typeof getItemsIdQueryKey>
+        >
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<ReturnType<typeof client.items>['get']>[0]
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createQuery(() => ({
-    ...queryOptions?.(),
-    queryKey: getItemQueryKey(params),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client
-        .items(params)
-        .get({ ...options, fetch: { ...options?.fetch, signal } })
-      if (error) throw error
-      return data
-    },
-  }))
+  return createQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return { ...getItemsIdQueryOptions<TData, TError>(params(), clientOptions), ...query }
+  }, queryClient)
 }
 `
     expect(code).toBe(expected)
@@ -2440,24 +2279,40 @@ export function createGetItem<
         },
       },
     })
-    const expected = `import { createQuery, queryOptions } from '@tanstack/solid-query'
-import type { UndefinedInitialDataOptions } from '@tanstack/solid-query'
-import { createInfiniteQuery, infiniteQueryOptions } from '@tanstack/solid-query'
-import type { UndefinedInitialDataInfiniteOptions, InfiniteData } from '@tanstack/solid-query'
-import type { QueryFunctionContext } from '@tanstack/solid-query'
+    const expected = `import {
+  createQuery,
+  createInfiniteQuery,
+  queryOptions,
+  infiniteQueryOptions,
+} from '@tanstack/solid-query'
+import type {
+  UndefinedInitialDataOptions,
+  QueryFunctionContext,
+  UndefinedInitialDataInfiniteOptions,
+  InfiniteData,
+  QueryClient,
+} from '@tanstack/solid-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: Parameters<typeof client.items.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsQueryKey>
+  >({
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -2469,44 +2324,44 @@ export function listItemsQueryOptions(options?: Parameters<typeof client.items.g
   })
 }
 
-export function createListItems<
+export function createItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: () => Omit<
-    ReturnType<
-      UndefinedInitialDataOptions<
-        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-        TError,
-        TData,
-        ReturnType<typeof listItemsQueryKey>
-      >
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: () => {
+    query?: Omit<
+      ReturnType<
+        UndefinedInitialDataOptions<
+          Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+          TError,
+          TData,
+          ReturnType<typeof getItemsQueryKey>
+        >
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createQuery(() => ({
-    ...queryOptions?.(),
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  }))
+  return createQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return { ...getItemsQueryOptions<TData, TError>(clientOptions), ...query }
+  }, queryClient)
 }
 
-export function listItemsInfiniteQueryKey(options?: Parameters<typeof client.items.get>[0]) {
-  const { headers: _h, fetch: _f, throwHttpError: _t, ...keyArgs } = options ?? {}
-  return ['items', '/items', 'infinite', keyArgs] as const
+export function getItemsInfiniteQueryKey() {
+  return ['items', '/items', 'infinite'] as const
 }
 
-export function listItemsInfiniteQueryOptions<TPageParam>(
-  options: Parameters<typeof client.items.get>[0] | undefined,
+export function getItemsInfiniteQueryOptions<
+  TPageParam = unknown,
+  TData = InfiniteData<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TPageParam
+  >,
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
   pagination: {
     initialPageParam: TPageParam
     getNextPageParam: (
@@ -2515,29 +2370,27 @@ export function listItemsInfiniteQueryOptions<TPageParam>(
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined | null
-    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
   },
+  options?: Parameters<typeof client.items.get>[0],
 ) {
   return infiniteQueryOptions<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
-    InfiniteData<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TPageParam
-    >,
-    ReturnType<typeof listItemsInfiniteQueryKey>,
+    TError,
+    TData,
+    ReturnType<typeof getItemsInfiniteQueryKey>,
     TPageParam
   >({
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({ pageParam, signal }) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
+    queryKey: getItemsInfiniteQueryKey(),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof getItemsInfiniteQueryKey>, TPageParam>) => {
+      const page = pagination.getRequestArgs(options, pageParam)
+      const { data, error } = await client.items.get({ ...page, fetch: { ...page?.fetch, signal } })
       if (error) throw error
       return data
     },
@@ -2546,7 +2399,7 @@ export function listItemsInfiniteQueryOptions<TPageParam>(
   })
 }
 
-export function createListItemsInfinite<
+export function createInfiniteItems<
   TPageParam = unknown,
   TData = InfiniteData<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
@@ -2554,7 +2407,6 @@ export function createListItemsInfinite<
   >,
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options: Parameters<typeof client.items.get>[0] | undefined,
   pagination: {
     initialPageParam: TPageParam
     getNextPageParam: (
@@ -2563,42 +2415,35 @@ export function createListItemsInfinite<
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined | null
-    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
   },
-  queryOptions?: () => Omit<
-    ReturnType<
-      UndefinedInitialDataInfiniteOptions<
-        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-        TError,
-        TData,
-        ReturnType<typeof listItemsInfiniteQueryKey>,
-        TPageParam
-      >
-    >,
-    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
-  >,
+  options?: () => {
+    query?: Omit<
+      ReturnType<
+        UndefinedInitialDataInfiniteOptions<
+          Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+          TError,
+          TData,
+          ReturnType<typeof getItemsInfiniteQueryKey>,
+          TPageParam
+        >
+      >,
+      'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createInfiniteQuery(() => ({
-    ...queryOptions?.(),
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({
-      pageParam,
-      signal,
-    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-    initialPageParam: pagination.initialPageParam,
-    getNextPageParam: pagination.getNextPageParam,
-  }))
+  return createInfiniteQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return {
+      ...getItemsInfiniteQueryOptions<TPageParam, TData, TError>(pagination, clientOptions),
+      ...query,
+    }
+  }, queryClient)
 }
 `
     expect(code).toBe(expected)
@@ -2615,29 +2460,31 @@ export function createListItemsInfinite<
       },
     })
     const expected = `import { createMutation, mutationOptions } from '@tanstack/solid-query'
-import type { CreateMutationOptions } from '@tanstack/solid-query'
+import type { CreateMutationOptions, QueryClient } from '@tanstack/solid-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function createItemMutationKey() {
+export function getPostItemsMutationKey() {
   return ['items', '/items', 'POST'] as const
 }
 
-export function createItemMutationOptions<
+export function getPostItemsMutationOptions<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >() {
   return mutationOptions<
     Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
     TError,
     {
-      body: Parameters<typeof client.items.post>[0]
+      body?: Parameters<typeof client.items.post>[0]
       options?: Parameters<typeof client.items.post>[1]
-    }
+    },
+    TOnMutateResult
   >({
-    mutationKey: createItemMutationKey(),
+    mutationKey: getPostItemsMutationKey(),
     mutationFn: async ({ body, options }) => {
       const { data, error } = await client.items.post(body, options)
       if (error) throw error
@@ -2646,24 +2493,37 @@ export function createItemMutationOptions<
   })
 }
 
-export function createCreateItem<
+export function createPostItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >(
-  mutationOptions?: () => Omit<
-    ReturnType<
-      CreateMutationOptions<
-        Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-        TError,
-        {
-          body: Parameters<typeof client.items.post>[0]
-          options?: Parameters<typeof client.items.post>[1]
-        }
-      >
-    >,
-    'mutationKey' | 'mutationFn'
-  >,
+  options?: () => {
+    mutation?: Omit<
+      ReturnType<
+        CreateMutationOptions<
+          Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+          TError,
+          {
+            body?: Parameters<typeof client.items.post>[0]
+            options?: Parameters<typeof client.items.post>[1]
+          },
+          TOnMutateResult
+        >
+      >,
+      'mutationFn'
+    >
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createMutation(() => ({ ...mutationOptions?.(), ...createItemMutationOptions<TError>() }))
+  return createMutation(() => {
+    const { mutation } = options?.() ?? {}
+    const mutationDefaults = getPostItemsMutationOptions<TError, TOnMutateResult>()
+    return {
+      ...mutation,
+      ...mutationDefaults,
+      mutationKey: mutation?.mutationKey ?? mutationDefaults.mutationKey,
+    }
+  }, queryClient)
 }
 `
     expect(code).toBe(expected)
@@ -2677,17 +2537,7 @@ describe('svelte-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) =>
-    makeQueryHooks(
-      openAPI,
-      output,
-      importPath,
-      HOOK_CONFIGS['svelte-query'],
-      client,
-      basePath,
-      split,
-    )
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['svelte-query'], client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()
@@ -2702,7 +2552,7 @@ describe('svelte-query generator', () => {
     }
   }
 
-  it('GET emits createQuery hook with create<Op> naming + key getter + queryOptions factory', async () => {
+  it('GET emits createQuery hook named by path + key getter + queryOptions factory', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -2713,21 +2563,28 @@ describe('svelte-query generator', () => {
       },
     })
     const expected = `import { createQuery, queryOptions } from '@tanstack/svelte-query'
-import type { CreateQueryOptions } from '@tanstack/svelte-query'
-import type { QueryFunctionContext } from '@tanstack/svelte-query'
+import type { CreateQueryOptions, QueryClient } from '@tanstack/svelte-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: Parameters<typeof client.items.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsQueryKey>
+  >({
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -2739,32 +2596,28 @@ export function listItemsQueryOptions(options?: Parameters<typeof client.items.g
   })
 }
 
-export function createListItems<
+export function createItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    CreateQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: () => {
+    query?: Omit<
+      CreateQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createQuery(() => ({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  }))
+  return createQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return { ...getItemsQueryOptions<TData, TError>(clientOptions), ...query }
+  }, queryClient)
 }
 `
     expect(code).toBe(expected)
@@ -2792,24 +2645,34 @@ export function createListItems<
       },
     })
     const expected = `import { createQuery, queryOptions } from '@tanstack/svelte-query'
-import type { CreateQueryOptions } from '@tanstack/svelte-query'
-import type { QueryFunctionContext } from '@tanstack/svelte-query'
+import type { CreateQueryOptions, QueryClient } from '@tanstack/svelte-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function getItemQueryKey(params: Parameters<typeof client.items>[0]) {
+export function getItemsIdQueryKey(params: Parameters<typeof client.items>[0]) {
   return ['items', '/items/{id}', params] as const
 }
 
-export function getItemQueryOptions(
+export function getItemsIdQueryOptions<
+  TData = Extract<
+    Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+    { error: null }
+  >['data'],
+  TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
+>(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
 ) {
-  return queryOptions({
-    queryKey: getItemQueryKey(params),
+  return queryOptions<
+    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsIdQueryKey>
+  >({
+    queryKey: getItemsIdQueryKey(params),
     queryFn: async ({ signal }) => {
       const { data, error } = await client
         .items(params)
@@ -2820,35 +2683,35 @@ export function getItemQueryOptions(
   })
 }
 
-export function createGetItem<
+export function createItemsId<
   TData = Extract<
     Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
     { error: null }
   >['data'],
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
 >(
-  params: Parameters<typeof client.items>[0],
-  options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: Omit<
-    CreateQueryOptions<
-      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  params: () => Parameters<typeof client.items>[0],
+  options?: () => {
+    query?: Omit<
+      CreateQueryOptions<
+        Extract<
+          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+          { error: null }
+        >['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsIdQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<ReturnType<typeof client.items>['get']>[0]
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createQuery(() => ({
-    ...queryOptions,
-    queryKey: getItemQueryKey(params),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client
-        .items(params)
-        .get({ ...options, fetch: { ...options?.fetch, signal } })
-      if (error) throw error
-      return data
-    },
-  }))
+  return createQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return { ...getItemsIdQueryOptions<TData, TError>(params(), clientOptions), ...query }
+  }, queryClient)
 }
 `
     expect(code).toBe(expected)
@@ -2868,24 +2731,40 @@ export function createGetItem<
         },
       },
     })
-    const expected = `import { createQuery, queryOptions } from '@tanstack/svelte-query'
-import type { CreateQueryOptions } from '@tanstack/svelte-query'
-import { createInfiniteQuery, infiniteQueryOptions } from '@tanstack/svelte-query'
-import type { CreateInfiniteQueryOptions, InfiniteData } from '@tanstack/svelte-query'
-import type { QueryFunctionContext } from '@tanstack/svelte-query'
+    const expected = `import {
+  createQuery,
+  createInfiniteQuery,
+  queryOptions,
+  infiniteQueryOptions,
+} from '@tanstack/svelte-query'
+import type {
+  CreateQueryOptions,
+  QueryFunctionContext,
+  CreateInfiniteQueryOptions,
+  InfiniteData,
+  QueryClient,
+} from '@tanstack/svelte-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: Parameters<typeof client.items.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsQueryKey>
+  >({
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -2897,41 +2776,42 @@ export function listItemsQueryOptions(options?: Parameters<typeof client.items.g
   })
 }
 
-export function createListItems<
+export function createItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    CreateQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: () => {
+    query?: Omit<
+      CreateQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createQuery(() => ({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  }))
+  return createQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return { ...getItemsQueryOptions<TData, TError>(clientOptions), ...query }
+  }, queryClient)
 }
 
-export function listItemsInfiniteQueryKey(options?: Parameters<typeof client.items.get>[0]) {
-  const { headers: _h, fetch: _f, throwHttpError: _t, ...keyArgs } = options ?? {}
-  return ['items', '/items', 'infinite', keyArgs] as const
+export function getItemsInfiniteQueryKey() {
+  return ['items', '/items', 'infinite'] as const
 }
 
-export function listItemsInfiniteQueryOptions<TPageParam>(
-  options: Parameters<typeof client.items.get>[0] | undefined,
+export function getItemsInfiniteQueryOptions<
+  TPageParam = unknown,
+  TData = InfiniteData<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TPageParam
+  >,
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
   pagination: {
     initialPageParam: TPageParam
     getNextPageParam: (
@@ -2940,29 +2820,27 @@ export function listItemsInfiniteQueryOptions<TPageParam>(
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined | null
-    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
   },
+  options?: Parameters<typeof client.items.get>[0],
 ) {
   return infiniteQueryOptions<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
-    InfiniteData<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TPageParam
-    >,
-    ReturnType<typeof listItemsInfiniteQueryKey>,
+    TError,
+    TData,
+    ReturnType<typeof getItemsInfiniteQueryKey>,
     TPageParam
   >({
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({ pageParam, signal }) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
+    queryKey: getItemsInfiniteQueryKey(),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof getItemsInfiniteQueryKey>, TPageParam>) => {
+      const page = pagination.getRequestArgs(options, pageParam)
+      const { data, error } = await client.items.get({ ...page, fetch: { ...page?.fetch, signal } })
       if (error) throw error
       return data
     },
@@ -2971,7 +2849,7 @@ export function listItemsInfiniteQueryOptions<TPageParam>(
   })
 }
 
-export function createListItemsInfinite<
+export function createInfiniteItems<
   TPageParam = unknown,
   TData = InfiniteData<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
@@ -2979,7 +2857,6 @@ export function createListItemsInfinite<
   >,
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options: Parameters<typeof client.items.get>[0] | undefined,
   pagination: {
     initialPageParam: TPageParam
     getNextPageParam: (
@@ -2988,40 +2865,33 @@ export function createListItemsInfinite<
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined | null
-    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
   },
-  queryOptions?: Omit<
-    CreateInfiniteQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData,
-      ReturnType<typeof listItemsInfiniteQueryKey>,
-      TPageParam
-    >,
-    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
-  >,
+  options?: () => {
+    query?: Omit<
+      CreateInfiniteQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsInfiniteQueryKey>,
+        TPageParam
+      >,
+      'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createInfiniteQuery(() => ({
-    ...queryOptions,
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({
-      pageParam,
-      signal,
-    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-    initialPageParam: pagination.initialPageParam,
-    getNextPageParam: pagination.getNextPageParam,
-  }))
+  return createInfiniteQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return {
+      ...getItemsInfiniteQueryOptions<TPageParam, TData, TError>(pagination, clientOptions),
+      ...query,
+    }
+  }, queryClient)
 }
 `
     expect(code).toBe(expected)
@@ -3038,29 +2908,31 @@ export function createListItemsInfinite<
       },
     })
     const expected = `import { createMutation, mutationOptions } from '@tanstack/svelte-query'
-import type { CreateMutationOptions } from '@tanstack/svelte-query'
+import type { CreateMutationOptions, QueryClient } from '@tanstack/svelte-query'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function createItemMutationKey() {
+export function getPostItemsMutationKey() {
   return ['items', '/items', 'POST'] as const
 }
 
-export function createItemMutationOptions<
+export function getPostItemsMutationOptions<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >() {
   return mutationOptions<
     Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
     TError,
     {
-      body: Parameters<typeof client.items.post>[0]
+      body?: Parameters<typeof client.items.post>[0]
       options?: Parameters<typeof client.items.post>[1]
-    }
+    },
+    TOnMutateResult
   >({
-    mutationKey: createItemMutationKey(),
+    mutationKey: getPostItemsMutationKey(),
     mutationFn: async ({ body, options }) => {
       const { data, error } = await client.items.post(body, options)
       if (error) throw error
@@ -3069,22 +2941,35 @@ export function createItemMutationOptions<
   })
 }
 
-export function createCreateItem<
+export function createPostItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >(
-  mutationOptions?: Omit<
-    CreateMutationOptions<
-      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-      TError,
-      {
-        body: Parameters<typeof client.items.post>[0]
-        options?: Parameters<typeof client.items.post>[1]
-      }
-    >,
-    'mutationKey' | 'mutationFn'
-  >,
+  options?: () => {
+    mutation?: Omit<
+      CreateMutationOptions<
+        Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+        TError,
+        {
+          body?: Parameters<typeof client.items.post>[0]
+          options?: Parameters<typeof client.items.post>[1]
+        },
+        TOnMutateResult
+      >,
+      'mutationFn'
+    >
+  },
+  queryClient?: () => QueryClient,
 ) {
-  return createMutation(() => ({ ...mutationOptions, ...createItemMutationOptions<TError>() }))
+  return createMutation(() => {
+    const { mutation } = options?.() ?? {}
+    const mutationDefaults = getPostItemsMutationOptions<TError, TOnMutateResult>()
+    return {
+      ...mutation,
+      ...mutationDefaults,
+      mutationKey: mutation?.mutationKey ?? mutationDefaults.mutationKey,
+    }
+  }, queryClient)
 }
 `
     expect(code).toBe(expected)
@@ -3098,17 +2983,7 @@ describe('angular-query generator', () => {
     importPath: string,
     client = 'client',
     basePath?: string,
-    split?: boolean,
-  ) =>
-    makeQueryHooks(
-      openAPI,
-      output,
-      importPath,
-      HOOK_CONFIGS['angular-query'],
-      client,
-      basePath,
-      split,
-    )
+  ) => makeQueryHooks(openAPI, output, importPath, HOOK_CONFIGS['angular-query'], client, basePath)
 
   const generateAndRead = async (api: OpenAPI): Promise<string> => {
     const cwd = process.cwd()
@@ -3123,7 +2998,7 @@ describe('angular-query generator', () => {
     }
   }
 
-  it('GET emits injectQuery hook with inject<Op> naming + accessor wrap (DI factory)', async () => {
+  it('GET emits injectQuery hook named by path + accessor wrap (DI factory)', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',
       info: { title: 'T', version: '0' },
@@ -3134,21 +3009,28 @@ describe('angular-query generator', () => {
       },
     })
     const expected = `import { injectQuery, queryOptions } from '@tanstack/angular-query-experimental'
-import type { CreateQueryOptions } from '@tanstack/angular-query-experimental'
-import type { QueryFunctionContext } from '@tanstack/angular-query-experimental'
+import type { CreateQueryOptions, InjectQueryOptions } from '@tanstack/angular-query-experimental'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: Parameters<typeof client.items.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsQueryKey>
+  >({
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -3160,32 +3042,28 @@ export function listItemsQueryOptions(options?: Parameters<typeof client.items.g
   })
 }
 
-export function injectListItems<
+export function injectItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    CreateQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: () => {
+    query?: Omit<
+      CreateQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  injectOptions?: InjectQueryOptions,
 ) {
-  return injectQuery(() => ({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  }))
+  return injectQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return { ...getItemsQueryOptions<TData, TError>(clientOptions), ...query }
+  }, injectOptions)
 }
 `
     expect(code).toBe(expected)
@@ -3213,24 +3091,34 @@ export function injectListItems<
       },
     })
     const expected = `import { injectQuery, queryOptions } from '@tanstack/angular-query-experimental'
-import type { CreateQueryOptions } from '@tanstack/angular-query-experimental'
-import type { QueryFunctionContext } from '@tanstack/angular-query-experimental'
+import type { CreateQueryOptions, InjectQueryOptions } from '@tanstack/angular-query-experimental'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function getItemQueryKey(params: Parameters<typeof client.items>[0]) {
+export function getItemsIdQueryKey(params: Parameters<typeof client.items>[0]) {
   return ['items', '/items/{id}', params] as const
 }
 
-export function getItemQueryOptions(
+export function getItemsIdQueryOptions<
+  TData = Extract<
+    Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+    { error: null }
+  >['data'],
+  TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
+>(
   params: Parameters<typeof client.items>[0],
   options?: Parameters<ReturnType<typeof client.items>['get']>[0],
 ) {
-  return queryOptions({
-    queryKey: getItemQueryKey(params),
+  return queryOptions<
+    Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsIdQueryKey>
+  >({
+    queryKey: getItemsIdQueryKey(params),
     queryFn: async ({ signal }) => {
       const { data, error } = await client
         .items(params)
@@ -3241,35 +3129,35 @@ export function getItemQueryOptions(
   })
 }
 
-export function injectGetItem<
+export function injectItemsId<
   TData = Extract<
     Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
     { error: null }
   >['data'],
   TError = Exclude<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>['error'], null>,
 >(
-  params: Parameters<typeof client.items>[0],
-  options?: Parameters<ReturnType<typeof client.items>['get']>[0],
-  queryOptions?: Omit<
-    CreateQueryOptions<
-      Extract<Awaited<ReturnType<ReturnType<typeof client.items>['get']>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  params: () => Parameters<typeof client.items>[0],
+  options?: () => {
+    query?: Omit<
+      CreateQueryOptions<
+        Extract<
+          Awaited<ReturnType<ReturnType<typeof client.items>['get']>>,
+          { error: null }
+        >['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsIdQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<ReturnType<typeof client.items>['get']>[0]
+  },
+  injectOptions?: InjectQueryOptions,
 ) {
-  return injectQuery(() => ({
-    ...queryOptions,
-    queryKey: getItemQueryKey(params),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client
-        .items(params)
-        .get({ ...options, fetch: { ...options?.fetch, signal } })
-      if (error) throw error
-      return data
-    },
-  }))
+  return injectQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return { ...getItemsIdQueryOptions<TData, TError>(params(), clientOptions), ...query }
+  }, injectOptions)
 }
 `
     expect(code).toBe(expected)
@@ -3289,24 +3177,41 @@ export function injectGetItem<
         },
       },
     })
-    const expected = `import { injectQuery, queryOptions } from '@tanstack/angular-query-experimental'
-import type { CreateQueryOptions } from '@tanstack/angular-query-experimental'
-import { injectInfiniteQuery, infiniteQueryOptions } from '@tanstack/angular-query-experimental'
-import type { CreateInfiniteQueryOptions, InfiniteData } from '@tanstack/angular-query-experimental'
-import type { QueryFunctionContext } from '@tanstack/angular-query-experimental'
+    const expected = `import {
+  injectQuery,
+  injectInfiniteQuery,
+  queryOptions,
+  infiniteQueryOptions,
+} from '@tanstack/angular-query-experimental'
+import type {
+  CreateQueryOptions,
+  QueryFunctionContext,
+  CreateInfiniteQueryOptions,
+  InfiniteData,
+  InjectQueryOptions,
+  InjectInfiniteQueryOptions,
+} from '@tanstack/angular-query-experimental'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function listItemsQueryKey() {
+export function getItemsQueryKey() {
   return ['items', '/items'] as const
 }
 
-export function listItemsQueryOptions(options?: Parameters<typeof client.items.get>[0]) {
-  return queryOptions({
-    queryKey: listItemsQueryKey(),
+export function getItemsQueryOptions<
+  TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(options?: Parameters<typeof client.items.get>[0]) {
+  return queryOptions<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TError,
+    TData,
+    ReturnType<typeof getItemsQueryKey>
+  >({
+    queryKey: getItemsQueryKey(),
     queryFn: async ({ signal }) => {
       const { data, error } = await client.items.get({
         ...options,
@@ -3318,41 +3223,42 @@ export function listItemsQueryOptions(options?: Parameters<typeof client.items.g
   })
 }
 
-export function injectListItems<
+export function injectItems<
   TData = Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options?: Parameters<typeof client.items.get>[0],
-  queryOptions?: Omit<
-    CreateQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData
-    >,
-    'queryKey' | 'queryFn'
-  >,
+  options?: () => {
+    query?: Omit<
+      CreateQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsQueryKey>
+      >,
+      'queryKey' | 'queryFn'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  injectOptions?: InjectQueryOptions,
 ) {
-  return injectQuery(() => ({
-    ...queryOptions,
-    queryKey: listItemsQueryKey(),
-    queryFn: async ({ signal }: QueryFunctionContext) => {
-      const { data, error } = await client.items.get({
-        ...options,
-        fetch: { ...options?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-  }))
+  return injectQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return { ...getItemsQueryOptions<TData, TError>(clientOptions), ...query }
+  }, injectOptions)
 }
 
-export function listItemsInfiniteQueryKey(options?: Parameters<typeof client.items.get>[0]) {
-  const { headers: _h, fetch: _f, throwHttpError: _t, ...keyArgs } = options ?? {}
-  return ['items', '/items', 'infinite', keyArgs] as const
+export function getItemsInfiniteQueryKey() {
+  return ['items', '/items', 'infinite'] as const
 }
 
-export function listItemsInfiniteQueryOptions<TPageParam>(
-  options: Parameters<typeof client.items.get>[0] | undefined,
+export function getItemsInfiniteQueryOptions<
+  TPageParam = unknown,
+  TData = InfiniteData<
+    Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+    TPageParam
+  >,
+  TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
+>(
   pagination: {
     initialPageParam: TPageParam
     getNextPageParam: (
@@ -3361,29 +3267,27 @@ export function listItemsInfiniteQueryOptions<TPageParam>(
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined | null
-    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
   },
+  options?: Parameters<typeof client.items.get>[0],
 ) {
   return infiniteQueryOptions<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-    Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
-    InfiniteData<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TPageParam
-    >,
-    ReturnType<typeof listItemsInfiniteQueryKey>,
+    TError,
+    TData,
+    ReturnType<typeof getItemsInfiniteQueryKey>,
     TPageParam
   >({
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({ pageParam, signal }) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
+    queryKey: getItemsInfiniteQueryKey(),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof getItemsInfiniteQueryKey>, TPageParam>) => {
+      const page = pagination.getRequestArgs(options, pageParam)
+      const { data, error } = await client.items.get({ ...page, fetch: { ...page?.fetch, signal } })
       if (error) throw error
       return data
     },
@@ -3392,7 +3296,7 @@ export function listItemsInfiniteQueryOptions<TPageParam>(
   })
 }
 
-export function injectListItemsInfinite<
+export function injectInfiniteItems<
   TPageParam = unknown,
   TData = InfiniteData<
     Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
@@ -3400,7 +3304,6 @@ export function injectListItemsInfinite<
   >,
   TError = Exclude<Awaited<ReturnType<typeof client.items.get>>['error'], null>,
 >(
-  options: Parameters<typeof client.items.get>[0] | undefined,
   pagination: {
     initialPageParam: TPageParam
     getNextPageParam: (
@@ -3409,40 +3312,33 @@ export function injectListItemsInfinite<
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined | null
-    buildInit: (pageParam: unknown) => Parameters<typeof client.items.get>[0]
+    getRequestArgs: (
+      options: Parameters<typeof client.items.get>[0],
+      pageParam: unknown,
+    ) => Parameters<typeof client.items.get>[0]
   },
-  queryOptions?: Omit<
-    CreateInfiniteQueryOptions<
-      Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
-      TError,
-      TData,
-      ReturnType<typeof listItemsInfiniteQueryKey>,
-      TPageParam
-    >,
-    'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
-  >,
+  options?: () => {
+    query?: Omit<
+      CreateInfiniteQueryOptions<
+        Extract<Awaited<ReturnType<typeof client.items.get>>, { error: null }>['data'],
+        TError,
+        TData,
+        ReturnType<typeof getItemsInfiniteQueryKey>,
+        TPageParam
+      >,
+      'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'
+    >
+    options?: Parameters<typeof client.items.get>[0]
+  },
+  injectOptions?: InjectInfiniteQueryOptions,
 ) {
-  return injectInfiniteQuery(() => ({
-    ...queryOptions,
-    queryKey: listItemsInfiniteQueryKey(options),
-    queryFn: async ({
-      pageParam,
-      signal,
-    }: QueryFunctionContext<ReturnType<typeof listItemsInfiniteQueryKey>, TPageParam>) => {
-      const overlay = pagination.buildInit(pageParam)
-      const { data, error } = await client.items.get({
-        ...options,
-        ...overlay,
-        query: { ...options?.query, ...overlay?.query },
-        headers: { ...options?.headers, ...overlay?.headers },
-        fetch: { ...options?.fetch, ...overlay?.fetch, signal },
-      })
-      if (error) throw error
-      return data
-    },
-    initialPageParam: pagination.initialPageParam,
-    getNextPageParam: pagination.getNextPageParam,
-  }))
+  return injectInfiniteQuery(() => {
+    const { query, options: clientOptions } = options?.() ?? {}
+    return {
+      ...getItemsInfiniteQueryOptions<TPageParam, TData, TError>(pagination, clientOptions),
+      ...query,
+    }
+  }, injectOptions)
 }
 `
     expect(code).toBe(expected)
@@ -3459,29 +3355,34 @@ export function injectListItemsInfinite<
       },
     })
     const expected = `import { injectMutation, mutationOptions } from '@tanstack/angular-query-experimental'
-import type { CreateMutationOptions } from '@tanstack/angular-query-experimental'
+import type {
+  CreateMutationOptions,
+  InjectMutationOptions,
+} from '@tanstack/angular-query-experimental'
 import { client } from './lib'
 
 export function getItemsKey() {
   return ['items'] as const
 }
 
-export function createItemMutationKey() {
+export function getPostItemsMutationKey() {
   return ['items', '/items', 'POST'] as const
 }
 
-export function createItemMutationOptions<
+export function getPostItemsMutationOptions<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >() {
   return mutationOptions<
     Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
     TError,
     {
-      body: Parameters<typeof client.items.post>[0]
+      body?: Parameters<typeof client.items.post>[0]
       options?: Parameters<typeof client.items.post>[1]
-    }
+    },
+    TOnMutateResult
   >({
-    mutationKey: createItemMutationKey(),
+    mutationKey: getPostItemsMutationKey(),
     mutationFn: async ({ body, options }) => {
       const { data, error } = await client.items.post(body, options)
       if (error) throw error
@@ -3490,22 +3391,35 @@ export function createItemMutationOptions<
   })
 }
 
-export function injectCreateItem<
+export function injectPostItems<
   TError = Exclude<Awaited<ReturnType<typeof client.items.post>>['error'], null>,
+  TOnMutateResult = unknown,
 >(
-  mutationOptions?: Omit<
-    CreateMutationOptions<
-      Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
-      TError,
-      {
-        body: Parameters<typeof client.items.post>[0]
-        options?: Parameters<typeof client.items.post>[1]
-      }
-    >,
-    'mutationKey' | 'mutationFn'
-  >,
+  options?: () => {
+    mutation?: Omit<
+      CreateMutationOptions<
+        Extract<Awaited<ReturnType<typeof client.items.post>>, { error: null }>['data'],
+        TError,
+        {
+          body?: Parameters<typeof client.items.post>[0]
+          options?: Parameters<typeof client.items.post>[1]
+        },
+        TOnMutateResult
+      >,
+      'mutationFn'
+    >
+  },
+  injectOptions?: InjectMutationOptions,
 ) {
-  return injectMutation(() => ({ ...mutationOptions, ...createItemMutationOptions<TError>() }))
+  return injectMutation(() => {
+    const { mutation } = options?.() ?? {}
+    const mutationDefaults = getPostItemsMutationOptions<TError, TOnMutateResult>()
+    return {
+      ...mutation,
+      ...mutationDefaults,
+      mutationKey: mutation?.mutationKey ?? mutationDefaults.mutationKey,
+    }
+  }, injectOptions)
 }
 `
     expect(code).toBe(expected)

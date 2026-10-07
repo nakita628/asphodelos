@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    // The package names the generated files import each other by, mapped as a workspace would map
+    // them — for tsc, and for Bun, which reads the nearest tsconfig when it loads them. The app the
+    // client is typed by is the host app, whose routes are the document's and whose handlers are
+    // written; the generated app is a scaffold whose handlers are not.
+    "paths": {
+      "@packages/elysia": ["../hosts/users-app.ts"],
+      "@packages/eden": ["./apps/eden/__generated__/src/index.ts"]
+    }
+  },
+  "include": [
+    "asphodelos.config.ts",
+    "*.test.ts",
+    "apps/eden/__generated__/**/*",
+    "apps/react/__generated__/**/*",
+    "../hosts/users-app.ts",
+    "../hosts/users-server.ts"
+  ]
+}

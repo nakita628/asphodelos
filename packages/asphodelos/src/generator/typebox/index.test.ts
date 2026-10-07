@@ -41,7 +41,9 @@ describe('typebox', () => {
   })
 
   it('dispatches all-string enum to t.UnionEnum (preserves literal-union TS type)', () => {
-    expect(typebox({ type: 'string', enum: ['a', 'b'] })).toBe('t.UnionEnum(["a","b"])')
+    expect(typebox({ type: 'string', enum: ['a', 'b'] })).toBe(
+      't.UnionEnum(["a","b"],{default:undefined})',
+    )
   })
 
   it('dispatches allOf to t.Intersect', () => {
@@ -123,7 +125,7 @@ describe('typebox', () => {
         },
       }),
     ).toBe(
-      't.Object({"id":t.Optional(t.Integer({format:"int64",maximum:9007199254740991})),"name":t.String(),"photoUrls":t.Array(t.String()),"status":t.Optional(t.UnionEnum(["available","pending","sold"]))})',
+      't.Object({"id":t.Optional(t.Integer({format:"int64",maximum:9007199254740991})),"name":t.String(),"photoUrls":t.Array(t.String()),"status":t.Optional(t.UnionEnum(["available","pending","sold"],{default:undefined}))})',
     )
   })
 })
@@ -311,7 +313,9 @@ describe('typebox: x-enum-message', () => {
     it('round-trip generated string', () => {
       expect(
         typebox({ type: 'string', enum: ['a', 'b'], 'x-enum-message': 'must be a or b' }),
-      ).toBe(`t.UnionEnum(["a","b"],{error:"must be a or b","x-enum-message":"must be a or b"})`)
+      ).toBe(
+        `t.UnionEnum(["a","b"],{error:"must be a or b","x-enum-message":"must be a or b",default:undefined})`,
+      )
     })
 
     it('runtime: union of literals rejects non-member with Union (62)', () => {
@@ -338,7 +342,7 @@ describe('typebox: x-enum-message', () => {
           'x-enum-message': 'a または b にしてください',
         }),
       ).toBe(
-        `t.UnionEnum(["a","b"],{error:"a または b にしてください","x-enum-message":"a または b にしてください"})`,
+        `t.UnionEnum(["a","b"],{error:"a または b にしてください","x-enum-message":"a または b にしてください",default:undefined})`,
       )
     })
 
@@ -2153,7 +2157,7 @@ describe('typebox: integer auto-cap (MAX_SAFE_INTEGER)', () => {
 
   it('round-trip: format:int32 auto-caps at INT32_MAX', () => {
     expect(typebox({ type: 'integer', format: 'int32' })).toBe(
-      't.Integer({format:"int32",maximum:2147483647})',
+      't.Integer({format:"int32",minimum:-2147483648,maximum:2147483647})',
     )
   })
 
@@ -2206,11 +2210,15 @@ describe('typebox: integer auto-cap (MAX_SAFE_INTEGER)', () => {
 
 describe('typebox: enum → t.UnionEnum', () => {
   it('round-trip: all-string enum collapses to t.UnionEnum (preserves literal-union TS type)', () => {
-    expect(typebox({ type: 'string', enum: ['a', 'b'] })).toBe('t.UnionEnum(["a","b"])')
+    expect(typebox({ type: 'string', enum: ['a', 'b'] })).toBe(
+      't.UnionEnum(["a","b"],{default:undefined})',
+    )
   })
 
   it('round-trip: all-numeric enum routes to t.UnionEnum (t.NumericEnum is string-keyed)', () => {
-    expect(typebox({ type: 'integer', enum: [1, 2, 3] })).toBe('t.UnionEnum([1,2,3])')
+    expect(typebox({ type: 'integer', enum: [1, 2, 3] })).toBe(
+      't.UnionEnum([1,2,3],{default:undefined})',
+    )
   })
 
   it('round-trip: enum with embedded null falls back to t.Union (t.UnionEnum rejects null)', () => {

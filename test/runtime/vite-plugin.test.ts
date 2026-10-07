@@ -2,10 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { asphodelosVite } from 'asphodelos/vite-plugin'
 import { createServer } from 'vite'
 import type { HotPayload, ViteDevServer } from 'vite'
+
+import { resumeHappyDom, suspendHappyDom } from '../happydom.js'
 
 /**
  * The packaged Vite plugin inside a real Vite dev server.
@@ -34,7 +35,8 @@ function writeConfig(swrOutput: string) {
 export default defineConfig({
   input: 'openapi.yaml',
   output: 'app/index.ts',
-  swr: { split: true, output: '${swrOutput}', import: '../client' },
+  client: { output: 'lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } },
+  swr: { output: '${swrOutput}' },
 })
 `,
   )
@@ -57,13 +59,13 @@ const consoleLog = console.log
 let server: ViteDevServer | undefined
 
 beforeAll(async () => {
-  // The suite preloads happy-dom for the React hooks, and its timers are the browser's: Vite calls
+  // The suite preloads happy-dom for the React hooks, and its globals are the browser's: Vite calls
   // `.unref()` on what `setTimeout` returns. A dev server is a Node program, so it gets Node's.
-  await GlobalRegistrator.unregister()
+  suspendHappyDom()
   rmSync(projectDir, { recursive: true, force: true })
   mkdirSync(projectDir, { recursive: true })
   writeFileSync(specPath, readFileSync(path.join(testRoot, 'specs', 'users.yaml'), 'utf8'))
-  writeConfig('hooks')
+  writeConfig('hooks/index.ts')
   // The plugin resolves the config and every output against the working directory, the way the
   // CLI does, so the dev server is started from inside the project.
   process.chdir(projectDir)
@@ -87,7 +89,7 @@ afterAll(async () => {
   await server?.close()
   console.log = consoleLog
   process.chdir(originalCwd)
-  GlobalRegistrator.register()
+  resumeHappyDom()
 })
 
 describe('asphodelosVite in a Vite dev server', () => {
@@ -97,7 +99,7 @@ describe('asphodelosVite in a Vite dev server', () => {
 
     expect(existsSync(path.join(projectDir, 'app/index.ts'))).toBe(true)
     expect(existsSync(path.join(projectDir, 'app/modules/users/index.ts'))).toBe(true)
-    expect(existsSync(path.join(projectDir, 'hooks/listUsers.ts'))).toBe(true)
+    expect(readFileSync(path.join(projectDir, 'hooks/index.ts'), 'utf8')).toContain('useGetUsers')
   }, 120_000)
 
   it('regenerates and reloads when the document changes', async () => {
@@ -117,19 +119,23 @@ describe('asphodelosVite in a Vite dev server', () => {
       ),
     )
 
-    expect(await waitFor(() => existsSync(path.join(projectDir, 'hooks/getHealth.ts')))).toBe(true)
+    expect(
+      await waitFor(() =>
+        readFileSync(path.join(projectDir, 'hooks/index.ts'), 'utf8').includes('useGetHealth'),
+      ),
+    ).toBe(true)
     expect(await waitFor(() => reloads.includes('full-reload'))).toBe(true)
     expect(existsSync(path.join(projectDir, 'app/modules/health/index.ts'))).toBe(true)
   }, 120_000)
 
   it('reloads an edited config and cleans up the output it no longer names', async () => {
-    writeConfig('swr')
+    writeConfig('swr/index.ts')
 
     expect(await waitFor(() => existsSync(path.join(projectDir, 'swr/index.ts')))).toBe(true)
     // The plugin logs a removal after it has happened, so the log line is the thing to wait for.
-    const removed = `🧹 removed ${path.join(projectDir, 'hooks/listUsers.ts')}`
+    const removed = `🧹 removed ${path.join(projectDir, 'hooks/index.ts')}`
     expect(await waitFor(() => logged.includes(removed))).toBe(true)
-    expect(existsSync(path.join(projectDir, 'hooks/listUsers.ts'))).toBe(false)
+    expect(existsSync(path.join(projectDir, 'hooks/index.ts'))).toBe(false)
     // The app entry holds the user's code, so a config edit never takes it away.
     expect(existsSync(path.join(projectDir, 'app/index.ts'))).toBe(true)
   }, 120_000)

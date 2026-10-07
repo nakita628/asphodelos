@@ -10,7 +10,7 @@
 - TypeBox component bundles (schemas, responses, parameters, …)
 - Eden Treaty wrappers and a self-contained `App` type
 - Client library hooks (SWR, TanStack Query, Preact Query, Solid Query, Vue Query, Svelte Query, Angular Query)
-- `bun:test` tests and a mock server
+- A mock server
 
 Asphodelos targets the [Bun](https://bun.sh/) runtime.
 
@@ -22,15 +22,9 @@ Asphodelos targets the [Bun](https://bun.sh/) runtime.
 bun add -D asphodelos
 ```
 
-### CLI
-
-```bash
-bunx asphodelos path/to/input.{yaml,json,tsp} -o path/to/output.ts
-```
-
 ### Configuration File
 
-Create `asphodelos.config.ts`:
+The CLI runs the config file in the working directory. Create `asphodelos.config.ts`:
 
 ```ts
 import { defineConfig } from 'asphodelos'
@@ -51,18 +45,14 @@ bunx asphodelos
 
 ```text
 DESCRIPTION
-  Generate Elysia code from OpenAPI or TypeSpec
+  Asphodelos is a code generator from OpenAPI to Elysia
 
 USAGE
-  asphodelos [flags] [<input>]
-
-ARGUMENTS
-  input input.{yaml,json,tsp} OpenAPI (.yaml, .json) or TypeSpec (.tsp) document to generate from (optional)
+  asphodelos [flags]
 
 FLAGS
-  --output, -o output.ts    TypeScript file the generated app is written to
-  --config, -c file         Config file to run (default: ./asphodelos.config.ts)
-  --watch, -w               Rerun the config on every change to its documents or itself
+  --config, -c file    Config file to run (default: ./asphodelos.config.ts)
+  --watch, -w          Rerun the config on every change to its documents or itself
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information
@@ -72,9 +62,6 @@ GLOBAL FLAGS
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 
 EXAMPLES
-  # Generate a single app from one document
-  asphodelos openapi.yaml -o src/index.ts
-
   # Run every generator declared in ./asphodelos.config.ts
   asphodelos
 
@@ -85,8 +72,8 @@ EXAMPLES
   asphodelos --watch
 ```
 
-With an `<input>` the CLI generates one app and ignores any config file. With no `<input>` it
-runs the config file.
+The CLI runs the config file, `asphodelos.config.ts` in the working directory or the one
+`--config` names, and nothing else: every input and output is declared there.
 
 ### Watch Mode
 
@@ -95,7 +82,10 @@ bunx asphodelos --watch
 ```
 
 Reruns the config on every change to the input documents or to the config itself, and keeps
-watching when a run fails. It cannot be combined with `<input>` / `--output`.
+watching when a run fails. The whole directory of the input document is watched, so TypeSpec
+imports and `$ref` files beside it trigger a rerun too — and so do the files a `$ref` or an import
+reaches outside that directory. An input directory that is removed and recreated, or that does not
+exist yet, is picked up when it appears.
 
 ### Example
 
@@ -193,14 +183,15 @@ export default defineConfig({
 })
 ```
 
-- **What it watches**: `asphodelos.config.ts`, and every `.yaml` / `.json` / `.tsp` in the
-  directory of `input` — a `$ref` or a TypeSpec import can reach a sibling file.
+- **What it watches**: `asphodelos.config.ts`, every `.yaml` / `.json` / `.tsp` in the directory
+  of `input` — a `$ref` or a TypeSpec import can reach a sibling file — and every file the document
+  reads from outside that directory.
 - **When it regenerates**: a config save always regenerates. A document save regenerates only when
   the documents' contents changed, or a generated file has gone missing; a save with nothing new in
   it is skipped.
 - **When the browser reloads**: only when a generated file actually changed.
 - **Cleanup**: an output that the config or the document no longer produces is removed. The app
-  entry, `modules/` and the generated tests are never removed, because they hold your code.
+  entry and `modules/` are never removed, because they hold your code.
 - A config that fails to load is reported and the previous one stays in effect; the next save
   retries, so a typo never needs a restart. Every run is queued, so two never overlap.
 
@@ -218,19 +209,107 @@ export default defineConfig({
 })
 ```
 
-### Wrapper Functions
+### Generated Client
 
-Generate one wrapper per operation over a Treaty client you supply.
+Generate the Treaty client itself, typed by the app entry. Its address comes from the
+environment: `baseUrl` names the variable, and the generated file asserts it is set.
 
 ```ts
 export default defineConfig({
   input: 'openapi.yaml',
-  eden: {
-    output: 'src/eden.ts',
-    import: './lib', // module exporting `client` = treaty<App>(...)
-    client: 'client',
-    docs: true, // JSDoc above each wrapper
+  output: 'src/index.ts',
+  client: { output: 'src/lib/client.ts', baseUrl: { env: 'VITE_API_URL' } },
+})
+```
+
+```ts
+// src/lib/client.ts
+import { treaty } from '@elysiajs/eden'
+import type { app } from '../index'
+
+const origin = import.meta.env.VITE_API_URL!
+
+export const client = treaty<typeof app>(origin)
+```
+
+`source: 'process.env'` reads `process.env` instead, for code Node.js or Bun runs:
+
+```ts
+client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } }
+// const origin = process.env.API_URL!
+```
+
+A value a module exports is used as written — `value` is the export followed by what is read
+from it, and the module answers for it being there:
+
+```ts
+client: { output: 'src/lib/client.ts', baseUrl: { import: '@/env', value: 'env.API_URL' } }
+// import { env } from '@/env'
+// const origin = env.API_URL
+```
+
+`sameOrigin: true` is for an app a host framework such as TanStack Start or Next.js serves beside
+its pages. In a browser the client sends to the page's own origin, so there is no CORS to
+configure; the variable is read only without a window, for a server render or a loader. Needs the
+DOM lib.
+
+```ts
+client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' }, sameOrigin: true }
+// const origin = typeof window === 'undefined' ? process.env.API_URL! : window.location.origin
+```
+
+The `index.ts` beside the client re-exports it, so it is imported as `./lib` — by `eden`, by the
+hooks, and by your own code:
+
+```ts
+import { client } from './lib'
+
+const { data, error } = await client.users({ id: '1' }).get()
+```
+
+The app is imported for its type only, so a browser bundle never pulls the server in. The project
+needs `@elysiajs/eden`, with `elysia` resolving to one copy.
+
+### Imports Between Generated Files
+
+Nothing is configured per file: how one generated file imports another follows from where the two
+are written.
+
+- In the same package, relatively — `./lib`, `../components/schemas`.
+- Under the app entry's directory with `pathAlias: '@/'`, through the alias — `@/lib`,
+  `@/components/schemas`.
+- In different packages (each with its own `package.json`), by the name the output is published
+  as: the top-level `package` for the app entry, `client.package` for the client, and `package` on
+  each component section (`components.schemas.package`, `components.responses.package`, …), or on
+  `components` in single-file mode. A relative path never crosses a package.
+
+```ts
+// apps/elysia/asphodelos.config.ts — the app, the client and the hooks in three packages
+export default defineConfig({
+  input: 'openapi.yaml',
+  output: 'src/index.ts',
+  package: '@packages/elysia', // the client imports `app` from here
+  client: {
+    output: '../eden/src/client.ts',
+    baseUrl: { env: 'VITE_API_URL' },
+    package: '@packages/eden', // the hooks import it from here
   },
+  'tanstack-query': { output: '../react/src/api/hooks.ts' },
+})
+```
+
+`@packages/elysia` exports `app` from its entry, `@packages/eden` exports the `index.ts` beside the client,
+and `elysia` resolves to one copy across the workspace.
+
+### Wrapper Functions
+
+Generate one wrapper per operation over the generated client.
+
+```ts
+export default defineConfig({
+  input: 'openapi.yaml',
+  client: { output: 'src/lib/client.ts', baseUrl: { env: 'VITE_API_URL' } },
+  eden: { output: 'src/eden.ts' },
 })
 ```
 
@@ -241,14 +320,37 @@ Supported: SWR, TanStack Query, Preact Query, Solid Query, Vue Query, Svelte Que
 ```ts
 export default defineConfig({
   input: 'openapi.yaml',
-  'tanstack-query': {
-    output: './src/tanstack-query',
-    import: '../lib',
-    split: true,
-    client: 'client',
-  },
+  client: { output: 'src/lib/client.ts', baseUrl: { env: 'VITE_API_URL' } },
+  'tanstack-query': { output: './src/tanstack-query.ts' },
 })
 ```
+
+The hooks are written into one file and import the generated client, so a `client` block comes
+with them.
+
+Every operation is named by its method and path: a GET on `/users/{id}` becomes `useUsersId`, with
+`getUsersIdQueryKey` and `getUsersIdQueryOptions` beside it; a POST on `/users` becomes
+`usePostUsers`, with `getPostUsersMutationKey` and `getPostUsersMutationOptions`. Path parameters
+come first, then one `options` object, then the library's own trailing argument (a `QueryClient`,
+or Angular's inject options):
+
+```ts
+const user = useUsersId(
+  { id: '1' },
+  {
+    query: { staleTime: 1_000 }, // the library's options, minus the key and the query function
+    options: { headers: { 'x-trace': 'a' } }, // the client's request options
+  },
+)
+
+const create = usePostUsers({ mutation: { onSuccess: () => invalidate() } })
+create.mutate({ body: { name: 'Alice' } })
+```
+
+A query's `options` are part of its key, headers excluded; a mutation honors a `mutationKey` of
+your own over the generated one. SWR hooks take `{ swr, options }` instead, where `swr` adds
+`swrKey` (replaces the generated key) and `enabled` (a `false` turns the key into `null`), and
+return the key they used beside SWR's result.
 
 ### Infinite Query (`x-pagination`)
 
@@ -261,43 +363,32 @@ paths:
       x-pagination: true
 ```
 
-The paging rules go in a `pagination` argument:
+The paging rules go in a `pagination` argument, ahead of the options:
 
 ```ts
-const items = useListItemsInfinite(undefined, {
-  initialPageParam: 0,
-  getNextPageParam: (lastPage) => lastPage.nextPage,
-  buildInit: (pageParam) => ({ query: { page: String(pageParam) } }),
-})
-```
-
-Vue Query takes only `buildInit` there, with `initialPageParam` / `getNextPageParam` in the third
-argument. SWR takes `buildInit(pageIndex, previousPage)` and stops when it returns `null`.
-
-## Test & Mock Generation
-
-### Test Generation
-
-Generates `bun:test` tests that call `app.handle(...)` on the real app: a success-status test per
-operation, plus `401` / `404` tests when the spec declares them. They start red against the empty
-handlers; re-running keeps your hand-written tests.
-
-```ts
-export default defineConfig({
-  input: 'openapi.yaml',
-  test: {
-    output: 'src/app.test.ts', // or `split: true` for modules/<resource>/index.test.ts
-    pathAlias: '@/', // optional: import the app through a tsconfig alias
+const items = useInfiniteItems(
+  {
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.nextPage,
+    getRequestArgs: (options, pageParam) => ({
+      ...options,
+      query: { ...options.query, page: Number(pageParam) },
+    }),
   },
-})
+  { options: { query: { page: 0 } } },
+)
 ```
 
-### Mock Server Generation
+Vue Query takes only `getRequestArgs` there, with `initialPageParam` / `getNextPageParam` in
+`options.query`. SWR takes `pagination.getRequestArgs(options, index)` inside its options object,
+and a `swr.swrKey` loader that returns `null` stops the paging.
+
+## Mock Server Generation
 
 Generates a standalone Elysia server that answers every operation with a
 [`@faker-js/faker`](https://fakerjs.dev/) mock of its success response. Secured operations that
 declare a `401` answer it when the credential is missing, and path parameters answer a declared
-`404` for the same sentinel values the generated tests send.
+`404` for a sentinel value the schema accepts but no record is likely to carry.
 
 ```ts
 export default defineConfig({
@@ -325,12 +416,25 @@ declare answers `500` with an `application/problem+json` body saying what is mis
 
 ## Full Config Reference
 
-With `split: true`, `output` is a directory (one file per entry + `index.ts` barrel); otherwise it
-is a single `.ts` file. `components.output` and the per-type components are mutually exclusive.
+Every generator is opted in by adding its section. `defineConfig` types the config — a value of
+the wrong shape, an option that was removed, or hooks without the `client` block are refused as
+you type — and the CLI checks the rest when it runs:
 
-A split directory belongs to the generator: every run empties its `.ts` files before refilling it,
-so an entry that leaves the document does not leave an orphaned file behind. Subdirectories, other
-files and the single-file outputs of other generators are left alone.
+- A key the config does not know is an error, not a typo that is dropped.
+- Every generator needs its own `output`. Two generators writing to one path is an error.
+- `components.output` (one file) and the per-type `components.*` sections are mutually exclusive.
+- A component section with `split: true` writes one file per entry plus an `index.ts` barrel into a
+  directory; otherwise `output` is a single `.ts` file (a directory stands for its `index.ts`).
+- A split directory belongs to the generator: every run empties its `.ts` files before refilling
+  it, so an entry that leaves the document does not leave an orphaned file behind. Subdirectories,
+  other files and the single-file outputs of other generators are left alone.
+- Imports between generated files are worked out from where they are written; see
+  [Imports Between Generated Files](#imports-between-generated-files). `package` names are
+  module specifiers.
+- `prefix` must start with `/`.
+- `eden` and the hooks import the generated client, so they need the `client` block.
+- The hooks (`swr`, `tanstack-query`, …) are always one file; `split` is no longer an option
+  there, and neither is the `test` generator, `eden.docs`, or `import` and `client` on a section.
 
 ```ts
 import { defineConfig } from 'asphodelos'
@@ -342,74 +446,78 @@ export default defineConfig({
   prefix: '/api/v3', // new Elysia({ prefix })
   port: '3000',
   integration: false, // true: no .listen(), a host framework owns the server
-  pathAlias: false, // true: `@/` imports between generated files
+  // pathAlias: '@/', // import prefix for the app entry's directory: `@/index`, `@/lib`
+  // package: '@packages/elysia', // the app's package name, for a client in another package
   readonly: false, // wrap top-level schemas in t.Readonly(...)
   // format: {}, // oxfmt FormatConfig
 
-  // `exportTypes` adds `Static<typeof XSchema>` aliases.
+  // `exportTypes` adds `Static<typeof XSchema>` aliases. Every section, and `components` in
+  // single-file mode, takes a `package`: the name other packages import it by when it is written
+  // into a package of its own.
   components: {
     // output: 'src/components.ts', // single-file mode
+    // package: '@packages/components',
 
     schemas: {
       output: 'src/components/schemas',
       split: true,
-      import: '../schemas',
       exportTypes: true,
+      // package: '@packages/schemas',
     },
     responses: {
       output: 'src/components/responses',
       split: true,
-      import: '../responses',
       exportTypes: true,
+      // package: '@packages/responses',
     },
     parameters: {
       output: 'src/components/parameters',
       split: true,
-      import: '../parameters',
       exportTypes: true,
+      // package: '@packages/parameters',
     },
     requestBodies: {
       output: 'src/components/requestBodies',
       split: true,
-      import: '../requestBodies',
       exportTypes: true,
+      // package: '@packages/requestBodies',
     },
     headers: {
       output: 'src/components/headers',
       split: true,
-      import: '../headers',
       exportTypes: true,
+      // package: '@packages/headers',
     },
     mediaTypes: {
       output: 'src/components/mediaTypes',
       split: true,
-      import: '../mediaTypes',
       exportTypes: true,
+      // package: '@packages/mediaTypes',
     },
     examples: {
       output: 'src/components/examples',
       split: true,
-      import: '../examples',
+      // package: '@packages/examples',
     },
     securitySchemes: {
       output: 'src/components/securitySchemes',
       split: true,
-      import: '../securitySchemes',
+      // package: '@packages/securitySchemes',
     },
     links: {
       output: 'src/components/links',
       split: true,
-      import: '../links',
+      // package: '@packages/links',
     },
     callbacks: {
       output: 'src/components/callbacks',
       split: true,
-      import: '../callbacks',
+      // package: '@packages/callbacks',
     },
     pathItems: {
       output: 'src/components/pathItems',
       split: true,
-      import: '../pathItems',
+      // package: '@packages/pathItems',
     },
   },
 
@@ -417,16 +525,17 @@ export default defineConfig({
     output: 'src/types.ts',
   },
 
-  eden: {
-    output: 'src/eden.ts',
-    import: './lib',
-    client: 'client',
-    docs: false,
+  client: {
+    output: 'src/lib/client.ts', // re-exported by src/lib/index.ts
+    // package: '@packages/eden', // what other packages import the client by
+    baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' }, // import.meta.env.VITE_API_URL!
+    // baseUrl: { import: '@/env', value: 'env.API_URL' }, // a value a module exports
+    sameOrigin: false, // true: a browser uses window.location.origin, baseUrl is for the rest
   },
 
-  test: {
-    split: true, // false: a single file at `output`
-    pathAlias: '@/',
+  // eden and the hooks import the generated client, so the `client` block above comes with them.
+  eden: {
+    output: 'src/eden.ts',
   },
 
   mock: {
@@ -440,46 +549,25 @@ export default defineConfig({
   },
 
   swr: {
-    output: 'src/swr',
-    import: '../lib',
-    split: true,
-    client: 'client',
+    output: 'src/swr.ts',
   },
   'tanstack-query': {
-    output: 'src/tanstack-query',
-    import: '../lib',
-    split: true,
-    client: 'client',
+    output: 'src/tanstack-query.ts',
   },
   'preact-query': {
-    output: 'src/preact-query',
-    import: '../lib',
-    split: true,
-    client: 'client',
+    output: 'src/preact-query.ts',
   },
   'solid-query': {
-    output: 'src/solid-query',
-    import: '../lib',
-    split: true,
-    client: 'client',
+    output: 'src/solid-query.ts',
   },
   'vue-query': {
-    output: 'src/vue-query',
-    import: '../lib',
-    split: true,
-    client: 'client',
+    output: 'src/vue-query.ts',
   },
   'svelte-query': {
-    output: 'src/svelte-query',
-    import: '../lib',
-    split: true,
-    client: 'client',
+    output: 'src/svelte-query.ts',
   },
   'angular-query': {
-    output: 'src/angular-query',
-    import: '../lib',
-    split: true,
-    client: 'client',
+    output: 'src/angular-query.ts',
   },
 })
 ```

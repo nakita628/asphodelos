@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // The generated client reads `window` in a browser.
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    // `@/` is the app entry's directory, so the alias the generated files import each other
+    // through resolves there — for Bun, which reads the nearest tsconfig when it loads them.
+    "paths": {
+      "@/*": ["./__generated__/src/*"]
+    }
+  },
+  // The generated app is not compiled: its handlers are stubs, `() => {}`, which a response schema
+  // does not accept until they are written. The test loads the generated files by path and types
+  // the client by the host app, whose routes are the document's.
+  "include": [
+    "asphodelos.config.ts",
+    "*.test.ts",
+    "../happydom.ts",
+    "../hosts/users-app.ts",
+    "../hosts/users-server.ts"
+  ]
+}
