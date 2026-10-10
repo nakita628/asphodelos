@@ -25,7 +25,7 @@
     "@textlint-rule/textlint-rule-no-unmatched-pair": "2.0.4",
     "@types/bun": "latest",
     "cspell": "10.3.6",
-    "markdownlint-cli2": "0.23.2",
+    "markdownlint-cli2": "0.23.3",
     "oxfmt": "^0.67.0",
     "secretlint": "13.0.5",
     "textlint": "15.8.0",
