@@ -48,7 +48,7 @@
     "@typespec/compiler": "^1.16.0",
     "@typespec/openapi3": "^1.16.0",
     "effect": "4.0.0",
-    "oxfmt": "^0.67.0",
+    "oxfmt": "^0.71.0",
     "ts-morph": "^28.0.0"
   },
   "devDependencies": {
