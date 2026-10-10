@@ -39,9 +39,9 @@
         "@faker-js/faker": "^10.6.0",
         "@sinclair/typebox": "^0.34.49",
         "@types/bun": "latest",
-        "@typespec/http": "^1.16.0",
-        "@typespec/rest": "^0.86.0",
-        "@typespec/versioning": "^0.86.0",
+        "@typespec/http": "1.17.0",
+        "@typespec/rest": "0.86.0",
+        "@typespec/versioning": "0.86.0",
         "elysia": "^1.4.28",
         "oxlint": "^1.82.0",
         "oxlint-tsgolint": "^7.0.2001",
@@ -612,7 +612,7 @@
 
     "@typespec/compiler": ["@typespec/compiler@1.16.0", "", { "dependencies": { "@babel/code-frame": "^7.29.0", "@inquirer/prompts": "^8.6.0", "ajv": "^8.20.0", "change-case": "^5.4.4", "env-paths": "^4.0.0", "is-unicode-supported": "^2.1.0", "mustache": "^4.2.0", "picocolors": "^1.1.1", "prettier": "^3.9.6", "semver": "^7.8.5", "tar": "^7.5.22", "temporal-polyfill": "^1.0.4", "vscode-languageserver": "^10.1.0", "vscode-languageserver-textdocument": "^1.0.13", "yaml": "^2.9.0", "yargs": "^18.1.0" }, "bin": { "tsp": "cmd/tsp.js", "tsp-server": "cmd/tsp-server.js" } }, "sha512-pT4gN+OSEXZMLxIhtI3QgIUafeFktfIBKVb7p+X/rAzDymQSO8yAb+srMBQ43PIcmfrvMxCNaD1SKBa9AGhWtA=="],
 
-    "@typespec/http": ["@typespec/http@1.16.0", "", { "peerDependencies": { "@typespec/compiler": "^1.16.0", "@typespec/streams": "^0.86.0" }, "optionalPeers": ["@typespec/streams"] }, "sha512-4cODL4uqoj6YGj3Z04mQx1JwrM7o4Ytv4dO75o3Y3fx66v4BF4B5hF2dwnwh02Xe0e9qO1aDoaRlO2QGDz3mEA=="],
+    "@typespec/http": ["@typespec/http@1.17.0", "", { "peerDependencies": { "@typespec/compiler": "^1.17.0", "@typespec/streams": "^0.87.0" }, "optionalPeers": ["@typespec/streams"] }, "sha512-XLwL+NvkQ4hWhnIwZms2CNoxCULFt/jMa+QGaKg4hDwPFLvrXsUm7JWPHi1QOcwzGFG8Z1NglqRPzKl2der2ww=="],
 
     "@typespec/openapi": ["@typespec/openapi@1.16.0", "", { "peerDependencies": { "@typespec/compiler": "^1.16.0", "@typespec/http": "^1.16.0" } }, "sha512-6F+3e1dOJkIV4K0vCsuDpdwxoXnsT6eOomd4MpIUJAwyA7etEraUmPM9Qstp42MLIBoPWm9dK4Y9Whxtohc/KA=="],
 
