@@ -1,3 +1,4 @@
+import type { TypeboxCtx } from '../generator/typebox/index.js'
 import type { Schema } from '../openapi/index.js'
 
 const RAW = Symbol.for('asphodelos.options.raw')
@@ -491,10 +492,21 @@ export function stringTransformWrap(expr: string, schema: Schema) {
   return `t.Transform(${expr}).Decode((v)=>{${body};return v}).Encode((v)=>v)`
 }
 
-export function wrap(expr: string, schema: Schema) {
+/**
+ * Adds `null` to a nullable schema. Where the value arrives as text and is not a string, the word
+ * `null` is read as the value: a query, a header or a form field has no other way to spell it. A
+ * nullable string keeps the word as text, which is what it is there.
+ */
+export function wrap(expr: string, schema: Schema, ctx: TypeboxCtx = {}) {
   const nullable =
     schema.nullable === true || (Array.isArray(schema.type) && schema.type.includes('null'))
-  return nullable ? `t.Union([${expr},t.Null()])` : expr
+  if (!nullable) return expr
+  const union = `t.Union([${expr},t.Null()])`
+  const primary = Array.isArray(schema.type) ? schema.type.find((t) => t !== 'null') : schema.type
+  const readsNull =
+    ctx.text === true && (primary === 'integer' || primary === 'number' || primary === 'boolean')
+  if (!readsNull) return union
+  return `t.Transform(t.Union([t.Literal("null"),${union}])).Decode((v)=>(v==="null"?null:v)).Encode((v)=>v)`
 }
 
 export function readonly(expr: string, enabled?: boolean) {

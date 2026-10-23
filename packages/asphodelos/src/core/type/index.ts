@@ -5,7 +5,7 @@ import { Effect } from 'effect'
 import { emit } from '../../emit/index.js'
 import { isMediaWithSchema, isSchemaArray, isStringRef } from '../../guard/index.js'
 import { HTTP_METHODS } from '../../helper/index.js'
-import { collectSchemaRefs } from '../../helper/schema.js'
+import { collectSchemaRefs, parameterSchema } from '../../helper/schema.js'
 import type {
   Media,
   OpenAPI,
@@ -189,7 +189,7 @@ function paramsTs(
     const opt = p.required ? '' : '?'
     // A header is keyed by its lower-case name, as the generated model keys it.
     const name = where === 'header' ? p.name.toLowerCase() : p.name
-    return `${JSON.stringify(name)}${opt}: ${schemaToTs(p.schema)}`
+    return `${JSON.stringify(name)}${opt}: ${schemaToTs(parameterSchema(p))}`
   })
   return `{ ${entries.join('; ')} }`
 }
@@ -292,7 +292,7 @@ function collectRefs(openAPI: OpenAPI) {
           const resolved = pname ? components?.parameters?.[decodeURIComponent(pname)] : undefined
           if (resolved) enqueue(resolved.schema)
         } else if ('schema' in p) {
-          enqueue(p.schema)
+          enqueue(parameterSchema(p))
         }
       }
       for (const resp of Object.values(op.responses ?? {})) {

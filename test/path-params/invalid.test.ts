@@ -200,15 +200,17 @@ describe('wire: routing', () => {
   })
 })
 
+// A numeric enum is read from the spelling of its members, exactly.
+describe('literals: a numeric enum read from text', () => {
+  it.each(['3', '02', 'x'])('ienum rejects %j', async (value) => {
+    await rejects(`/ienum/${value}`, ['value'])
+  })
+})
+
 // What the generated schema declares but Elysia's path reader does not turn into its value.
 // Pinned so the day Elysia reads it is noticed; a document that needs it today should declare the
 // parameter as a string and read it in the handler.
 describe('limitations: what Elysia does not read from a path segment (pinned)', () => {
-  // A numeric enum is matched against numbers, and the segment is text — so even a member fails.
-  it.each(['1', '2', '3', 'x'])('a numeric enum rejects %j', async (value) => {
-    await rejects(`/ienum/${value}`, ['value'])
-  })
-
   // A segment is one value: a `label` or `matrix` prefix is not stripped, and an array is not
   // split on its commas. The plain spelling is read as the scalar it looks like.
   it.each([

@@ -75,6 +75,55 @@ describe('typebox', () => {
     expect(typebox({ const: 'fixed' })).toBe('t.Literal("fixed")')
   })
 
+  // Where the value arrives as text — a parameter, a form field — a literal of a number or a
+  // boolean accepts its spelling beside itself and reads it, keeping the literal type.
+  describe('literals read from text', () => {
+    it('reads a numeric enum from its spelling', () => {
+      expect(typebox({ type: 'integer', enum: [1, 2, 3] }, { text: true })).toBe(
+        't.Transform(t.Union([t.Union([t.Literal("1"),t.Literal("2"),t.Literal("3")]),t.UnionEnum([1,2,3],{default:undefined})])).Decode((v):1|2|3=>(typeof v===\'string\'?JSON.parse(v):v)).Encode((v)=>v)',
+      )
+    })
+
+    it('reads a boolean const and an integer const from their spelling', () => {
+      expect(typebox({ type: 'boolean', const: true }, { text: true })).toBe(
+        't.Transform(t.Union([t.Literal("true"),t.Literal(true)])).Decode((v):true=>(typeof v===\'string\'?JSON.parse(v):v)).Encode((v)=>v)',
+      )
+      expect(typebox({ type: 'integer', const: 7 }, { text: true })).toBe(
+        't.Transform(t.Union([t.Literal("7"),t.Literal(7)])).Decode((v):7=>(typeof v===\'string\'?JSON.parse(v):v)).Encode((v)=>v)',
+      )
+    })
+
+    it('leaves a string enum, a mixed enum and a JSON-body enum as they are', () => {
+      expect(typebox({ type: 'string', enum: ['a', 'b'] }, { text: true })).toBe(
+        't.UnionEnum(["a","b"],{default:undefined})',
+      )
+      expect(typebox({ enum: ['a', 1] }, { text: true })).toBe(
+        't.UnionEnum(["a",1],{default:undefined})',
+      )
+      expect(typebox({ type: 'integer', enum: [1, 2] })).toBe(
+        't.UnionEnum([1,2],{default:undefined})',
+      )
+    })
+
+    it('reads the word null for a nullable number, integer or boolean', () => {
+      expect(typebox({ type: ['integer', 'null'] }, { text: true })).toBe(
+        't.Transform(t.Union([t.Literal("null"),t.Union([t.Integer({maximum:9007199254740991}),t.Null()])])).Decode((v)=>(v==="null"?null:v)).Encode((v)=>v)',
+      )
+      expect(typebox({ type: 'boolean', nullable: true }, { text: true })).toBe(
+        't.Transform(t.Union([t.Literal("null"),t.Union([t.Boolean(),t.Null()])])).Decode((v)=>(v==="null"?null:v)).Encode((v)=>v)',
+      )
+    })
+
+    it('keeps the word null as text for a nullable string, and leaves a JSON body alone', () => {
+      expect(typebox({ type: ['string', 'null'] }, { text: true })).toBe(
+        't.Union([t.String(),t.Null()])',
+      )
+      expect(typebox({ type: ['integer', 'null'] })).toBe(
+        't.Union([t.Integer({maximum:9007199254740991}),t.Null()])',
+      )
+    })
+  })
+
   // A list of types is a union of them, each member reading the constraints that apply to it.
   it('emits a Union for type:[integer,string], each member with its own constraints', () => {
     expect(typebox({ type: ['integer', 'string'], minimum: 1, minLength: 2 })).toBe(

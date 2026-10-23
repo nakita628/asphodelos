@@ -402,6 +402,36 @@ describe('makeAppType (full Elysia<...> shape)', () => {
     )
   })
 
+  it('types a parameter declared with content by the schema of its document', () => {
+    const openAPI: OpenAPI = {
+      openapi: '3.1.0',
+      info: { title: 'T', version: '0' },
+      paths: {
+        '/items': {
+          get: {
+            operationId: 'listItems',
+            parameters: [
+              {
+                name: 'filter',
+                in: 'query',
+                content: {
+                  'application/json': {
+                    schema: { type: 'object', properties: { tag: { type: 'string' } } },
+                  },
+                },
+              },
+            ],
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    }
+    const { appType } = makeAppType(openAPI)
+    expect(appType).toBe(
+      `export type App = Elysia<"", { decorator: {}; store: {}; derive: {}; resolve: {} }, { typebox: {}; error: {} }, { schema: {}; standaloneSchema: {}; macro: {}; macroFn: {}; parser: {}; response: {} }, { "items": { get: { body: unknown; params: {}; query: { "filter"?: { "tag"?: string } }; headers: unknown; response: { 200: unknown; 422: ${VALIDATION_ENVELOPE} } } } }, { derive: {}; resolve: {}; schema: {}; standaloneSchema: {}; response: {} }, { derive: {}; resolve: {}; schema: {}; standaloneSchema: {}; response: {} }>`,
+    )
+  })
+
   it('keys a header parameter by its lower-case name, as the generated model does', () => {
     const openAPI: OpenAPI = {
       openapi: '3.1.0',

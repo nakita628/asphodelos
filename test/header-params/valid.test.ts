@@ -261,12 +261,48 @@ describe('optional: absent and present', () => {
     expect(status).toBe(200)
     expect(body).toStrictEqual({})
   })
+})
 
-  // A nullable integer takes an integer; what it cannot take is in invalid.test.ts.
-  it('x-inull reads an integer', async () => {
-    const { status, body } = await get('/optional', { 'x-inull': '5' })
+// A literal of a number accepts the spelling of each member and reads it into the member; a
+// nullable integer reads the word `null`.
+describe('text: numeric literals and null read from their spelling', () => {
+  it.each([
+    ['x-ienum', '2', { valueType: 'number', valueText: '2' }],
+    ['x-inull', '5', { valueType: 'number', valueText: '5' }],
+    ['x-inull', 'null', { valueType: 'null', valueText: 'null' }],
+  ])('%s reads %j', async (name, value, echo) => {
+    const { status, body } = await get('/optional', { [name]: value })
     expect(status).toBe(200)
-    expect(body).toStrictEqual({ 'x-inull': { valueType: 'number', valueText: '5' } })
+    expect(body).toStrictEqual({ [name]: echo })
+  })
+})
+
+// A header holds one value, so an array header is one comma-separated value: a single element as
+// it is, every element typed.
+describe('arrays: one comma-separated value', () => {
+  it.each([
+    ['x-ids', '42', [{ valueType: 'number', valueText: '42' }]],
+    [
+      'x-ids',
+      '1,2',
+      [
+        { valueType: 'number', valueText: '1' },
+        { valueType: 'number', valueText: '2' },
+      ],
+    ],
+    ['x-tags', 'a', [{ valueType: 'string', valueText: 'a' }]],
+    [
+      'x-tags',
+      'a,b',
+      [
+        { valueType: 'string', valueText: 'a' },
+        { valueType: 'string', valueText: 'b' },
+      ],
+    ],
+  ])('%s reads %j', async (name, value, elements) => {
+    const { status, body } = await get('/headers', { [name]: value })
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ [name]: elements })
   })
 })
 

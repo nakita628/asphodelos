@@ -71,8 +71,12 @@ describe('urlencoded: every kind of field is read from text', () => {
     ],
     ['clock', '12:34:56%2B09:00', { valueType: 'string', valueText: '12:34:56+09:00' }],
     ['maybe', '5', { valueType: 'number', valueText: '5' }],
-    // A form field is text, so the text `null` is a string where a string is taken.
+    // A nullable integer reads the word `null`; a nullable string keeps it as text.
+    ['maybe', 'null', { valueType: 'null', valueText: 'null' }],
     ['label', 'null', { valueType: 'string', valueText: 'null' }],
+    // A numeric enum and a boolean const read the spelling of a member.
+    ['level', '2', { valueType: 'number', valueText: '2' }],
+    ['agreed', 'true', { valueType: 'boolean', valueText: 'true' }],
     ['either', '5', { valueType: 'number', valueText: '5' }],
     ['either', 'x', { valueType: 'string', valueText: 'x' }],
     // What the integer member does not read, the string member takes.
@@ -233,16 +237,16 @@ describe('multipart: a file beside fields read from text', () => {
   })
 })
 
-// A body that is a component schema: the component is written for a typed value, and only what
-// Elysia reads from text on its own — an integer — arrives typed. The JSON body of the same
-// component takes every field as its type.
+// A body that is a component schema takes a copy of the component, read from text, so every field
+// arrives typed; the JSON body of the same component keeps the component as it is.
 describe('component: a form body that is a component schema', () => {
   it('reads the fields of the component from text', async () => {
-    const { status, body } = await post('/component', 'name=a&price=1', URLENCODED)
+    const { status, body } = await post('/component', 'name=a&price=1&stocked=true', URLENCODED)
     expect(status).toBe(200)
     expect(body).toStrictEqual({
       name: { valueType: 'string', valueText: 'a' },
       price: { valueType: 'number', valueText: '1' },
+      stocked: { valueType: 'boolean', valueText: 'true' },
     })
   })
 

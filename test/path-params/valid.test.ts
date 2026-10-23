@@ -253,3 +253,12 @@ describe('leniency: what is read beyond the plainest spelling (pinned, not endor
     expect(body).toStrictEqual(echo)
   })
 })
+
+// A numeric enum is read from the spelling of its members into the member, typed as the literal.
+describe('literals: a numeric enum read from text', () => {
+  it.each(['1', '2'])('ienum reads %j as a number', async (value) => {
+    const { status, body } = await get(`/ienum/${value}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ valueType: 'number', valueText: value })
+  })
+})

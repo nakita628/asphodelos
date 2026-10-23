@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test'
 
 import { assertType } from '../types/assert.js'
 import type { Equal, HasKey } from '../types/assert.js'
+import type { ContentModel } from './__generated__/modules/content/model.js'
 import type { DefaultsModel } from './__generated__/modules/defaults/model.js'
 import type { InheritedModel } from './__generated__/modules/inherited/model.js'
 import type { LimitsModel } from './__generated__/modules/limits/model.js'
@@ -13,6 +14,7 @@ import type { LiteralsModel } from './__generated__/modules/literals/model.js'
 import type { OptionalModel } from './__generated__/modules/optional/model.js'
 import type { ParamsModel } from './__generated__/modules/params/model.js'
 import type { RequiredModel } from './__generated__/modules/required/model.js'
+import type { TextModel } from './__generated__/modules/text/model.js'
 
 type Params = ParamsModel['queryParamsQuery']
 type Literals = LiteralsModel['queryLiteralsQuery']
@@ -21,6 +23,8 @@ type Defaults = DefaultsModel['queryDefaultsQuery']
 type Required = RequiredModel['queryRequiredQuery']
 type Limits = LimitsModel['queryLimitsQuery']
 type Inherited = InheritedModel['queryInheritedQuery']
+type Text = TextModel['queryTextQuery']
+type Content = ContentModel['queryContentQuery']
 
 describe('query parameter types', () => {
   it('types every shape as the value it arrives as, optional unless required', () => {
@@ -93,6 +97,23 @@ describe('query parameter types', () => {
   it('types inherited parameters, with the override winning', () => {
     assertType<Equal<Inherited['tenant'], string>>(true)
     assertType<Equal<Inherited['page'], string | undefined>>(true)
+    expect(true).toBe(true)
+  })
+
+  // A literal read from text keeps its literal type, and a nullable integer its null.
+  it('types a literal read from text as the literal', () => {
+    assertType<Equal<Text['ienum'], 1 | 2 | 3 | undefined>>(true)
+    assertType<Equal<Text['int_const'], 7 | undefined>>(true)
+    assertType<Equal<Text['bool_enum'], true | undefined>>(true)
+    assertType<Equal<Text['inull'], number | null | undefined>>(true)
+    assertType<Equal<Text['str_null'], string | null | undefined>>(true)
+    expect(true).toBe(true)
+  })
+
+  it('types a parameter declared with content by the schema of its document', () => {
+    assertType<Equal<Content['filter'], { tag?: string; limit?: number } | undefined>>(true)
+    assertType<Equal<Content['ids'], number[] | undefined>>(true)
+    assertType<Equal<Content['count'], number | undefined>>(true)
     expect(true).toBe(true)
   })
 })

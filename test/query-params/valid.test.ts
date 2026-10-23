@@ -20,7 +20,8 @@
 //   /inherited   parameters declared on the path item
 //   /styles      serializations other than form + explode, objects, allowEmptyValue
 //   /combinators allOf, oneOf, anyOf and the x-* transforms
-//   /limitations what the generated schema declares but Elysia does not read
+//   /text        numeric and boolean literals, and null, read from their spelling
+//   /content     parameters declared with content: application/json
 //
 // This file holds the requests that are accepted. Each answers 200, and the test asserts the type
 // and the value that reached the handler.
@@ -461,11 +462,104 @@ describe('leniency: what is read beyond the plainest spelling (pinned, not endor
     expect(status).toBe(200)
     expect(body).toStrictEqual({ string_arr: [{ valueType: 'string', valueText: '' }] })
   })
+})
 
-  // A nullable integer takes an integer; what it cannot take is in invalid.test.ts.
-  it('inull reads an integer', async () => {
-    const { status, body } = await get('/limitations?inull=5')
+// A literal of a number or a boolean accepts the spelling of each member and reads it into the
+// member; a nullable integer reads the word `null`. A nullable string keeps the word as text.
+describe('text: numeric and boolean literals, and null, read from their spelling', () => {
+  it.each([
+    ['ienum', '2', { valueType: 'number', valueText: '2' }],
+    ['int_const', '7', { valueType: 'number', valueText: '7' }],
+    ['bool_enum', 'true', { valueType: 'boolean', valueText: 'true' }],
+    ['inull', '5', { valueType: 'number', valueText: '5' }],
+    ['inull', 'null', { valueType: 'null', valueText: 'null' }],
+    ['str_null', 'null', { valueType: 'string', valueText: 'null' }],
+  ])('%s reads %j', async (name, value, echo) => {
+    const { status, body } = await get(`/text?${name}=${value}`)
     expect(status).toBe(200)
-    expect(body).toStrictEqual({ inull: { valueType: 'number', valueText: '5' } })
+    expect(body).toStrictEqual({ [name]: echo })
+  })
+})
+
+// A parameter declared with `content: application/json` is one JSON document: an object or an
+// array arrives parsed and typed, and a scalar is read as its text.
+describe('content: a JSON document', () => {
+  it('filter reads a JSON object', async () => {
+    const { status, body } = await get(`/content?filter=${q('{"tag":"a","limit":5}')}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({
+      filter: {
+        tag: { valueType: 'string', valueText: 'a' },
+        limit: { valueType: 'number', valueText: '5' },
+      },
+    })
+  })
+
+  it('ids reads a JSON array', async () => {
+    const { status, body } = await get(`/content?ids=${q('[1,2]')}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({
+      ids: [
+        { valueType: 'number', valueText: '1' },
+        { valueType: 'number', valueText: '2' },
+      ],
+    })
+  })
+
+  it('count reads a JSON number', async () => {
+    const { status, body } = await get('/content?count=3')
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ count: { valueType: 'number', valueText: '3' } })
+  })
+})
+
+// How the query string itself is read: percent-decoding, the plus sign, and separators.
+describe('wire: encoding, separators and repetition', () => {
+  it.each([
+    ['a%20b', 'a b'],
+    ['a+b', 'a b'],
+    ['%E3%81%82', 'あ'],
+    ['a%3Db', 'a=b'],
+    ['a%26b', 'a&b'],
+    ['a%2Cb', 'a,b'],
+    ['a=b', 'a=b'],
+    ['%2520', '%20'],
+  ])('decodes str_opt=%s to %j', async (sent, valueText) => {
+    const { status, body } = await get(`/optional?str_opt=${sent}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ str_opt: { valueType: 'string', valueText } })
+  })
+
+  it('reads a percent-encoded digit like a plain one', async () => {
+    const { status, body } = await get('/optional?int_opt=%31')
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ int_opt: { valueType: 'number', valueText: '1' } })
+  })
+
+  it.each(['?&int_opt=1&', '?int_opt=1&&str_opt=s', '?str_opt=s&int_opt=1'])(
+    'separates the pairs of %s',
+    async (query) => {
+      const { status, body } = await get(`/optional${query}`)
+      expect(status).toBe(200)
+      expect(body).toMatchObject({ int_opt: { valueType: 'number', valueText: '1' } })
+    },
+  )
+
+  // A scalar sent twice reads the last value: Elysia keeps one value for a name that is not an
+  // array. Pinned, not endorsed.
+  it.each([
+    ['int_opt=1&int_opt=2', { int_opt: { valueType: 'number', valueText: '2' } }],
+    ['str_opt=a&str_opt=b', { str_opt: { valueType: 'string', valueText: 'b' } }],
+  ])('reads the last of a scalar sent twice: %s', async (query, expected) => {
+    const { status, body } = await get(`/optional?${query}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual(expected)
+  })
+
+  // A name without a value is the empty string, which a string takes.
+  it('reads a bare name as an empty string', async () => {
+    const { status, body } = await get('/optional?str_opt')
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ str_opt: { valueType: 'string', valueText: '' } })
   })
 })

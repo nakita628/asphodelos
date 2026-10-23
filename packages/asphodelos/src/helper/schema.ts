@@ -1,6 +1,13 @@
 import type { TypeboxCtx } from '../generator/typebox/index.js'
 import { isReference, isSchemaArray } from '../guard/index.js'
-import type { Operation, Parameter, Reference, Responses, Schema } from '../openapi/index.js'
+import type {
+  Components,
+  Operation,
+  Parameter,
+  Reference,
+  Responses,
+  Schema,
+} from '../openapi/index.js'
 import { VENDOR_EXT_KEYS } from '../openapi/vendor-ext.js'
 import { pascalCase } from '../utils/index.js'
 
@@ -54,14 +61,24 @@ export function refSchemaName(s: Schema | undefined) {
   return m?.[1] ? decodeURIComponent(m[1]) : null
 }
 
-export function bodyInfo(operation: Operation) {
+/**
+ * The schema and media type of the request body, and how the body is read. A body that is a
+ * component is referenced by name — except a form body, whose fields arrive as text: the
+ * component is written for typed values, so the form takes a copy of its schema inlined and read
+ * from text, and the component stays as it is for the JSON bodies that share it.
+ */
+export function bodyInfo(operation: Operation, components?: Components) {
   const body = operation.requestBody
   if (!body || isReference(body)) return {}
   const picked = pickBodyMedia(body.content)
   if (!picked) return {}
-  const { mediaType, schema } = picked
-  const ref = refSchemaName(schema)
-  if (ref) return { ref }
+  const { mediaType } = picked
+  const ref = refSchemaName(picked.schema)
+  const isForm =
+    mediaType === 'multipart/form-data' || mediaType === 'application/x-www-form-urlencoded'
+  const component = ref && isForm ? components?.schemas?.[ref] : undefined
+  if (ref && !component) return { ref }
+  const schema = component ?? picked.schema
   const media = body.content?.[mediaType]
   const mediaExt = media && !isReference(media) ? pickVendorExtensions(media) : {}
   const bodyExt = pickVendorExtensions(body)
@@ -89,30 +106,28 @@ export function makeParamsSchema(
 ): { schema: Schema; ctx?: TypeboxCtx } | undefined {
   const filtered = params.filter((p): p is Parameter => !isReference(p) && p.in === where)
   if (filtered.length === 0) return undefined
-  const withSchema = filtered.filter((p): p is Parameter & { schema: Schema } => {
-    if (!p.schema) {
-      if (p.content) {
-        console.warn(
-          `asphodelos: Parameter '${p.name}' uses 'content' field (OpenAPI 3.1 alternative to 'schema'). This is not yet supported; the parameter will be omitted from the generated route.`,
-        )
-      }
-      return false
-    }
-    return true
+  // A parameter declares its schema directly, or under `content` as one document of a media
+  // type; the document's schema is the parameter's, and a JSON document is read as one.
+  const withSchema = filtered.flatMap((p) => {
+    if (p.schema) return [{ p, schema: p.schema, json: false }]
+    const content = contentSchema(p)
+    if (!content) return []
+    return [{ p, schema: content.schema, json: content.mediaType === 'application/json' }]
   })
   if (withSchema.length === 0) return undefined
   // A header name is case-insensitive on the wire and Elysia hands every header over in lower
   // case, so a header declared as `X-Request-Id` is keyed `x-request-id`: the spelling that
   // reaches the handler.
   const keyOf = (p: Parameter) => (where === 'header' ? p.name.toLowerCase() : p.name)
-  const properties = Object.fromEntries(withSchema.map((p) => [keyOf(p), p.schema]))
-  const required = withSchema.filter((p) => p.required).map(keyOf)
+  const properties = Object.fromEntries(withSchema.map(({ p, schema }) => [keyOf(p), schema]))
+  const required = withSchema.filter(({ p }) => p.required).map(({ p }) => keyOf(p))
+  const jsonProperties = withSchema.filter(({ json }) => json).map(({ p }) => keyOf(p))
   // First parameter to declare a given extension wins; the parameter's own value takes
   // precedence over the one on its schema.
   const hoisted: { [K in (typeof VENDOR_EXT_KEYS)[number]]?: string } = {}
-  for (const p of withSchema) {
+  for (const { p, schema: paramSchema } of withSchema) {
     const fromParam = pickVendorExtensions(p)
-    const fromSchema = pickVendorExtensions(p.schema)
+    const fromSchema = pickVendorExtensions(paramSchema)
     for (const key of VENDOR_EXT_KEYS) {
       if (hoisted[key] !== undefined) continue
       const value = fromParam[key] ?? fromSchema[key]
@@ -125,9 +140,25 @@ export function makeParamsSchema(
     ...(required.length > 0 ? { required } : {}),
     ...hoisted,
   }
-  if (where === 'cookie') return { schema, ctx: { elysiaKind: 'cookie' } }
-  if (where === 'query') return { schema, ctx: { parameterLocation: 'query' } }
-  return { schema }
+  const ctx: TypeboxCtx = {
+    parameterLocation: where,
+    ...(where === 'cookie' ? { elysiaKind: 'cookie' } : {}),
+    ...(jsonProperties.length > 0 ? { jsonProperties } : {}),
+  }
+  return { schema, ctx }
+}
+
+/** The one document a parameter declares under `content`, with its media type. */
+function contentSchema(p: Parameter): { mediaType: string; schema: Schema } | undefined {
+  for (const [mediaType, media] of Object.entries(p.content ?? {})) {
+    if (media && !isReference(media) && media.schema) return { mediaType, schema: media.schema }
+  }
+  return undefined
+}
+
+/** The schema a parameter declares, directly or as the one document under `content`. */
+export function parameterSchema(p: Parameter): Schema | undefined {
+  return p.schema ?? contentSchema(p)?.schema
 }
 
 export function collectSchemaRefs(schema: Schema, acc = new Set<string>()) {

@@ -9,6 +9,22 @@ function isMultipartBinaryArray(items: Schema, ctx: TypeboxCtx) {
   return items.format === 'binary' && ctx.mediaType === 'multipart/form-data'
 }
 
+/**
+ * How an array is read where it arrives as text. A parameter declared with `content` is one JSON
+ * document. A form field repeats its name for each element and is a bare value when sent once,
+ * which `t.Array` would refuse, and a header or a cookie holds one value, comma-separated;
+ * `t.ArrayQuery` reads all of those the way Elysia reads a query array. A query array is read by
+ * Elysia itself, and a JSON body carries the array.
+ */
+function arrayFactory(ctx: TypeboxCtx) {
+  if (ctx.elysiaKind === 'json-string') return 't.ArrayString'
+  if (isFormMedia(ctx)) return 't.ArrayQuery'
+  if (ctx.parameterLocation === 'header' || ctx.parameterLocation === 'cookie') {
+    return 't.ArrayQuery'
+  }
+  return 't.Array'
+}
+
 export function array(schema: Schema, ctx: TypeboxCtx = {}) {
   const childCtx: TypeboxCtx = ctx.mediaType ? { mediaType: ctx.mediaType } : {}
   if (schema.prefixItems) {
@@ -42,8 +58,6 @@ export function array(schema: Schema, ctx: TypeboxCtx = {}) {
     ...filterDefined([errorCallback(schema, 'array')]),
     ...commonOpts(schema),
   ])
-  // A form field repeats its name for each element and is a bare value when sent once, which
-  // `t.Array` would refuse; `t.ArrayQuery` reads both, the way Elysia reads a query array.
-  const factory = isFormMedia(ctx) ? 't.ArrayQuery' : 't.Array'
+  const factory = arrayFactory(ctx)
   return opts ? `${factory}(${itemExpr},${opts})` : `${factory}(${itemExpr})`
 }

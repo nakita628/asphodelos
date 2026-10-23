@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia'
 
 import { ItemSchema } from './__generated__/components/schemas.js'
+import { ComponentModel } from './__generated__/modules/component/model.js'
 import { MultipartModel } from './__generated__/modules/multipart/model.js'
 import { UrlencodedModel } from './__generated__/modules/urlencoded/model.js'
 
@@ -70,8 +71,9 @@ function issuesOf(error: unknown) {
 
 /**
  * Every handler answers the body its schema validated and nothing else, so the value a test sees
- * has passed the generated schema — not the raw request. The schemas are the generated models and
- * the generated component, mounted exactly as the generated controllers mount them.
+ * has passed the generated schema — not the raw request. The schemas are the generated models and,
+ * for the JSON body, the generated component, mounted exactly as the generated controllers mount
+ * them: a form body of a component gets a model of its own, read from text.
  */
 export const formBodyApp = new Elysia()
   // A rejected request names the field that failed, so a test can tell which one did.
@@ -81,5 +83,5 @@ export const formBodyApp = new Elysia()
   })
   .post('/urlencoded', ({ body }) => echoFields(body), { body: UrlencodedModel.urlencodedBody })
   .post('/multipart', ({ body }) => echoFields(body), { body: MultipartModel.multipartBody })
-  .post('/component', ({ body }) => echoFields(body), { body: ItemSchema })
+  .post('/component', ({ body }) => echoFields(body), { body: ComponentModel.componentBody })
   .post('/json', ({ body }) => echoFields(body), { body: ItemSchema })

@@ -250,20 +250,55 @@ describe('combinators: the text is read once', () => {
   })
 })
 
+// A literal read from text is matched against the spelling of its members, exactly.
+describe('text: what is not the spelling of a member', () => {
+  it.each([
+    ['ienum', '4'],
+    ['ienum', '02'],
+    ['ienum', '1.0'],
+    ['ienum', 'x'],
+    ['ienum', ''],
+    ['int_const', '8'],
+    ['bool_enum', 'false'],
+    ['bool_enum', '1'],
+    // Only the word `null`, in lower case, is null.
+    ['inull', 'NULL'],
+    ['inull', ''],
+    ['inull', 'x'],
+  ])('%s rejects %j', async (name, value) => {
+    await rejects(`/text?${name}=${value}`, [name])
+  })
+})
+
+describe('content: a JSON document', () => {
+  it('filter is validated by property', async () => {
+    await rejects(`/content?filter=${q('{"tag":"a","limit":"x"}')}`, ['limit'])
+  })
+
+  // An element that fails is named by its index; the array's own bound is reported without a
+  // path, as a coerced number's is; what is not a JSON array is named as the parameter.
+  it.each([
+    ['[1,"x"]', ['1']],
+    ['[1,2,3,4]', ['']],
+    ['1,2', ['ids']],
+    ['nope', ['ids']],
+  ])('ids rejects %s', async (value, issues) => {
+    await rejects(`/content?ids=${q(value)}`, issues)
+  })
+
+  it('count is bounded by its schema', async () => {
+    await rejects('/content?count=-1', [''])
+  })
+
+  it('count rejects a word', async () => {
+    await rejects('/content?count=x', ['count'])
+  })
+})
+
 // What the generated schema declares but Elysia's query reader does not turn into its value.
 // Pinned so the day Elysia reads them is noticed; a document that needs them today should declare
 // the parameter as a string and read it in the handler.
 describe('limitations: what Elysia does not read from a query string (pinned)', () => {
-  // A numeric enum is matched against numbers, and the query holds text.
-  it.each(['2', '9'])('a numeric enum rejects %j', async (value) => {
-    await rejects(`/limitations?ienum=${value}`, ['ienum'])
-  })
-
-  // `null` has no spelling in a query string: neither the word nor an empty value is read as it.
-  it.each(['null', ''])('a nullable integer rejects %j', async (value) => {
-    await rejects(`/limitations?inull=${value}`, ['inull'])
-  })
-
   // `pipeDelimited` and `spaceDelimited` are not split: the whole value is one element that is
   // not a number.
   it.each([

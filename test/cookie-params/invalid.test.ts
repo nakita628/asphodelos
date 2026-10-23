@@ -95,9 +95,15 @@ describe('formats: what each string format rejects', () => {
   })
 })
 
+// Every element is validated: a JSON array as a whole, a comma-separated value at the index of
+// the element that failed, and a broken JSON array at its first element.
 describe('arrays: every element is validated', () => {
-  it('ids rejects a bad element of a JSON array', async () => {
-    await rejects('/cookies', 'ids=[1,"x"]', ['ids'])
+  it.each([
+    ['[1,"x"]', ['ids']],
+    ['1,x', ['1']],
+    ['[1,2', ['0']],
+  ])('ids rejects %j', async (value, issues) => {
+    await rejects('/cookies', `ids=${q(value)}`, issues)
   })
 })
 
@@ -204,32 +210,34 @@ describe('required', () => {
   })
 })
 
+// A literal read from text is matched against the spelling of its members, exactly.
+describe('text: what is not the spelling of a member', () => {
+  it.each([
+    ['ienum', '4'],
+    ['ienum', '02'],
+    ['ienum', 'x'],
+    ['inull', 'NULL'],
+    ['inull', ''],
+    ['inull', 'x'],
+  ])('%s rejects %j', async (name, value) => {
+    await rejects('/optional', `${name}=${value}`, [name])
+  })
+})
+
 // What the generated schema declares but Elysia's cookie jar does not turn into its value.
-// Pinned so the day Elysia reads them is noticed; a document that needs them today should declare
-// the cookie as a string and read it in the handler.
+// Pinned so the day Elysia reads them is noticed.
 describe('limitations: what Elysia does not read from a cookie (pinned)', () => {
-  it.each(['2', '9'])('a numeric enum rejects %j', async (value) => {
-    await rejects('/optional', `ienum=${value}`, ['ienum'])
-  })
-
-  it.each(['null', ''])('a nullable integer rejects %j', async (value) => {
-    await rejects('/optional', `inull=${value}`, ['inull'])
-  })
-
-  // An array cookie reads a JSON array only: neither a single value nor a comma-separated list.
-  it.each(['1', '1,2', '[1,2'])('ids rejects %j', async (value) => {
-    await rejects('/cookies', `ids=${value}`, ['ids'])
-  })
-
-  // A repeated name is not gathered into the array either.
-  it('ids is not gathered from a name sent twice', async () => {
-    await rejects('/cookies', 'ids=1; ids=2', ['ids'])
-  })
-
   // A default is not applied to an absent cookie: the jar holds what was sent, and nothing else.
   it('does not fill an absent cookie with its default', async () => {
     const { status, body } = await get('/defaults')
     expect(status).toBe(200)
     expect(body).toStrictEqual({})
+  })
+
+  // A repeated name is read once: the first value is the cookie, and the array is that one value.
+  it('ids reads only the first of a name sent twice', async () => {
+    const { status, body } = await get('/cookies', 'ids=1; ids=2')
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ ids: [{ valueType: 'number', valueText: '1' }] })
   })
 })

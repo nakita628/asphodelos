@@ -149,36 +149,36 @@ describe('component: rejected values', () => {
   })
 })
 
-// What the generated schema declares but the form body does not carry as declared. Pinned so the
-// day it changes is noticed; a document that needs these today should declare the field as a
-// string and read it in the handler.
-describe('limitations (pinned)', () => {
-  // A numeric enum and a boolean const match a number and a boolean, and the field holds text.
+// A literal read from text is matched against the spelling of its members, exactly, and only the
+// word `null` is null.
+describe('text: what is not the spelling of a member', () => {
   it.each([
-    ['level', '2'],
     ['level', '3'],
-    ['agreed', 'true'],
+    ['level', '02'],
     ['agreed', 'false'],
+    ['agreed', '1'],
+    ['maybe', 'NULL'],
+    ['maybe', ''],
   ])('%s rejects %j', async (name, value) => {
     await rejects('/urlencoded', `${name}=${value}`, [name])
   })
 
-  // `null` has no spelling in a form field: neither the word nor an empty value is read as it.
-  it.each(['null', 'NULL', ''])('maybe rejects %j', async (value) => {
-    await rejects('/urlencoded', `maybe=${value}`, ['maybe'])
-  })
-
-  // A component is written for a typed value: a boolean of the component is not read from text,
-  // where an integer is, by Elysia itself.
-  it.each([
-    ['/urlencoded', 'flag=true', ['flag']],
-    ['/component', 'name=a&price=1&stocked=true', ['stocked']],
-  ])('%s rejects %s', async (path, body, issues) => {
-    await rejects(path, body, issues)
+  it('a component read from text validates its boolean', async () => {
+    await rejects('/component', 'name=a&price=1&stocked=x', ['stocked'])
   })
 
   // A scalar of the component sent twice is an array.
   it('a component rejects a field sent twice', async () => {
     await rejects('/component', 'name=a&price=1&price=2', ['price'])
+  })
+})
+
+// What the generated schema declares but the form body does not carry as declared. Pinned so the
+// day it changes is noticed.
+describe('limitations (pinned)', () => {
+  // A property that is itself a `$ref` keeps the component, which is written for a typed value:
+  // a boolean component is not read from text, where an integer one is, by Elysia itself.
+  it('a boolean component property is not read from text', async () => {
+    await rejects('/urlencoded', 'flag=true', ['flag'])
   })
 })

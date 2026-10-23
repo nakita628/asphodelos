@@ -1,9 +1,9 @@
 import { Elysia } from 'elysia'
 
 import { CombinatorsModel } from './__generated__/modules/combinators/model.js'
+import { ContentModel } from './__generated__/modules/content/model.js'
 import { DefaultsModel } from './__generated__/modules/defaults/model.js'
 import { InheritedModel } from './__generated__/modules/inherited/model.js'
-import { LimitationsModel } from './__generated__/modules/limitations/model.js'
 import { LimitsModel } from './__generated__/modules/limits/model.js'
 import { LiteralsModel } from './__generated__/modules/literals/model.js'
 import { OptionalModel } from './__generated__/modules/optional/model.js'
@@ -11,6 +11,7 @@ import { ParamsModel } from './__generated__/modules/params/model.js'
 import { RefsModel } from './__generated__/modules/refs/model.js'
 import { RequiredModel } from './__generated__/modules/required/model.js'
 import { StylesModel } from './__generated__/modules/styles/model.js'
+import { TextModel } from './__generated__/modules/text/model.js'
 
 type Echo = { valueType: string; valueText: string }
 
@@ -121,6 +122,5 @@ export const queryParamsApp = new Elysia()
   .get('/combinators', ({ query }) => echoFields(query), {
     query: CombinatorsModel.queryCombinatorsQuery,
   })
-  .get('/limitations', ({ query }) => echoFields(query), {
-    query: LimitationsModel.queryLimitationsQuery,
-  })
+  .get('/text', ({ query }) => echoFields(query), { query: TextModel.queryTextQuery })
+  .get('/content', ({ query }) => echoFields(query), { query: ContentModel.queryContentQuery })

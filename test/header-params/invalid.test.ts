@@ -225,43 +225,31 @@ describe('wire: what a header value cannot carry', () => {
   })
 })
 
-// What the generated schema declares but Elysia's header reader does not turn into its value.
-// Pinned so the day Elysia reads them is noticed; a document that needs them today should declare
-// the header as a string and read it in the handler.
-describe('limitations: what Elysia does not read from a header (pinned)', () => {
-  // A numeric enum is matched against numbers, and the header holds text.
-  it.each(['2', '9'])('a numeric enum rejects %j', async (value) => {
-    await rejects('/optional', { 'x-ienum': value }, ['x-ienum'])
-  })
-
-  // `null` has no spelling in a header: neither the word nor an empty value is read as it.
-  it.each(['null', ''])('a nullable integer rejects %j', async (value) => {
-    await rejects('/optional', { 'x-inull': value }, ['x-inull'])
-  })
-
-  // An array header is not read: a comma-separated list is not split, an array of strings
-  // rejects a single value, and an array of integers reads the digits of a single value as its
-  // elements. A document that needs one should declare the header as a string.
+// A literal read from text is matched against the spelling of its members, exactly.
+describe('text: what is not the spelling of a member', () => {
   it.each([
-    ['x-ids', '1,2'],
-    ['x-ids', '1,x'],
-    ['x-tags', 'a'],
-    ['x-tags', 'a,b'],
+    ['x-ienum', '4'],
+    ['x-ienum', '02'],
+    ['x-ienum', 'x'],
+    // Only the word `null`, in lower case, is null.
+    ['x-inull', 'NULL'],
+    ['x-inull', ''],
+    ['x-inull', 'x'],
   ])('%s rejects %j', async (name, value) => {
-    await rejects('/headers', { [name]: value }, [name])
+    await rejects('/optional', { [name]: value }, [name])
   })
+})
 
-  it('x-ids reads the digits of a single value as its elements', async () => {
-    const { status, body } = await get('/headers', { 'x-ids': '42' })
-    expect(status).toBe(200)
-    expect(body).toStrictEqual({
-      'x-ids': [
-        { valueType: 'number', valueText: '4' },
-        { valueType: 'number', valueText: '2' },
-      ],
-    })
+// Every element of an array header is validated, at its index.
+describe('arrays: rejected elements', () => {
+  it('x-ids rejects a word among its elements', async () => {
+    await rejects('/headers', { 'x-ids': '1,x' }, ['1'])
   })
+})
 
+// What the generated schema declares but Elysia's header reader does not turn into its value.
+// Pinned so the day Elysia reads them is noticed.
+describe('limitations: what Elysia does not read from a header (pinned)', () => {
   // An object header reads a JSON-encoded value only; an object that does not fit its schema is
   // rejected by property, and the comma-separated spelling OpenAPI describes is not read.
   it('x-obj is validated by property', async () => {

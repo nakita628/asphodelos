@@ -649,9 +649,22 @@ the intent explicit in a body. Do not add them to parameters.
 
 A `multipart/form-data` or `application/x-www-form-urlencoded` body carries every field as text,
 so a `number` or `boolean` declared in one is generated as `t.Numeric()` / `t.BooleanString()`
-without being asked; `integer` fields are read from text by `t.Integer()` as they are. A header
-parameter is keyed by its lower-case name (`X-Request-Id` becomes `x-request-id`), which is how
-Elysia hands headers to the handler.
+without being asked, and an array as `t.ArrayQuery()`, which reads a field sent once as well as
+one repeated; `integer` fields are read from text by `t.Integer()` as they are. A form body that
+references a component schema takes a copy of that schema, read from text the same way; the
+component itself stays typed for the JSON bodies that share it.
+
+Wherever a value arrives as text — a query, path, header or cookie parameter, or a form field — a
+`number` or `boolean` `enum` or `const` accepts the spelling of each member beside the member and
+reads it into the literal (`?level=2` reaches the handler as `2`, typed `1 | 2 | 3`), and a nullable
+`integer`, `number` or `boolean` reads the word `null` as `null`. A nullable `string` keeps the word
+as text. An array header or cookie is one comma-separated value, read by `t.ArrayQuery()`.
+
+A parameter declared with `content` instead of `schema` takes the schema of its one document; an
+`application/json` document is read as one JSON value (`t.ObjectString()` / `t.ArrayString()`).
+
+A header parameter is keyed by its lower-case name (`X-Request-Id` becomes `x-request-id`), which
+is how Elysia hands headers to the handler.
 
 ### Unsupported Extensions
 

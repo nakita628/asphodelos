@@ -120,18 +120,39 @@ describe('formats: what each string format accepts', () => {
   })
 })
 
-// A cookie is one value, so an array cookie is read from one JSON-encoded value, each element
-// typed. What is not read is in invalid.test.ts.
-describe('arrays: a JSON-encoded value', () => {
-  it('ids reads a JSON array', async () => {
-    const { status, body } = await get('/cookies', 'ids=[1,2]')
-    expect(status).toBe(200)
-    expect(body).toStrictEqual({
-      ids: [
+// A cookie is one value, so an array cookie is one comma-separated value — a single element as it
+// is — or one JSON-encoded array, each element typed.
+describe('arrays: one value', () => {
+  it.each([
+    ['ids', '1', [{ valueType: 'number', valueText: '1' }]],
+    [
+      'ids',
+      '1,2',
+      [
         { valueType: 'number', valueText: '1' },
         { valueType: 'number', valueText: '2' },
       ],
-    })
+    ],
+    [
+      'ids',
+      '[1,2]',
+      [
+        { valueType: 'number', valueText: '1' },
+        { valueType: 'number', valueText: '2' },
+      ],
+    ],
+    [
+      'tags',
+      'a,b',
+      [
+        { valueType: 'string', valueText: 'a' },
+        { valueType: 'string', valueText: 'b' },
+      ],
+    ],
+  ])('%s reads %j', async (name, value, elements) => {
+    const { status, body } = await get('/cookies', `${name}=${value}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ [name]: elements })
   })
 
   it('tags reads a percent-encoded JSON array', async () => {
@@ -253,10 +274,15 @@ describe('optional: absent and present', () => {
     expect(body).toStrictEqual({ [name]: echo })
   })
 
-  it('inull reads an integer', async () => {
-    const { status, body } = await get('/optional', 'inull=5')
+  // A numeric enum reads the spelling of a member, and a nullable integer the word `null`.
+  it.each([
+    ['ienum', '2', { valueType: 'number', valueText: '2' }],
+    ['inull', '5', { valueType: 'number', valueText: '5' }],
+    ['inull', 'null', { valueType: 'null', valueText: 'null' }],
+  ])('%s reads %j', async (name, value, echo) => {
+    const { status, body } = await get('/optional', `${name}=${value}`)
     expect(status).toBe(200)
-    expect(body).toStrictEqual({ inull: { valueType: 'number', valueText: '5' } })
+    expect(body).toStrictEqual({ [name]: echo })
   })
 
   // The jar holds every cookie that was sent: one the schema does not declare passes through as

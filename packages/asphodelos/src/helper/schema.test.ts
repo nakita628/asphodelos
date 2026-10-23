@@ -230,6 +230,54 @@ describe('bodyInfo', () => {
     })
   })
 
+  // A component is written for typed values. A form body that is one takes a copy of the
+  // component's schema, inlined and read from text; a JSON body keeps the reference.
+  it('takes a copy of the component schema a form body references, when the components are given', () => {
+    const components = {
+      schemas: {
+        Item: {
+          type: 'object' as const,
+          required: ['name'],
+          properties: { name: { type: 'string' as const }, stocked: { type: 'boolean' as const } },
+        },
+      },
+    }
+    expect(
+      bodyInfo(
+        op({
+          content: {
+            'application/x-www-form-urlencoded': { schema: { $ref: '#/components/schemas/Item' } },
+          },
+        } satisfies RequestBody),
+        components,
+      ),
+    ).toStrictEqual({
+      inline: components.schemas.Item,
+      ctx: { mediaType: 'application/x-www-form-urlencoded' },
+    })
+    expect(
+      bodyInfo(
+        op({
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Item' } } },
+        } satisfies RequestBody),
+        components,
+      ),
+    ).toStrictEqual({ ref: 'Item' })
+  })
+
+  it('keeps the reference of a form body whose component is not among the components given', () => {
+    expect(
+      bodyInfo(
+        op({
+          content: {
+            'multipart/form-data': { schema: { $ref: '#/components/schemas/Upload' } },
+          },
+        } satisfies RequestBody),
+        { schemas: {} },
+      ),
+    ).toStrictEqual({ ref: 'Upload' })
+  })
+
   it('returns application/x-www-form-urlencoded ctx for an inline form body schema', () => {
     // A urlencoded body reaches Elysia as an object of strings, like a query: the emitter reads
     // the media type off `ctx` and picks the factories that read text.
@@ -509,7 +557,7 @@ describe('makeParamsSchema', () => {
     })
   })
 
-  it('does NOT emit parameterLocation ctx for in:path / in:header parameters', () => {
+  it('names the location of a path and a header container, so their values are read as text', () => {
     const inPath: Parameter = {
       name: 'filter',
       in: 'path',
@@ -522,6 +570,15 @@ describe('makeParamsSchema', () => {
           filter: { type: 'object', properties: { kind: { type: 'string' } } },
         },
       },
+      ctx: { parameterLocation: 'path' },
+    })
+    const inHeader: Parameter = { name: 'a', in: 'header', schema: { type: 'string' } }
+    expect(makeParamsSchema([inHeader], 'header')).toStrictEqual({
+      schema: {
+        type: 'object',
+        properties: { a: { type: 'string' } },
+      },
+      ctx: { parameterLocation: 'header' },
     })
   })
 
@@ -538,21 +595,56 @@ describe('makeParamsSchema', () => {
         type: 'object',
         properties: { session: { type: 'string' } },
       },
-      ctx: { elysiaKind: 'cookie' },
+      ctx: { parameterLocation: 'cookie', elysiaKind: 'cookie' },
     })
   })
 
-  it('does NOT emit any ctx for in:header containers', () => {
-    const param: Parameter = { name: 'a', in: 'header', schema: { type: 'string' } }
-    expect(makeParamsSchema([param], 'header')).toStrictEqual({
+  // A parameter may declare its schema under `content` instead of `schema`: one document of that
+  // media type. The document's schema is the parameter's, and a JSON one is named so the emitter
+  // reads it as a single JSON value.
+  it('takes the schema of a parameter declared with content, and names a JSON one', () => {
+    const filter: Parameter = {
+      name: 'filter',
+      in: 'query',
+      content: {
+        'application/json': {
+          schema: { type: 'object', properties: { tag: { type: 'string' } } },
+        },
+      },
+    }
+    const ids: Parameter = {
+      name: 'ids',
+      in: 'query',
+      content: { 'application/json': { schema: { type: 'array', items: { type: 'integer' } } } },
+    }
+    const plain: Parameter = {
+      name: 'note',
+      in: 'query',
+      content: { 'text/plain': { schema: { type: 'string' } } },
+    }
+    const page: Parameter = { name: 'page', in: 'query', schema: { type: 'integer' } }
+    expect(makeParamsSchema([filter, ids, plain, page], 'query')).toStrictEqual({
       schema: {
         type: 'object',
-        properties: { a: { type: 'string' } },
+        properties: {
+          filter: { type: 'object', properties: { tag: { type: 'string' } } },
+          ids: { type: 'array', items: { type: 'integer' } },
+          note: { type: 'string' },
+          page: { type: 'integer' },
+        },
       },
+      ctx: { parameterLocation: 'query', jsonProperties: ['filter', 'ids'] },
     })
+  })
+
+  it('leaves out a parameter that declares neither schema nor content', () => {
+    const bare: Parameter = { name: 'x', in: 'query' }
+    expect(makeParamsSchema([bare], 'query')).toBeUndefined()
   })
 
   it('keys a header by its lower-case name, which is how Elysia hands it over', () => {
+    // The container's ctx names the location; this test is about the keys.
+
     // A header name is case-insensitive on the wire; a schema keyed `X-Request-Id` would never
     // see the `x-request-id` Elysia reads, and a required one would always be missing.
     const id: Parameter = {
@@ -571,6 +663,7 @@ describe('makeParamsSchema', () => {
         },
         required: ['x-request-id'],
       },
+      ctx: { parameterLocation: 'header' },
     })
   })
 

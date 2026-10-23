@@ -214,6 +214,45 @@ describe('object', () => {
     ).toBe('t.Object({"id":t.Readonly(t.String({readOnly:true})),"name":t.String()})')
   })
 
+  // The properties of a parameter container arrive as text and are marked so; an object nested in
+  // one is a single JSON document whose own properties are typed, and are left alone.
+  it('reads the properties of a parameter container from text, but not those of a nested object', () => {
+    expect(
+      object(
+        {
+          type: 'object',
+          properties: {
+            level: { type: 'integer', enum: [1, 2] },
+            deep: { type: 'object', properties: { level: { type: 'integer', enum: [1, 2] } } },
+          },
+        },
+        { parameterLocation: 'query' },
+      ),
+    ).toBe(
+      '{"level":t.Optional(t.Transform(t.Union([t.Union([t.Literal("1"),t.Literal("2")]),t.UnionEnum([1,2],{default:undefined})])).Decode((v):1|2=>(typeof v===\'string\'?JSON.parse(v):v)).Encode((v)=>v)),"deep":t.Optional(t.ObjectString({"level":t.Optional(t.UnionEnum([1,2],{default:undefined}))}))}'
+        .replace('{"level"', 't.Object({"level"')
+        .replace(/\}$/u, '})'),
+    )
+  })
+
+  it('reads an array header from one value, and a JSON-declared parameter as one document', () => {
+    expect(
+      object(
+        {
+          type: 'object',
+          properties: {
+            'x-ids': { type: 'array', items: { type: 'integer' } },
+            'x-filter': { type: 'object', properties: { tag: { type: 'string' } } },
+            'x-list': { type: 'array', items: { type: 'string' } },
+          },
+        },
+        { parameterLocation: 'header', jsonProperties: ['x-filter', 'x-list'] },
+      ),
+    ).toBe(
+      't.Object({"x-ids":t.Optional(t.ArrayQuery(t.Integer({maximum:9007199254740991}))),"x-filter":t.Optional(t.ObjectString({"tag":t.Optional(t.String())})),"x-list":t.Optional(t.ArrayString(t.String()))})',
+    )
+  })
+
   it('emits t.Form({...}) when called with multipart/form-data media-type ctx', () => {
     // multipart bodies require Elysia's `t.Form` factory so FormData→Object
     // coerce kicks in. The ctx is supplied by helper/schema.ts when the

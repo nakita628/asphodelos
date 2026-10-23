@@ -12,6 +12,31 @@ describe('array', () => {
     },
   )
 
+  it.each(['header', 'cookie'] as const)(
+    'emits t.ArrayQuery for an array %s, one comma-separated value',
+    (parameterLocation) => {
+      expect(array({ type: 'array', items: { type: 'integer' } }, { parameterLocation })).toBe(
+        't.ArrayQuery(t.Integer({maximum:9007199254740991}))',
+      )
+    },
+  )
+
+  it('keeps t.Array for a query array, which Elysia reads itself, and for a JSON body', () => {
+    expect(
+      array({ type: 'array', items: { type: 'string' } }, { parameterLocation: 'query' }),
+    ).toBe('t.Array(t.String())')
+    expect(array({ type: 'array', items: { type: 'string' } })).toBe('t.Array(t.String())')
+  })
+
+  it('emits t.ArrayString for a parameter declared with content: application/json', () => {
+    expect(
+      array(
+        { type: 'array', items: { type: 'integer' }, maxItems: 3 },
+        { elysiaKind: 'json-string' },
+      ),
+    ).toBe('t.ArrayString(t.Integer({maximum:9007199254740991}),{maxItems:3})')
+  })
+
   it('keeps t.Files for a file array in a multipart body', () => {
     expect(
       array(

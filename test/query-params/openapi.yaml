@@ -13,8 +13,9 @@
 #              operation overrides.
 # `/styles`     serializations other than `form` + `explode: true`, objects, `allowEmptyValue`.
 # `/combinators` `allOf`, `oneOf`, `anyOf` and the `x-*` transforms.
-# `/limitations` the shapes the generated schema declares but Elysia's query reader does not
-#              turn into their value: a numeric `enum`, and `null`.
+# `/text`      a numeric `enum` or `const`, a boolean `const` and a nullable integer: literals the
+#              generated schema reads from their spelling.
+# `/content`   parameters declared with `content: application/json`, one JSON document each.
 openapi: 3.1.0
 info:
   title: Query Parameter Matrix
@@ -237,12 +238,37 @@ paths:
           }
       responses:
         '200': { description: OK }
-  /limitations:
+  /text:
     get:
-      operationId: queryLimitations
+      operationId: queryText
       parameters:
         - { name: ienum, in: query, schema: { type: integer, enum: [1, 2, 3] } }
+        - { name: int_const, in: query, schema: { type: integer, const: 7 } }
+        - { name: bool_enum, in: query, schema: { type: boolean, enum: [true] } }
         - { name: inull, in: query, schema: { type: [integer, 'null'] } }
+        - { name: str_null, in: query, schema: { type: [string, 'null'] } }
+      responses:
+        '200': { description: OK }
+  /content:
+    get:
+      operationId: queryContent
+      parameters:
+        - name: filter
+          in: query
+          content:
+            application/json:
+              schema:
+                { type: object, properties: { tag: { type: string }, limit: { type: integer } } }
+        - name: ids
+          in: query
+          content:
+            application/json:
+              schema: { type: array, items: { type: integer }, maxItems: 3 }
+        - name: count
+          in: query
+          content:
+            application/json:
+              schema: { type: integer, minimum: 0 }
       responses:
         '200': { description: OK }
 components:

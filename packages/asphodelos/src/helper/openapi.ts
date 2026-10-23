@@ -133,6 +133,7 @@ export function makeRoute(
   method: (typeof HTTP_METHODS)[number],
   path: string,
   operation: Operation,
+  components?: OpenAPI['components'],
 ) {
   const operationId = resolveOperationId(operation, method, path)
   const tags = operation.tags ?? []
@@ -140,7 +141,7 @@ export function makeRoute(
   const query = makeParamsSchema(operation.parameters ?? [], 'query')
   const headers = makeParamsSchema(operation.parameters ?? [], 'header')
   const cookie = makeParamsSchema(operation.parameters ?? [], 'cookie')
-  const body = bodyInfo(operation)
+  const body = bodyInfo(operation, components)
   const synth = (kind: string) => `${toSafeIdentifier(operationId)}${kind}`
 
   const responsesAndInline = Object.entries(operation.responses ?? {}).map(([status, res]) => {
@@ -241,7 +242,9 @@ function walk(
       ),
       renames,
     )
-    return [[resource, makeRoute(method, normalizedPath, resolvedOperation)] as const]
+    return [
+      [resource, makeRoute(method, normalizedPath, resolvedOperation, api.components)] as const,
+    ]
   })
 }
 
