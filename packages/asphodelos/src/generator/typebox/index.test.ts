@@ -75,6 +75,25 @@ describe('typebox', () => {
     expect(typebox({ const: 'fixed' })).toBe('t.Literal("fixed")')
   })
 
+  // A list of types is a union of them, each member reading the constraints that apply to it.
+  it('emits a Union for type:[integer,string], each member with its own constraints', () => {
+    expect(typebox({ type: ['integer', 'string'], minimum: 1, minLength: 2 })).toBe(
+      't.Union([t.Integer({minimum:1,maximum:9007199254740991}),t.String({minLength:2})])',
+    )
+  })
+
+  it('adds t.Null() once to a type list that holds null', () => {
+    expect(typebox({ type: ['number', 'boolean', 'null'] })).toBe(
+      't.Union([t.Union([t.Number(),t.Boolean()]),t.Null()])',
+    )
+  })
+
+  it('reads every member of a type list in a form body from text', () => {
+    expect(
+      typebox({ type: ['number', 'boolean'] }, { mediaType: 'application/x-www-form-urlencoded' }),
+    ).toBe('t.Union([t.Numeric(),t.BooleanString()])')
+  })
+
   it('emits t.Null for a null const (t.Literal rejects null)', () => {
     expect(typebox({ const: null })).toBe('t.Null()')
   })

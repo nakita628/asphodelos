@@ -3,6 +3,24 @@ import { describe, expect, it } from 'bun:test'
 import { array } from './array.js'
 
 describe('array', () => {
+  it.each(['multipart/form-data', 'application/x-www-form-urlencoded'] as const)(
+    'emits t.ArrayQuery in a %s body, its items read from text',
+    (mediaType) => {
+      expect(array({ type: 'array', items: { type: 'boolean' }, minItems: 1 }, { mediaType })).toBe(
+        't.ArrayQuery(t.BooleanString(),{minItems:1})',
+      )
+    },
+  )
+
+  it('keeps t.Files for a file array in a multipart body', () => {
+    expect(
+      array(
+        { type: 'array', items: { type: 'string', format: 'binary' } },
+        { mediaType: 'multipart/form-data' },
+      ),
+    ).toBe('t.Files()')
+  })
+
   it('emits t.Array of primitive', () => {
     expect(array({ type: 'array', items: { type: 'string' } })).toBe('t.Array(t.String())')
   })

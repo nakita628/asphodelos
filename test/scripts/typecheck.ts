@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { spawn } from 'node:child_process'
+import { availableParallelism } from 'node:os'
 import path from 'node:path'
 
 import { listCases } from './cases.ts'
@@ -32,13 +33,40 @@ function typecheck({ name, dir }: { readonly name: string; readonly dir: string 
     child.stderr.on('data', (chunk: Buffer) => {
       chunks.push(chunk)
     })
-    child.on('close', (status) => {
-      resolve({ name, ok: status === 0, output: Buffer.concat(chunks).toString() })
+    child.on('close', (status, signal) => {
+      // A compiler that died without a word — killed for memory, most often — is reported as such,
+      // rather than as a case that failed with nothing to say.
+      const output = Buffer.concat(chunks).toString()
+      const silent = output.length === 0 && status !== 0
+      resolve({
+        name,
+        ok: status === 0,
+        output: silent ? `tsc exited with ${signal ?? `status ${String(status)}`}\n` : output,
+      })
     })
   })
 }
 
-const results = await Promise.all(cases.map(typecheck))
+/**
+ * Runs the cases a few at a time. Each `tsc` holds a program of its own in memory, and one per
+ * case at once is more than a small machine carries: a compiler killed for memory looks like a
+ * case that failed for no reason.
+ */
+async function typecheckAll(all: readonly { readonly name: string; readonly dir: string }[]) {
+  const queue = [...all]
+  const results: Awaited<ReturnType<typeof typecheck>>[] = []
+  async function worker() {
+    for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+      // oxlint-disable-next-line no-await-in-loop -- one case at a time per worker is the point
+      results.push(await typecheck(next))
+    }
+  }
+  const workers = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)))
+  await Promise.all(Array.from({ length: workers }, worker))
+  return results
+}
+
+const results = await typecheckAll(cases)
 const failed = results.filter((result) => !result.ok)
 for (const result of failed) {
   process.stderr.write(`\n${result.name}:\n${result.output}\n`)

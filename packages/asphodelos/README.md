@@ -647,6 +647,12 @@ round-tripped through OpenAPI but emit no code.
 Elysia already coerces query / path / header / cookie values and JSON bodies, so these only make
 the intent explicit in a body. Do not add them to parameters.
 
+A `multipart/form-data` or `application/x-www-form-urlencoded` body carries every field as text,
+so a `number` or `boolean` declared in one is generated as `t.Numeric()` / `t.BooleanString()`
+without being asked; `integer` fields are read from text by `t.Integer()` as they are. A header
+parameter is keyed by its lower-case name (`X-Request-Id` becomes `x-request-id`), which is how
+Elysia hands headers to the handler.
+
 ### Unsupported Extensions
 
 `x-refine`, `x-superRefine`, `x-prefault` (use `default`), `x-decode` / `x-encode` (use

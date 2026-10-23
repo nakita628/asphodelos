@@ -1,4 +1,4 @@
-import { commonOpts, errorCallback, options, transformWrap } from '../../../helper/typebox.js'
+import { commonOpts, errorCallback, options, raw, transformWrap } from '../../../helper/typebox.js'
 import type { Schema } from '../../../openapi/index.js'
 import { filterDefined } from '../../../utils/index.js'
 import { typebox } from '../index.js'
@@ -52,10 +52,17 @@ export function object(schema: Schema, ctx: TypeboxCtx = {}) {
     return transformWrap(recordExpr, schema, (s) => typebox(s, additionalCtx))
   }
 
+  // A schema beside the declared properties types every other key; `true` is TypeBox's default.
+  const additionalOption =
+    additional === false
+      ? false
+      : additional && typeof additional === 'object'
+        ? raw(typebox(additional, childCtxFor(ctx, additional)))
+        : undefined
   const opts = options([
     ['minProperties', schema.minProperties],
     ['maxProperties', schema.maxProperties],
-    ['additionalProperties', additional === false ? false : undefined],
+    ['additionalProperties', additionalOption],
     ...filterDefined([errorCallback(schema, 'object')]),
     ...commonOpts(schema),
   ])

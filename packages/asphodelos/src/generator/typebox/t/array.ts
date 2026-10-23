@@ -2,7 +2,7 @@ import { isSchemaArray } from '../../../guard/index.js'
 import { commonOpts, errorCallback, options, raw } from '../../../helper/typebox.js'
 import type { Schema } from '../../../openapi/index.js'
 import { filterDefined } from '../../../utils/index.js'
-import { typebox } from '../index.js'
+import { isFormMedia, typebox } from '../index.js'
 import type { TypeboxCtx } from '../index.js'
 
 function isMultipartBinaryArray(items: Schema, ctx: TypeboxCtx) {
@@ -42,5 +42,8 @@ export function array(schema: Schema, ctx: TypeboxCtx = {}) {
     ...filterDefined([errorCallback(schema, 'array')]),
     ...commonOpts(schema),
   ])
-  return opts ? `t.Array(${itemExpr},${opts})` : `t.Array(${itemExpr})`
+  // A form field repeats its name for each element and is a bare value when sent once, which
+  // `t.Array` would refuse; `t.ArrayQuery` reads both, the way Elysia reads a query array.
+  const factory = isFormMedia(ctx) ? 't.ArrayQuery' : 't.Array'
+  return opts ? `${factory}(${itemExpr},${opts})` : `${factory}(${itemExpr})`
 }

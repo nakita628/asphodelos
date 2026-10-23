@@ -16,7 +16,11 @@
   "include": [
     "*.ts",
     "client",
+    "cookie-params",
+    "form-body",
+    "header-params",
     "hosts",
+    "json-body",
     "monorepo",
     "path-params",
     "query-params",

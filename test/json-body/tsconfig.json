@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "include": [
+    "asphodelos.config.ts",
+    "app.ts",
+    "*.test.ts",
+    "__generated__/**/*",
+    "../types/assert.ts"
+  ]
+}

@@ -17,12 +17,14 @@ here rather than in someone's project — and the packaged Vite plugin inside a 
 (`runtime/vite-plugin.test.ts`): it generates on start, regenerates on a document edit, and reloads
 an edited config.
 
-Two self-contained suites, `query-params/` and `path-params/`, send every parameter shape the
-generator supports through a real Elysia app built on the generated models: a query string or a
-path segment in, the JavaScript type and value that reached the handler out. HTTP carries every
+Six self-contained suites, `query-params/`, `path-params/`, `header-params/`, `cookie-params/`,
+`form-body/` and `json-body/`, send every parameter shape the generator supports through a real
+Elysia app built on the generated models: a query string, a path segment, a header, a cookie or a
+form field in, the JavaScript type and value that reached the handler out. HTTP carries every
 parameter as text, so a schema Elysia cannot read back into its type rejects its own input, and
-that is what these catch. Each holds the requests that are accepted, the ones that are rejected,
-and compile-time assertions about the generated types.
+that is what these catch; the JSON body suite is the contrast, a body that carries its own types.
+Each holds the requests that are accepted, the ones that are rejected — with what Elysia does not
+read pinned as such — and compile-time assertions about the generated types.
 
 ## Layout
 
@@ -34,6 +36,10 @@ runtime/          tests that execute the generated hooks, and the Vite plugin in
 types/            compile-time assertions about the generics
 query-params/     a self-contained case: document, config, echo app and tests, in one directory
 path-params/      the same for path parameters
+header-params/    the same for headers; runs on the runtime's own Request, which lower-cases names
+cookie-params/    the same for cookies, read out of the Cookie header by Elysia's cookie jar
+form-body/        urlencoded and multipart bodies, whose fields are text, beside a JSON body
+json-body/        a JSON body: integers, type lists, formats and the shapes of an object
 client/           the generated Eden Treaty client, under a path alias, driven over HTTP against
                   hosts/users-server.ts in a process of its own
 monorepo/         the client in a package of its own: apps/elysia, apps/eden and apps/react reach

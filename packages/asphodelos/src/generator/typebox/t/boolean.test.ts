@@ -27,6 +27,22 @@ describe('boolean', () => {
     )
   })
 
+  // A form field is text: `t.Boolean()` would reject its own input, so a boolean in a form body is
+  // read the way Elysia reads one in a query.
+  it.each(['multipart/form-data', 'application/x-www-form-urlencoded'] as const)(
+    'emits t.BooleanString() in a %s body',
+    (mediaType) => {
+      expect(boolean({ type: 'boolean' }, { mediaType })).toBe('t.BooleanString()')
+    },
+  )
+
+  it('keeps t.Boolean() in a JSON body and in a raw-bytes body', () => {
+    expect(boolean({ type: 'boolean' }, {})).toBe('t.Boolean()')
+    expect(boolean({ type: 'boolean' }, { mediaType: 'application/octet-stream' })).toBe(
+      't.Boolean()',
+    )
+  })
+
   it('emits Elysia error hook when x-error-message is set (plain fallback shape)', () => {
     expect(
       boolean({

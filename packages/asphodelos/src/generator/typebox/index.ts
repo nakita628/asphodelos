@@ -19,9 +19,23 @@ import {
 } from './t/index.js'
 
 export type TypeboxCtx = {
-  readonly mediaType?: 'multipart/form-data' | 'application/octet-stream'
+  readonly mediaType?:
+    | 'multipart/form-data'
+    | 'application/x-www-form-urlencoded'
+    | 'application/octet-stream'
   readonly elysiaKind?: 'object-string' | 'cookie'
   readonly parameterLocation?: 'query'
+}
+
+/**
+ * Whether the schema describes a form body, whose every field reaches Elysia as text. A number or
+ * a boolean there is read through `t.Numeric` / `t.BooleanString`, the way Elysia itself reads a
+ * query or a header; a JSON body carries its own types and keeps the plain factories.
+ */
+export function isFormMedia(ctx: TypeboxCtx) {
+  return (
+    ctx.mediaType === 'multipart/form-data' || ctx.mediaType === 'application/x-www-form-urlencoded'
+  )
 }
 
 export function typebox(schema: Schema, ctx: TypeboxCtx = {}): string {
@@ -52,6 +66,13 @@ export function typebox(schema: Schema, ctx: TypeboxCtx = {}): string {
           : `t.Literal(${JSON.stringify(schema.const)}${optsPart})`
     return readonly(wrap(brand(literal, schema), schema), enabled)
   }
+  // `type: [integer, string]` is a union of the types it lists, each read with the constraints
+  // that apply to it; `null` among them is added by `wrap`, as it is for a single type.
+  const listed = isTypeArray(schema.type) ? schema.type.filter((t) => t !== 'null') : []
+  if (listed.length > 1) {
+    const members = listed.map((t) => typebox({ ...schema, type: t, nullable: undefined }, ctx))
+    return readonly(wrap(`t.Union([${members.join(',')}])`, schema), enabled)
+  }
   const primaryType = (): Type | undefined => {
     if (typeof schema.type === 'string') return schema.type
     if (isTypeArray(schema.type)) return schema.type.find((t) => t !== 'null')
@@ -67,9 +88,9 @@ export function typebox(schema: Schema, ctx: TypeboxCtx = {}): string {
     case 'integer':
       return readonly(wrap(brand(integer(schema), schema), schema), enabled)
     case 'number':
-      return readonly(wrap(brand(number(schema), schema), schema), enabled)
+      return readonly(wrap(brand(number(schema, ctx), schema), schema), enabled)
     case 'boolean':
-      return readonly(wrap(brand(boolean(schema), schema), schema), enabled)
+      return readonly(wrap(brand(boolean(schema, ctx), schema), schema), enabled)
     case 'array':
       return readonly(wrap(array(schema, ctx), schema), enabled)
     case 'object':

@@ -187,7 +187,9 @@ function paramsTs(
   if (resolved.length === 0) return '{}'
   const entries = resolved.map((p) => {
     const opt = p.required ? '' : '?'
-    return `${JSON.stringify(p.name)}${opt}: ${schemaToTs(p.schema)}`
+    // A header is keyed by its lower-case name, as the generated model keys it.
+    const name = where === 'header' ? p.name.toLowerCase() : p.name
+    return `${JSON.stringify(name)}${opt}: ${schemaToTs(p.schema)}`
   })
   return `{ ${entries.join('; ')} }`
 }

@@ -230,6 +230,45 @@ describe('bodyInfo', () => {
     })
   })
 
+  it('returns application/x-www-form-urlencoded ctx for an inline form body schema', () => {
+    // A urlencoded body reaches Elysia as an object of strings, like a query: the emitter reads
+    // the media type off `ctx` and picks the factories that read text.
+    expect(
+      bodyInfo(
+        op({
+          content: {
+            'application/x-www-form-urlencoded': {
+              schema: { type: 'object', properties: { age: { type: 'integer' } } },
+            },
+          },
+        } satisfies RequestBody),
+      ),
+    ).toStrictEqual({
+      inline: { type: 'object', properties: { age: { type: 'integer' } } },
+      ctx: { mediaType: 'application/x-www-form-urlencoded' },
+    })
+  })
+
+  it('prefers multipart/form-data over application/x-www-form-urlencoded', () => {
+    expect(
+      bodyInfo(
+        op({
+          content: {
+            'application/x-www-form-urlencoded': {
+              schema: { type: 'object', properties: { age: { type: 'integer' } } },
+            },
+            'multipart/form-data': {
+              schema: { type: 'object', properties: { file: { type: 'string' } } },
+            },
+          },
+        } satisfies RequestBody),
+      ),
+    ).toStrictEqual({
+      inline: { type: 'object', properties: { file: { type: 'string' } } },
+      ctx: { mediaType: 'multipart/form-data' },
+    })
+  })
+
   it('returns application/octet-stream ctx for inline raw-bytes body schema', () => {
     expect(
       bodyInfo(
@@ -510,6 +549,35 @@ describe('makeParamsSchema', () => {
         type: 'object',
         properties: { a: { type: 'string' } },
       },
+    })
+  })
+
+  it('keys a header by its lower-case name, which is how Elysia hands it over', () => {
+    // A header name is case-insensitive on the wire; a schema keyed `X-Request-Id` would never
+    // see the `x-request-id` Elysia reads, and a required one would always be missing.
+    const id: Parameter = {
+      name: 'X-Request-Id',
+      in: 'header',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+    }
+    const limit: Parameter = { name: 'X-Rate-Limit', in: 'header', schema: { type: 'integer' } }
+    expect(makeParamsSchema([id, limit], 'header')).toStrictEqual({
+      schema: {
+        type: 'object',
+        properties: {
+          'x-request-id': { type: 'string', format: 'uuid' },
+          'x-rate-limit': { type: 'integer' },
+        },
+        required: ['x-request-id'],
+      },
+    })
+  })
+
+  it('leaves the case of a query, path or cookie name alone', () => {
+    const param: Parameter = { name: 'Int_Opt', in: 'query', schema: { type: 'string' } }
+    expect(makeParamsSchema([param], 'query')?.schema.properties).toStrictEqual({
+      Int_Opt: { type: 'string' },
     })
   })
 })

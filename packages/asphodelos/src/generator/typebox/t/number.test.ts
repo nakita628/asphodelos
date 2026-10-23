@@ -13,6 +13,18 @@ describe('number', () => {
     )
   })
 
+  // A form field is text, so a number in a form body is read through `t.Numeric`, constraints kept.
+  it.each(['multipart/form-data', 'application/x-www-form-urlencoded'] as const)(
+    'emits t.Numeric() in a %s body',
+    (mediaType) => {
+      expect(number({ type: 'number', minimum: 0 }, { mediaType })).toBe('t.Numeric({minimum:0})')
+    },
+  )
+
+  it('keeps t.Number() in a JSON body', () => {
+    expect(number({ type: 'number' }, {})).toBe('t.Number()')
+  })
+
   it('emits multipleOf', () => {
     expect(number({ type: 'number', multipleOf: 0.5 })).toBe('t.Number({multipleOf:0.5})')
   })

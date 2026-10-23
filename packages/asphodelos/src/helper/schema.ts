@@ -29,6 +29,7 @@ export function jsonSchema(
 const BODY_MEDIA_PRIORITY = [
   'application/json',
   'multipart/form-data',
+  'application/x-www-form-urlencoded',
   'application/octet-stream',
 ] as const
 
@@ -100,8 +101,12 @@ export function makeParamsSchema(
     return true
   })
   if (withSchema.length === 0) return undefined
-  const properties = Object.fromEntries(withSchema.map((p) => [p.name, p.schema]))
-  const required = withSchema.filter((p) => p.required).map((p) => p.name)
+  // A header name is case-insensitive on the wire and Elysia hands every header over in lower
+  // case, so a header declared as `X-Request-Id` is keyed `x-request-id`: the spelling that
+  // reaches the handler.
+  const keyOf = (p: Parameter) => (where === 'header' ? p.name.toLowerCase() : p.name)
+  const properties = Object.fromEntries(withSchema.map((p) => [keyOf(p), p.schema]))
+  const required = withSchema.filter((p) => p.required).map(keyOf)
   // First parameter to declare a given extension wins; the parameter's own value takes
   // precedence over the one on its schema.
   const hoisted: { [K in (typeof VENDOR_EXT_KEYS)[number]]?: string } = {}

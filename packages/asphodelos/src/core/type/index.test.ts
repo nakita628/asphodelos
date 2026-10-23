@@ -402,6 +402,29 @@ describe('makeAppType (full Elysia<...> shape)', () => {
     )
   })
 
+  it('keys a header parameter by its lower-case name, as the generated model does', () => {
+    const openAPI: OpenAPI = {
+      openapi: '3.1.0',
+      info: { title: 'T', version: '0' },
+      paths: {
+        '/items': {
+          get: {
+            operationId: 'listItems',
+            parameters: [
+              { name: 'X-Request-Id', in: 'header', required: true, schema: { type: 'string' } },
+              { name: 'X-Rate-Limit', in: 'header', schema: { type: 'integer' } },
+            ],
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    }
+    const { appType } = makeAppType(openAPI)
+    expect(appType).toBe(
+      `export type App = Elysia<"", { decorator: {}; store: {}; derive: {}; resolve: {} }, { typebox: {}; error: {} }, { schema: {}; standaloneSchema: {}; macro: {}; macroFn: {}; parser: {}; response: {} }, { "items": { get: { body: unknown; params: {}; query: unknown; headers: { "x-request-id": string; "x-rate-limit"?: number }; response: { 200: unknown; 422: ${VALIDATION_ENVELOPE} } } } }, { derive: {}; resolve: {}; schema: {}; standaloneSchema: {}; response: {} }, { derive: {}; resolve: {}; schema: {}; standaloneSchema: {}; response: {} }>`,
+    )
+  })
+
   it('prepends prefix segments to every route key', () => {
     const openAPI: OpenAPI = {
       openapi: '3.1.0',

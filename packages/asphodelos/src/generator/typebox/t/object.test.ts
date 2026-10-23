@@ -71,13 +71,9 @@ describe('object', () => {
     ).toBe('t.Object({"name":t.Optional(t.String())})')
   })
 
-  it('DROPS additionalProperties schema when properties also present (t.Record fires only when no properties)', () => {
-    // Documented contract: `additionalProperties` as a Schema is honored
-    // ONLY in the no-properties path (which switches to `t.Record`). When
-    // `properties` is non-empty, the `additionalProperties` schema is
-    // silently dropped and no opts are emitted. Keep this test pinned so a
-    // future change that adds `t.Intersect([t.Object(...), t.Record(...)])`
-    // surfaces here intentionally.
+  it('types the undeclared keys by an additionalProperties schema beside the declared properties', () => {
+    // TypeBox takes a schema as `additionalProperties`: the declared keys keep their own types and
+    // every other key is held to this one.
     expect(
       object({
         type: 'object',
@@ -85,20 +81,22 @@ describe('object', () => {
         properties: { id: { type: 'string' } },
         additionalProperties: { type: 'integer' },
       }),
-    ).toBe('t.Object({"id":t.String()})')
+    ).toBe(
+      't.Object({"id":t.String()},{additionalProperties:t.Integer({maximum:9007199254740991})})',
+    )
   })
 
-  it('DROPS additionalProperties=schema even with primitive value type (t.String)', () => {
-    // Same contract as above for a different value schema, named so that
-    // grep-ing for "DROPS additionalProperties" pulls up every pinned case.
+  it('reads an additionalProperties schema in a form body like the declared properties', () => {
     expect(
-      object({
-        type: 'object',
-        required: ['id'],
-        properties: { id: { type: 'string' } },
-        additionalProperties: { type: 'string' },
-      }),
-    ).toBe('t.Object({"id":t.String()})')
+      object(
+        {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          additionalProperties: { type: 'boolean' },
+        },
+        { mediaType: 'application/x-www-form-urlencoded' },
+      ),
+    ).toBe('t.Object({"id":t.Optional(t.String())},{additionalProperties:t.BooleanString()})')
   })
 
   it('required entry without a matching property is silently ignored (no ghost prop)', () => {

@@ -1,0 +1,119 @@
+# Every parameter shape the generator supports, as a header. A header reaches the handler as a
+# string exactly like a query value, but Elysia reads it from a different place: the header map,
+# whose names are lower-case and whose values the Fetch API has trimmed.
+#
+# `/headers`   every shape, each optional so a test sends one alone. `x-ids` is the array.
+# `/optional`  literals, constraints, transforms, a `$ref`, an object, `null`, and names declared
+#              in the mixed case the wire never preserves.
+# `/defaults`  what an absent header falls back to.
+# `/required`  what happens when a required header is missing.
+# `/reserved`  a header named like what every JavaScript object inherits: generated, never mounted.
+openapi: 3.1.0
+info:
+  title: Header Parameter Matrix
+  version: 0.0.0
+paths:
+  /headers:
+    get:
+      operationId: headerParams
+      parameters:
+        - { name: x-integer, in: header, schema: { type: integer } }
+        - { name: x-int32, in: header, schema: { type: integer, format: int32 } }
+        - { name: x-int64, in: header, schema: { type: integer, format: int64 } }
+        - { name: x-number, in: header, schema: { type: number } }
+        - { name: x-float, in: header, schema: { type: number, format: float } }
+        - { name: x-double, in: header, schema: { type: number, format: double } }
+        - { name: x-boolean, in: header, schema: { type: boolean } }
+        - { name: x-string, in: header, schema: { type: string } }
+        - { name: x-email, in: header, schema: { type: string, format: email } }
+        - { name: x-uuid, in: header, schema: { type: string, format: uuid } }
+        - { name: x-uri, in: header, schema: { type: string, format: uri } }
+        - { name: x-url, in: header, schema: { type: string, format: url } }
+        - { name: x-hostname, in: header, schema: { type: string, format: hostname } }
+        - { name: x-ipv4, in: header, schema: { type: string, format: ipv4 } }
+        - { name: x-ipv6, in: header, schema: { type: string, format: ipv6 } }
+        - { name: x-date, in: header, schema: { type: string, format: date } }
+        - { name: x-datetime, in: header, schema: { type: string, format: date-time } }
+        - { name: x-time, in: header, schema: { type: string, format: time } }
+        - { name: x-duration, in: header, schema: { type: string, format: duration } }
+        - { name: x-byte, in: header, schema: { type: string, format: byte } }
+        - { name: x-password, in: header, schema: { type: string, format: password } }
+        - { name: x-ids, in: header, schema: { type: array, items: { type: integer } } }
+        - { name: x-tags, in: header, schema: { type: array, items: { type: string } } }
+      responses:
+        '200': { description: OK }
+  /optional:
+    get:
+      operationId: headerOptional
+      parameters:
+        - { name: x-int-opt, in: header, schema: { type: integer } }
+        - { name: x-bool-opt, in: header, schema: { type: boolean } }
+        - { name: x-str-opt, in: header, schema: { type: string } }
+        - { name: x-ienum, in: header, schema: { type: integer, enum: [1, 2, 3] } }
+        - { name: x-senum, in: header, schema: { type: string, enum: [asc, desc] } }
+        - { name: x-sconst, in: header, schema: { type: string, const: fixed } }
+        - {
+            name: x-oneof,
+            in: header,
+            schema: { oneOf: [{ type: integer }, { type: string, enum: [all] }] },
+          }
+        - { name: x-range, in: header, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: x-length, in: header, schema: { type: string, minLength: 2, maxLength: 4 } }
+        - { name: x-pattern, in: header, schema: { type: string, pattern: '^[a-z]+-\d{1,3}$' } }
+        - { name: x-lower, in: header, schema: { type: string, x-toLowerCase: true } }
+        - {
+            name: x-email-lower,
+            in: header,
+            schema: { type: string, format: email, x-toLowerCase: true },
+          }
+        # A schema behind `$ref`: the component is written for a typed value.
+        - { name: x-ref-int, in: header, schema: { $ref: '#/components/schemas/Count' } }
+        # An object is read from one JSON-encoded value.
+        - {
+            name: x-obj,
+            in: header,
+            schema: { type: object, properties: { a: { type: integer }, b: { type: string } } },
+          }
+        # Declared in mixed case; a header name is case-insensitive on the wire.
+        - { name: X-Request-Id, in: header, schema: { type: string, format: uuid } }
+        - { name: X-Rate-Limit, in: header, schema: { type: integer } }
+        # No `x-` prefix, and an underscore.
+        - { name: accept-version, in: header, schema: { type: integer } }
+        - { name: x_underscore, in: header, schema: { type: integer } }
+        - { name: x-inull, in: header, schema: { type: [integer, 'null'] } }
+      responses:
+        '200': { description: OK }
+  /defaults:
+    get:
+      operationId: headerDefaults
+      parameters:
+        - { name: x-int-def, in: header, schema: { type: integer, default: 20 } }
+        - { name: x-bool-def, in: header, schema: { type: boolean, default: false } }
+        - { name: x-str-def, in: header, schema: { type: string, default: fallback } }
+        - {
+            name: x-enum-def,
+            in: header,
+            schema: { type: string, enum: [asc, desc], default: asc },
+          }
+      responses:
+        '200': { description: OK }
+  /required:
+    get:
+      operationId: headerRequired
+      parameters:
+        - { name: x-id, in: header, required: true, schema: { type: integer } }
+        - { name: x-flag, in: header, required: true, schema: { type: boolean } }
+        - { name: x-name, in: header, required: true, schema: { type: string } }
+        - { name: x-note, in: header, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+  /reserved:
+    get:
+      operationId: headerReserved
+      parameters:
+        - { name: constructor, in: header, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+components:
+  schemas:
+    Count: { type: integer, minimum: 0 }
