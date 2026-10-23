@@ -36,7 +36,7 @@ const commandLine = {
  *
  * The config module is loaded here rather than at module scope, with the rest of the pipeline:
  * `--help`, `--version`, `--completions` and every rejected command line must not pay for the
- * OpenAPI parser, the TypeSpec compiler and ts-morph. After the first pass the loader answers
+ * OpenAPI parser, the TypeSpec compiler and oxc-parser. After the first pass the loader answers
  * from cache, so a watch tick pays nothing.
  */
 function loadConfig(configPath: string, reload: boolean) {

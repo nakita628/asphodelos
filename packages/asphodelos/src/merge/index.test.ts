@@ -626,3 +626,105 @@ console.log('hello from user')
     )
   })
 })
+
+describe('mergeSource — comments and formatting', () => {
+  it('keeps the comments written above a statement, in both files', () => {
+    const existing = `import { Elysia } from 'elysia'
+
+// The port comes from the environment in production.
+const port = Number(process.env.PORT ?? 3000)
+
+/**
+ * The assembled app.
+ */
+export const app = new Elysia().listen(port)
+`
+    const generated = `import { Elysia } from 'elysia'
+
+export const app = new Elysia().listen(3000)
+`
+    expect(mergeSource(existing, generated)).toBe(
+      `import { Elysia } from 'elysia'
+
+/**
+ * The assembled app.
+ */
+export const app = new Elysia().listen(port)
+
+// The port comes from the environment in production.
+const port = Number(process.env.PORT ?? 3000)
+`,
+    )
+  })
+
+  it('does not carry a comment that trails the previous statement on its own line', () => {
+    const existing = `const a = 1 // one\nconst b = 2\n`
+    expect(mergeSource(existing, `const a = 0\nconst b = 0\n`)).toBe(
+      `\n\nconst a = 1\n\nconst b = 2\n`,
+    )
+  })
+
+  it('keeps a comment on the first statement after the imports', () => {
+    const generated = `import { Elysia } from 'elysia'
+
+// oxlint-disable-next-line some-rule -- generated
+export const app = new Elysia()
+`
+    expect(mergeSource('', generated)).toBe(generated)
+  })
+
+  it('keys a destructuring declaration by its pattern', () => {
+    expect(mergeSource(`const { a, b } = env()\n`, `const { a, b } = defaults()\n`)).toBe(
+      `\n\nconst { a, b } = env()\n`,
+    )
+  })
+
+  it('is a fixed point when the statements carry comments', () => {
+    const existing = `// header
+import { Elysia } from 'elysia'
+
+/** doc */
+export const app = new Elysia()
+
+// trailing block
+if (import.meta.main) {
+  app.listen(3000)
+}
+`
+    const generated = `import { Elysia } from 'elysia'
+
+export const app = new Elysia()
+
+if (import.meta.main) {
+  app.listen(3000)
+}
+`
+    const once = mergeSource(existing, generated)
+    expect(mergeSource(once, generated)).toBe(once)
+  })
+})
+
+describe('mergeSource — an existing file that does not parse', () => {
+  // The parser recovers nothing past a syntax error, so the broken file's tree is empty and every
+  // statement in it would look deleted: merging would write the generated code over the user's
+  // half-finished edit. The file is left exactly as it is instead, until it parses again.
+  it('returns the existing source untouched', () => {
+    const existing = `import { Elysia } from 'elysia'
+
+export const app = new Elysia().listen(3000
+`
+    expect(mergeSource(existing, `import { Elysia } from 'elysia'\n\nexport const app = 1\n`)).toBe(
+      existing,
+    )
+  })
+
+  it('still merges when the file parses again', () => {
+    const existing = `import { Elysia } from 'elysia'
+
+export const app = new Elysia().listen(3000)
+`
+    expect(mergeSource(existing, `import { Elysia } from 'elysia'\n\nexport const app = 1\n`)).toBe(
+      existing,
+    )
+  })
+})

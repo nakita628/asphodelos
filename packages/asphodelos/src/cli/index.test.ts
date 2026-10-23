@@ -164,7 +164,7 @@ describe('asphodelos — config mode', () => {
     expect(result.stdout).toContain('Generated app type written to src/types.ts')
     expect(existsSync(path.join(dir, 'src/types.ts'))).toBe(true)
     // The first pass in the file pays for the generators' imports — the OpenAPI parser, the
-    // TypeSpec compiler, ts-morph — which the default five seconds do not always cover.
+    // TypeSpec compiler, oxc-parser — which the default five seconds do not always cover.
   }, 30_000)
 
   it("the config's format block reaches the generated source", async () => {
