@@ -661,7 +661,8 @@ const ConfigSchema = Schema.Struct({
         }
         return true
       },
-      { message: 'every generator needs its own output path' },
+      // The filter returns the message, naming the fields; a `message` here would replace it.
+      { description: 'every generator needs its own output path' },
     ),
     // A file that calls the client imports the one the top-level `client` block generates, so the
     // block has to be there for it.
@@ -676,7 +677,8 @@ const ConfigSchema = Schema.Struct({
           ? `${first} needs the top-level client it imports: add client: { output }.`
           : true
       },
-      { message: 'every file that calls the client needs the client to be generated' },
+      // The filter returns the message, naming the fields; a `message` here would replace it.
+      { description: 'every file that calls the client needs the client to be generated' },
     ),
   )
   .annotate({
@@ -718,6 +720,15 @@ export function parseConfig(config: unknown) {
 // one millisecond would collide.
 const reloads = { count: 0 }
 
+/** Imports a module by specifier, a failure turned into a `ConfigError`. */
+function importModule(specifier: string) {
+  return Effect.tryPromise({
+    try: (): Promise<unknown> => import(specifier),
+    catch: (error) =>
+      new ConfigError({ message: error instanceof Error ? error.message : String(error) }),
+  })
+}
+
 /**
  * Imports the config module, bypassing the loader cache when asked.
  *
@@ -732,12 +743,6 @@ const reloads = { count: 0 }
  */
 function importConfigModule(abs: string, reload: boolean) {
   return Effect.gen(function* () {
-    const importModule = (specifier: string) =>
-      Effect.tryPromise({
-        try: (): Promise<unknown> => import(specifier),
-        catch: (error) =>
-          new ConfigError({ message: error instanceof Error ? error.message : String(error) }),
-      })
     if (!reload) return yield* importModule(pathToFileURL(abs).href)
 
     const fs = yield* FileSystem.FileSystem

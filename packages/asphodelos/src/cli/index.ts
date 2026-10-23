@@ -220,6 +220,12 @@ function outsideEvents(outside: readonly string[]) {
  *
  * Changes are debounced because one save is several filesystem events — an editor writes,
  * renames and touches — and a round per event would race itself.
+ *
+ * A watcher starts a moment after the round announces it, and a directory created or removed in
+ * between raises no event on it. So where the input directory lives is also polled: when the
+ * closest existing directory is no longer `watched`, the round ends as it would on the event,
+ * and a watcher on a directory that vanished before it started is dropped rather than failing
+ * the session.
  */
 function watchRound(
   configPath: string,
@@ -241,27 +247,33 @@ function watchRound(
         ? []
         : [
             watched === target.inputDirectory
-              ? fs
-                  .watch(target.inputDirectory, { recursive: true })
-                  .pipe(
-                    Stream.filter((event) =>
-                      INPUT_EXTENSIONS.some((extension) => event.path.endsWith(extension)),
-                    ),
-                  )
-              : fs
-                  .watch(watched)
-                  .pipe(
-                    Stream.filter(
-                      (event) =>
-                        event.path ===
-                        path.relative(watched, target.inputDirectory).split(path.sep)[0],
-                    ),
+              ? fs.watch(target.inputDirectory, { recursive: true }).pipe(
+                  Stream.filter((event) =>
+                    INPUT_EXTENSIONS.some((extension) => event.path.endsWith(extension)),
                   ),
+                  Stream.ignore,
+                )
+              : fs.watch(watched).pipe(
+                  Stream.filter(
+                    (event) =>
+                      event.path ===
+                      path.relative(watched, target.inputDirectory).split(path.sep)[0],
+                  ),
+                  Stream.ignore,
+                ),
           ]
+    const relocated =
+      target === undefined || watched === undefined
+        ? Stream.empty
+        : Stream.tick('500 millis').pipe(
+            Stream.mapEffect(() => nearestExisting(target.inputDirectory)),
+            Stream.filter((place) => place !== watched),
+          )
     yield* Stream.mergeAll(
       [configEvents, ...inputEvents, ...(yield* outsideEvents(target?.outside ?? []))],
       { concurrency: 'unbounded' },
     ).pipe(
+      Stream.merge(relocated),
       Stream.debounce('200 millis'),
       Stream.runForEachWhile(() => watchPass(configPath, target, watched, nextTarget)),
     )

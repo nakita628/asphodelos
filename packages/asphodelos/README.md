@@ -58,7 +58,7 @@ GLOBAL FLAGS
   --help, -h                                                          Show help information
   --version, -v                                                       Show version information
   --wizard                                                            Start wizard mode for a command
-  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 
 EXAMPLES
@@ -129,6 +129,7 @@ src/
 ```ts
 // src/index.ts
 import { Elysia } from 'elysia'
+
 import { elysia } from './modules/elysia'
 
 export const app = new Elysia().use(elysia)
@@ -142,6 +143,7 @@ if (import.meta.main) {
 ```ts
 // src/modules/elysia/index.ts
 import { Elysia } from 'elysia'
+
 import { ElysiaModel } from './model'
 
 export const elysia = new Elysia().get('/elysia', () => {}, {
@@ -225,6 +227,7 @@ export default defineConfig({
 ```ts
 // src/lib/client.ts
 import { treaty } from '@elysiajs/eden'
+
 import type { app } from '../index'
 
 const origin = import.meta.env.VITE_API_URL!
