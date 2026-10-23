@@ -42,25 +42,25 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@apidevtools/swagger-parser": "^12.1.0",
-    "@effect/platform-node": "4.0.2",
-    "@effect/platform-node-shared": "4.0.2",
-    "@typespec/compiler": "^1.16.0",
-    "@typespec/openapi3": "^1.16.0",
-    "effect": "4.0.2",
+    "@apidevtools/swagger-parser": "^13.1.0",
+    "@effect/platform-node": "4.0.6",
+    "@effect/platform-node-shared": "4.0.6",
+    "@typespec/compiler": "^1.17.0",
+    "@typespec/openapi3": "^1.17.0",
+    "effect": "4.0.6",
     "oxc-parser": "^0.155.0",
-    "oxfmt": "^0.67.0"
+    "oxfmt": "^0.74.0"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.6.0",
-    "@sinclair/typebox": "^0.34.49",
+    "@sinclair/typebox": "^0.34.52",
     "@types/bun": "latest",
-    "@typespec/http": "^1.16.0",
-    "@typespec/rest": "^0.86.0",
-    "@typespec/versioning": "^0.86.0",
-    "elysia": "^1.4.28",
-    "oxlint": "^1.82.0",
-    "oxlint-tsgolint": "^7.0.2001",
-    "tsdown": "^0.21.10"
+    "@typespec/http": "^1.17.0",
+    "@typespec/rest": "^0.87.0",
+    "@typespec/versioning": "^0.87.0",
+    "elysia": "^1.4.30",
+    "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2005",
+    "tsdown": "^0.23.1"
   }
 }
