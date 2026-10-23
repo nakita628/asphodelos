@@ -13,7 +13,9 @@ import type { LimitsModel } from './__generated__/modules/limits/model.js'
 import type { LiteralsModel } from './__generated__/modules/literals/model.js'
 import type { OptionalModel } from './__generated__/modules/optional/model.js'
 import type { ParamsModel } from './__generated__/modules/params/model.js'
+import type { RefsModel } from './__generated__/modules/refs/model.js'
 import type { RequiredModel } from './__generated__/modules/required/model.js'
+import type { StylesModel } from './__generated__/modules/styles/model.js'
 import type { TextModel } from './__generated__/modules/text/model.js'
 
 type Params = ParamsModel['queryParamsQuery']
@@ -24,6 +26,8 @@ type Required = RequiredModel['queryRequiredQuery']
 type Limits = LimitsModel['queryLimitsQuery']
 type Inherited = InheritedModel['queryInheritedQuery']
 type Text = TextModel['queryTextQuery']
+type Refs = RefsModel['queryRefsQuery']
+type Styles = StylesModel['queryStylesQuery']
 type Content = ContentModel['queryContentQuery']
 
 describe('query parameter types', () => {
@@ -114,6 +118,17 @@ describe('query parameter types', () => {
     assertType<Equal<Content['filter'], { tag?: string; limit?: number } | undefined>>(true)
     assertType<Equal<Content['ids'], number[] | undefined>>(true)
     assertType<Equal<Content['count'], number | undefined>>(true)
+    expect(true).toBe(true)
+  })
+})
+
+describe('query parameter types read from text', () => {
+  it('types a referenced scalar component and a delimited array by their schemas', () => {
+    assertType<Equal<Refs['level'], 1 | 2 | 3 | undefined>>(true)
+    assertType<Equal<Refs['flag'], boolean | undefined>>(true)
+    assertType<Equal<Refs['maybe'], number | null | undefined>>(true)
+    assertType<Equal<Styles['pipes'], number[] | undefined>>(true)
+    assertType<Equal<Styles['spaces'], number[] | undefined>>(true)
     expect(true).toBe(true)
   })
 })

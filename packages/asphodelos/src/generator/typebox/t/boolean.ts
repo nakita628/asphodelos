@@ -1,7 +1,7 @@
 import { commonOpts, errorCallback, options } from '../../../helper/typebox.js'
 import type { Schema } from '../../../openapi/index.js'
 import { filterDefined } from '../../../utils/index.js'
-import { isFormMedia } from '../index.js'
+import { readsTextItself } from '../index.js'
 import type { TypeboxCtx } from '../index.js'
 
 export function boolean(schema: Schema, ctx: TypeboxCtx = {}) {
@@ -11,6 +11,6 @@ export function boolean(schema: Schema, ctx: TypeboxCtx = {}) {
     ...commonOpts(schema),
   ])
   const factory =
-    schema.format === 'boolean-string' || isFormMedia(ctx) ? 't.BooleanString' : 't.Boolean'
+    schema.format === 'boolean-string' || readsTextItself(ctx) ? 't.BooleanString' : 't.Boolean'
   return `${factory}(${opts})`
 }

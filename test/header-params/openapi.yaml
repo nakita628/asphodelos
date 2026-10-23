@@ -38,6 +38,9 @@ paths:
         - { name: x-duration, in: header, schema: { type: string, format: duration } }
         - { name: x-byte, in: header, schema: { type: string, format: byte } }
         - { name: x-password, in: header, schema: { type: string, format: password } }
+        - { name: x-uuidv7, in: header, schema: { type: string, format: uuidv7 } }
+        - { name: x-mac, in: header, schema: { type: string, format: mac } }
+        - { name: x-e164, in: header, schema: { type: string, format: e164 } }
         - { name: x-ids, in: header, schema: { type: array, items: { type: integer } } }
         - { name: x-tags, in: header, schema: { type: array, items: { type: string } } }
       responses:
@@ -68,6 +71,7 @@ paths:
           }
         # A schema behind `$ref`: the component is written for a typed value.
         - { name: x-ref-int, in: header, schema: { $ref: '#/components/schemas/Count' } }
+        - { name: x-ref-level, in: header, schema: { $ref: '#/components/schemas/Level' } }
         # An object is read from one JSON-encoded value.
         - {
             name: x-obj,
@@ -117,3 +121,4 @@ paths:
 components:
   schemas:
     Count: { type: integer, minimum: 0 }
+    Level: { type: integer, enum: [1, 2, 3] }

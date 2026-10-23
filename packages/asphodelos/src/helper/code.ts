@@ -102,7 +102,7 @@ export function makeImports(
     needsUnwrap ? 'type UnwrapSchema' : '',
   ].filter(Boolean)
   const elysiaLine = elysiaParts.length > 0 ? `import {${elysiaParts.join(',')}} from 'elysia'` : ''
-  const needsValue = /\bValue\.Check\b/u.test(code)
+  const needsValue = /\bValue\.(?:Check|Decode)\b/u.test(code)
   const valueLine = needsValue ? `import {Value} from '@sinclair/typebox/value'` : ''
   const componentImports = COMPONENT_SUFFIXES.flatMap(([kind]) => {
     const names = grouped.get(kind)

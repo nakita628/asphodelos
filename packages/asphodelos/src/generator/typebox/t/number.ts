@@ -1,7 +1,7 @@
 import { commonOpts, errorCallback, normalizeBounds, options } from '../../../helper/typebox.js'
 import type { Schema } from '../../../openapi/index.js'
 import { filterDefined } from '../../../utils/index.js'
-import { isFormMedia } from '../index.js'
+import { readsTextItself } from '../index.js'
 import type { TypeboxCtx } from '../index.js'
 
 export function number(schema: Schema, ctx: TypeboxCtx = {}) {
@@ -16,6 +16,6 @@ export function number(schema: Schema, ctx: TypeboxCtx = {}) {
     ...filterDefined([errorCallback(schema, 'number')]),
     ...commonOpts(schema),
   ])
-  const factory = schema.format === 'numeric' || isFormMedia(ctx) ? 't.Numeric' : 't.Number'
+  const factory = schema.format === 'numeric' || readsTextItself(ctx) ? 't.Numeric' : 't.Number'
   return `${factory}(${opts})`
 }

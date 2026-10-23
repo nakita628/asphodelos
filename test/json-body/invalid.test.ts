@@ -5,7 +5,10 @@
 // valid.test.ts for the routes and how to read an answer.
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 
+import { Elysia } from 'elysia'
+
 import { resumeHappyDom, suspendHappyDom } from '../happydom.js'
+import { TypesModel } from './__generated__/modules/types/model.js'
 import { jsonBodyApp } from './app.js'
 
 // The runtime's own `Request`: see valid.test.ts.
@@ -128,5 +131,34 @@ describe('limitations (pinned)', () => {
   // TypeBox finds the inherited `constructor` and validates that instead.
   it('inherited rejects an object without its constructor property', async () => {
     await rejects('/types', '{"inherited":{"name":"a"}}', ['inherited/constructor'])
+  })
+})
+
+// Elysia removes the keys a schema does not declare before validating it (`normalize`, on by
+// default), so `additionalProperties: false` sees none and the extra key is dropped — see
+// valid.test.ts. An app that wants the key refused turns `normalize` off, and the generated
+// schema then rejects it.
+describe('additionalProperties: false with normalize off', () => {
+  const strictApp = new Elysia({ normalize: false })
+    .onError(({ code, status }) => (code === 'VALIDATION' ? status(422, 'rejected') : undefined))
+    .post('/types', ({ body }) => body, { body: TypesModel.typesBody })
+
+  async function postStrict(json: string) {
+    const res = await strictApp.handle(
+      new Request('http://localhost/types', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: json,
+      }),
+    )
+    return res.status
+  }
+
+  it('rejects an undeclared property of a closed object', async () => {
+    expect(await postStrict('{"strict":{"a":1,"b":2}}')).toBe(422)
+  })
+
+  it('accepts the declared property', async () => {
+    expect(await postStrict('{"strict":{"a":1}}')).toBe(200)
   })
 })

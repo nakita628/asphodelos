@@ -277,3 +277,14 @@ describe('limitations: what Elysia does not read from a header (pinned)', () => 
     expect(String(failure)).toContain('Unable to clone value')
   })
 })
+
+describe('formats and references read from text', () => {
+  it.each([
+    ['/headers', 'x-uuidv7', 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'],
+    ['/headers', 'x-mac', '00-1a-2b-3c-4d-5e'],
+    ['/headers', 'x-e164', '14155552671'],
+    ['/optional', 'x-ref-level', '4'],
+  ])('%s %s rejects %j', async (path, name, value) => {
+    await rejects(path, { [name]: value }, [name])
+  })
+})

@@ -37,6 +37,19 @@ describe('array', () => {
     ).toBe('t.ArrayString(t.Integer({maximum:9007199254740991}),{maxItems:3})')
   })
 
+  // A delimited array is one value Elysia does not split: it is split on its separator, and each
+  // element decoded against the array, read from text.
+  it.each([
+    ['|', '"|"'],
+    [' ', '" "'],
+  ] as const)('splits an array delimited by %j', (delimiter, sep) => {
+    expect(
+      array({ type: 'array', items: { type: 'boolean' }, maxItems: 3 }, { delimiter, text: true }),
+    ).toBe(
+      `t.Transform(t.Union([t.String(),t.Array(t.String())])).Decode((v)=>Value.Decode(t.Array(t.BooleanString(),{maxItems:3}),(Array.isArray(v)?v:[v]).flatMap((s)=>s.split(${sep})))).Encode((v)=>v.join(${sep}))`,
+    )
+  })
+
   it('keeps t.Files for a file array in a multipart body', () => {
     expect(
       array(

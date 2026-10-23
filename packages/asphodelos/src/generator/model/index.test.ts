@@ -85,4 +85,20 @@ describe('modelFile', () => {
       '\nexport const _1Model={} as const\n\nexport type _1Model=typeof _1Model\n',
     )
   })
+
+  // A delimited array decodes its elements with TypeBox's `Value`, which the file then imports.
+  it('imports Value when a schema decodes with it', () => {
+    expect(
+      modelFile('items', [
+        {
+          name: 'listQuery',
+          schema: {
+            type: 'object',
+            properties: { ids: { type: 'array', items: { type: 'integer' } } },
+          },
+          ctx: { parameterLocation: 'query', delimitedProperties: { ids: '|' } },
+        },
+      ]),
+    ).toContain(`import {Value} from '@sinclair/typebox/value'`)
+  })
 })

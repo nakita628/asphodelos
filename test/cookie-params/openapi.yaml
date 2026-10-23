@@ -33,6 +33,8 @@ paths:
         - { name: duration, in: cookie, schema: { type: string, format: duration } }
         - { name: byte, in: cookie, schema: { type: string, format: byte } }
         - { name: password, in: cookie, schema: { type: string, format: password } }
+        - { name: mac, in: cookie, schema: { type: string, format: mac } }
+        - { name: ulid, in: cookie, schema: { type: string, format: ulid } }
         - { name: ids, in: cookie, schema: { type: array, items: { type: integer } } }
         - { name: tags, in: cookie, schema: { type: array, items: { type: string } } }
       responses:
@@ -62,6 +64,7 @@ paths:
             schema: { type: string, format: email, x-toLowerCase: true },
           }
         - { name: ref_int, in: cookie, schema: { $ref: '#/components/schemas/Count' } }
+        - { name: ref_flag, in: cookie, schema: { $ref: '#/components/schemas/Flag' } }
         # An object is read from one JSON-encoded cookie.
         - {
             name: profile,
@@ -98,3 +101,4 @@ paths:
 components:
   schemas:
     Count: { type: integer, minimum: 0 }
+    Flag: { type: boolean }

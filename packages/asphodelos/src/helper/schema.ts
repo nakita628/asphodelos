@@ -67,6 +67,66 @@ export function refSchemaName(s: Schema | undefined) {
  * component is written for typed values, so the form takes a copy of its schema inlined and read
  * from text, and the component stays as it is for the JSON bodies that share it.
  */
+/** A component schema is an object, which its users read as a whole rather than from text. */
+function isObjectLike(schema: Schema) {
+  return (
+    schema.type === 'object' ||
+    schema.properties !== undefined ||
+    schema.additionalProperties !== undefined
+  )
+}
+
+/**
+ * A schema that arrives as text, with every `$ref` to a component that is not an object replaced
+ * by a copy of the component: the component is written for a typed value, and the copy is read
+ * from text where it is used. Arrays, combinators and chains of references are followed; an object
+ * component stays a reference.
+ */
+export function inlineScalarRefs(
+  schema: Schema,
+  components: Components | undefined,
+  depth = 0,
+): Schema {
+  if (depth > 16) return schema
+  const name = refSchemaName(schema)
+  const target = name ? components?.schemas?.[name] : undefined
+  if (target && !isObjectLike(target)) {
+    const { $ref: _ref, ...site } = schema
+    return inlineScalarRefs({ ...target, ...site }, components, depth + 1)
+  }
+  if (target) return schema
+  const items = schema.items
+  return {
+    ...schema,
+    ...(items && !isSchemaArray(items)
+      ? { items: inlineScalarRefs(items, components, depth + 1) }
+      : {}),
+    ...(schema.oneOf
+      ? { oneOf: schema.oneOf.map((s) => inlineScalarRefs(s, components, depth + 1)) }
+      : {}),
+    ...(schema.anyOf
+      ? { anyOf: schema.anyOf.map((s) => inlineScalarRefs(s, components, depth + 1)) }
+      : {}),
+    ...(schema.allOf
+      ? { allOf: schema.allOf.map((s) => inlineScalarRefs(s, components, depth + 1)) }
+      : {}),
+  }
+}
+
+/** Each property of an object read from text, its scalar references inlined. */
+function inlinePropertyRefs(schema: Schema, components: Components | undefined): Schema {
+  if (!components || !schema.properties) return schema
+  return {
+    ...schema,
+    properties: Object.fromEntries(
+      Object.entries(schema.properties).map(([key, value]) => [
+        key,
+        inlineScalarRefs(value, components),
+      ]),
+    ),
+  }
+}
+
 export function bodyInfo(operation: Operation, components?: Components) {
   const body = operation.requestBody
   if (!body || isReference(body)) return {}
@@ -78,7 +138,7 @@ export function bodyInfo(operation: Operation, components?: Components) {
     mediaType === 'multipart/form-data' || mediaType === 'application/x-www-form-urlencoded'
   const component = ref && isForm ? components?.schemas?.[ref] : undefined
   if (ref && !component) return { ref }
-  const schema = component ?? picked.schema
+  const schema = isForm ? inlinePropertyRefs(component ?? picked.schema, components) : picked.schema
   const media = body.content?.[mediaType]
   const mediaExt = media && !isReference(media) ? pickVendorExtensions(media) : {}
   const bodyExt = pickVendorExtensions(body)
@@ -103,16 +163,20 @@ export function responseInfo(res: Responses) {
 export function makeParamsSchema(
   params: readonly (Parameter | Reference)[],
   where: 'path' | 'query' | 'header' | 'cookie',
+  components?: Components,
 ): { schema: Schema; ctx?: TypeboxCtx } | undefined {
   const filtered = params.filter((p): p is Parameter => !isReference(p) && p.in === where)
   if (filtered.length === 0) return undefined
   // A parameter declares its schema directly, or under `content` as one document of a media
   // type; the document's schema is the parameter's, and a JSON document is read as one.
   const withSchema = filtered.flatMap((p) => {
-    if (p.schema) return [{ p, schema: p.schema, json: false }]
+    if (p.schema) return [{ p, schema: inlineScalarRefs(p.schema, components), json: false }]
     const content = contentSchema(p)
     if (!content) return []
-    return [{ p, schema: content.schema, json: content.mediaType === 'application/json' }]
+    const json = content.mediaType === 'application/json'
+    return [
+      { p, schema: json ? content.schema : inlineScalarRefs(content.schema, components), json },
+    ]
   })
   if (withSchema.length === 0) return undefined
   // A header name is case-insensitive on the wire and Elysia hands every header over in lower
@@ -122,6 +186,14 @@ export function makeParamsSchema(
   const properties = Object.fromEntries(withSchema.map(({ p, schema }) => [keyOf(p), schema]))
   const required = withSchema.filter(({ p }) => p.required).map(({ p }) => keyOf(p))
   const jsonProperties = withSchema.filter(({ json }) => json).map(({ p }) => keyOf(p))
+  // `pipeDelimited` and `spaceDelimited` join the elements of an array with `|` or a space.
+  const delimitedProperties = Object.fromEntries(
+    withSchema.flatMap(({ p, schema }) => {
+      const isArray = schema.type === 'array' || schema.items !== undefined
+      if (!isArray || (p.style !== 'pipeDelimited' && p.style !== 'spaceDelimited')) return []
+      return [[keyOf(p), p.style === 'pipeDelimited' ? '|' : ' '] as const]
+    }),
+  )
   // First parameter to declare a given extension wins; the parameter's own value takes
   // precedence over the one on its schema.
   const hoisted: { [K in (typeof VENDOR_EXT_KEYS)[number]]?: string } = {}
@@ -144,6 +216,7 @@ export function makeParamsSchema(
     parameterLocation: where,
     ...(where === 'cookie' ? { elysiaKind: 'cookie' } : {}),
     ...(jsonProperties.length > 0 ? { jsonProperties } : {}),
+    ...(Object.keys(delimitedProperties).length > 0 ? { delimitedProperties } : {}),
   }
   return { schema, ctx }
 }

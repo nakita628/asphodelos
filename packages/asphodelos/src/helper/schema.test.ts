@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 
-import type { Operation, Parameter, RequestBody } from '../openapi/index.js'
+import type { Components, Operation, Parameter, RequestBody } from '../openapi/index.js'
 import {
   bodyInfo,
   collectSchemaRefs,
+  inlineScalarRefs,
   jsonSchema,
   makeParamsSchema,
   moduleComponentRefs,
@@ -637,6 +638,56 @@ describe('makeParamsSchema', () => {
     })
   })
 
+  it('names the arrays a query delimits with pipes or spaces', () => {
+    const pipes: Parameter = {
+      name: 'pipes',
+      in: 'query',
+      style: 'pipeDelimited',
+      schema: { type: 'array', items: { type: 'integer' } },
+    }
+    const spaces: Parameter = {
+      name: 'spaces',
+      in: 'query',
+      style: 'spaceDelimited',
+      schema: { type: 'array', items: { type: 'integer' } },
+    }
+    // A style on a scalar has nothing to split.
+    const scalar: Parameter = {
+      name: 'one',
+      in: 'query',
+      style: 'pipeDelimited',
+      schema: { type: 'integer' },
+    }
+    expect(makeParamsSchema([pipes, spaces, scalar], 'query')?.ctx).toStrictEqual({
+      parameterLocation: 'query',
+      delimitedProperties: { pipes: '|', spaces: ' ' },
+    })
+  })
+
+  it('copies a scalar component a parameter references, so it is read from text', () => {
+    const level: Parameter = {
+      name: 'level',
+      in: 'query',
+      schema: { $ref: '#/components/schemas/Level' },
+    }
+    const filter: Parameter = {
+      name: 'filter',
+      in: 'query',
+      schema: { $ref: '#/components/schemas/Filter' },
+    }
+    expect(
+      makeParamsSchema([level, filter], 'query', {
+        schemas: {
+          Level: { type: 'integer', enum: [1, 2] },
+          Filter: { type: 'object', properties: { tag: { type: 'string' } } },
+        },
+      })?.schema.properties,
+    ).toStrictEqual({
+      level: { type: 'integer', enum: [1, 2] },
+      filter: { $ref: '#/components/schemas/Filter' },
+    })
+  })
+
   it('leaves out a parameter that declares neither schema nor content', () => {
     const bare: Parameter = { name: 'x', in: 'query' }
     expect(makeParamsSchema([bare], 'query')).toBeUndefined()
@@ -1239,5 +1290,83 @@ describe('moduleComponentRefs', () => {
       {},
     )
     expect(closure).toStrictEqual(new Set(['Missing']))
+  })
+})
+
+// A component is written for a typed value. Where a value arrives as text, a reference to a
+// component that is not an object is replaced by a copy of it, so the copy is read from text.
+describe('inlineScalarRefs', () => {
+  const components = {
+    schemas: {
+      Flag: { type: 'boolean' as const },
+      Level: { type: 'integer' as const, enum: [1, 2] },
+      Alias: { $ref: '#/components/schemas/Flag' as const },
+      Ids: { type: 'array' as const, items: { $ref: '#/components/schemas/Level' as const } },
+      Item: { type: 'object' as const, properties: { name: { type: 'string' as const } } },
+    },
+  } satisfies Components
+
+  it('replaces a reference to a scalar component by the component', () => {
+    expect(inlineScalarRefs({ $ref: '#/components/schemas/Flag' }, components)).toStrictEqual({
+      type: 'boolean',
+    })
+  })
+
+  it('keeps what the referencing site adds beside the reference', () => {
+    expect(
+      inlineScalarRefs({ $ref: '#/components/schemas/Flag', description: 'on' }, components),
+    ).toStrictEqual({ type: 'boolean', description: 'on' })
+  })
+
+  it('follows a chain of references, an array and a combinator', () => {
+    expect(inlineScalarRefs({ $ref: '#/components/schemas/Alias' }, components)).toStrictEqual({
+      type: 'boolean',
+    })
+    expect(inlineScalarRefs({ $ref: '#/components/schemas/Ids' }, components)).toStrictEqual({
+      type: 'array',
+      items: { type: 'integer', enum: [1, 2] },
+    })
+    expect(
+      inlineScalarRefs({ oneOf: [{ $ref: '#/components/schemas/Flag' }] }, components),
+    ).toStrictEqual({ oneOf: [{ type: 'boolean' }] })
+  })
+
+  it('keeps a reference to an object component, and one to a component that does not exist', () => {
+    expect(inlineScalarRefs({ $ref: '#/components/schemas/Item' }, components)).toStrictEqual({
+      $ref: '#/components/schemas/Item',
+    })
+    expect(inlineScalarRefs({ $ref: '#/components/schemas/Nope' }, components)).toStrictEqual({
+      $ref: '#/components/schemas/Nope',
+    })
+  })
+
+  it('copies the scalar components the properties of a form body reference', () => {
+    expect(
+      bodyInfo(
+        {
+          responses: {},
+          requestBody: {
+            content: {
+              'application/x-www-form-urlencoded': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    flag: { $ref: '#/components/schemas/Flag' },
+                    item: { $ref: '#/components/schemas/Item' },
+                  },
+                },
+              },
+            },
+          },
+        },
+        components,
+      ),
+    ).toStrictEqual({
+      inline: {
+        type: 'object',
+        properties: { flag: { type: 'boolean' }, item: { $ref: '#/components/schemas/Item' } },
+      },
+      ctx: { mediaType: 'application/x-www-form-urlencoded' },
+    })
   })
 })

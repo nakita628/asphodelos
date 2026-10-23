@@ -60,6 +60,28 @@ paths:
         - { name: duration, in: query, schema: { type: string, format: duration } }
         - { name: byte, in: query, schema: { type: string, format: byte } }
         - { name: password, in: query, schema: { type: string, format: password } }
+        # Formats Elysia does not register, validated by the pattern a regular expression decides.
+        - { name: uuidv4, in: query, schema: { type: string, format: uuidv4 } }
+        - { name: uuidv7, in: query, schema: { type: string, format: uuidv7 } }
+        - { name: guid, in: query, schema: { type: string, format: guid } }
+        - { name: hex, in: query, schema: { type: string, format: hex } }
+        - { name: base64, in: query, schema: { type: string, format: base64 } }
+        - { name: base64url, in: query, schema: { type: string, format: base64url } }
+        - { name: nanoid, in: query, schema: { type: string, format: nanoid } }
+        - { name: cuid2, in: query, schema: { type: string, format: cuid2 } }
+        - { name: ulid, in: query, schema: { type: string, format: ulid } }
+        - { name: ksuid, in: query, schema: { type: string, format: ksuid } }
+        - { name: xid, in: query, schema: { type: string, format: xid } }
+        - { name: cidrv4, in: query, schema: { type: string, format: cidrv4 } }
+        - { name: cidrv6, in: query, schema: { type: string, format: cidrv6 } }
+        - { name: mac, in: query, schema: { type: string, format: mac } }
+        - { name: e164, in: query, schema: { type: string, format: e164 } }
+        - { name: httpurl, in: query, schema: { type: string, format: httpUrl } }
+        - {
+            name: mac_arr,
+            in: query,
+            schema: { type: array, items: { type: string, format: mac } },
+          }
       responses:
         '200': { description: OK }
   /literals:
@@ -163,6 +185,10 @@ paths:
       parameters:
         - { name: count, in: query, schema: { $ref: '#/components/schemas/Count' } }
         - { $ref: '#/components/parameters/Cursor' }
+        # Scalar components written for a typed value, read from text where they are used.
+        - { name: level, in: query, schema: { $ref: '#/components/schemas/Level' } }
+        - { name: flag, in: query, schema: { $ref: '#/components/schemas/Flag' } }
+        - { name: maybe, in: query, schema: { $ref: '#/components/schemas/MaybeCount' } }
       responses:
         '200': { description: OK }
   /inherited:
@@ -178,8 +204,8 @@ paths:
         '200': { description: OK }
   # Serializations other than the default `form` + `explode: true`, and parameters that are an
   # object. Elysia reads a repeated key and a comma-separated value as an array, and an object only
-  # as one JSON-encoded value; `pipeDelimited`, `spaceDelimited`, `deepObject` and an exploded
-  # object are not read.
+  # as one JSON-encoded value; the generated schema splits `pipeDelimited` and `spaceDelimited`.
+  # `deepObject` and an exploded object are not read.
   /styles:
     get:
       operationId: queryStyles
@@ -274,5 +300,8 @@ paths:
 components:
   schemas:
     Count: { type: integer, minimum: 0 }
+    Level: { type: integer, enum: [1, 2, 3] }
+    Flag: { type: boolean }
+    MaybeCount: { type: [integer, 'null'] }
   parameters:
     Cursor: { name: cursor, in: query, schema: { type: string, minLength: 1 } }

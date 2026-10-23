@@ -661,7 +661,33 @@ reads it into the literal (`?level=2` reaches the handler as `2`, typed `1 | 2 |
 as text. An array header or cookie is one comma-separated value, read by `t.ArrayQuery()`.
 
 A parameter declared with `content` instead of `schema` takes the schema of its one document; an
-`application/json` document is read as one JSON value (`t.ObjectString()` / `t.ArrayString()`).
+`application/json` document is read as one JSON value (`t.ObjectString()` / `t.ArrayString()`). A
+`pipeDelimited` or `spaceDelimited` query array is split on its separator, and a repeated name is
+read too; the elements are decoded with TypeBox's `Value` (`@sinclair/typebox`, a peer dependency
+of Elysia), which the model file then imports. `deepObject` and an exploded object parameter are
+read only as one JSON-encoded value.
+
+Where a parameter or a form field references a component that is not an object (`$ref` to a
+`boolean`, a numeric `enum`, an array, …), the generated schema uses a copy of the component, read
+from text the same way; the component itself stays typed for the JSON bodies that share it.
+
+### String Formats
+
+Elysia validates `date`, `time`, `date-time`, `duration`, `uri`, `url`, `email`, `hostname`,
+`ipv4`, `ipv6`, `uuid`, `byte` and the JSON-pointer formats itself. These others are checked with
+a `pattern`, the regular expression Zod checks them with (combined with the schema's own `pattern`
+when it has one):
+
+`uuidv1`–`uuidv8`, `guid`, `hex`, `base64`, `base64url`, `nanoid`, `cuid2`, `ulid`, `ksuid`, `xid`,
+`cidrv4`, `cidrv6`, `mac`, `e164`, `httpUrl`.
+
+`password` is a UI hint and is dropped. Any other format — `creditCard`, `iban` and `currencyCode`
+need a checksum or a list, `emoji` a Unicode property escape TypeBox does not compile — is left off
+the schema with a warning, so the string is not validated against it.
+
+Elysia removes undeclared keys before validating (`normalize`, on by default), so an
+`additionalProperties: false` object never sees an extra key and drops it instead of rejecting it.
+Create the app with `new Elysia({ normalize: false })` to have such a key rejected.
 
 A header parameter is keyed by its lower-case name (`X-Request-Id` becomes `x-request-id`), which
 is how Elysia hands headers to the handler.

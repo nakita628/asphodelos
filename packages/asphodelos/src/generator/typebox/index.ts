@@ -33,6 +33,16 @@ export type TypeboxCtx = {
   readonly parameterLocation?: 'query' | 'path' | 'header' | 'cookie'
   /** The parameters of the container declared with `content` rather than `schema`. */
   readonly jsonProperties?: readonly string[]
+  /** The array parameters of the container serialized with `pipeDelimited` / `spaceDelimited`. */
+  readonly delimitedProperties?: { readonly [name: string]: '|' | ' ' }
+  /** On such a parameter, the separator its elements are joined with. */
+  readonly delimiter?: '|' | ' '
+  /**
+   * Nothing but the schema itself will read the text: the value is decoded inside a transform,
+   * where Elysia's coercion of a parameter does not reach. A number or a boolean is then read
+   * through `t.Numeric` / `t.BooleanString`, as in a form body.
+   */
+  readonly readsText?: true
   /**
    * The value arrives as text: a parameter, or a field of a form body. A number, a boolean or
    * `null` is then read from its spelling, where a JSON body would carry the value itself.
@@ -54,6 +64,11 @@ export function isFormMedia(ctx: TypeboxCtx) {
   return (
     ctx.mediaType === 'multipart/form-data' || ctx.mediaType === 'application/x-www-form-urlencoded'
   )
+}
+
+/** Whether a number or a boolean has to be read from text by the schema itself. */
+export function readsTextItself(ctx: TypeboxCtx) {
+  return isFormMedia(ctx) || ctx.readsText === true
 }
 
 /**

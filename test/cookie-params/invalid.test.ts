@@ -1,3 +1,5 @@
+// The sample ULID, KSUID and cuid2 values are random identifiers, not words.
+// cspell:ignore NDEKTSV RRFFQ
 // Every parameter shape the generator supports, sent as a real cookie and rejected. A non-string
 // shape that coerces carelessly would accept anything, and a format that is not validated would
 // pass anything through: both are what this file catches.
@@ -239,5 +241,15 @@ describe('limitations: what Elysia does not read from a cookie (pinned)', () => 
     const { status, body } = await get('/cookies', 'ids=1; ids=2')
     expect(status).toBe(200)
     expect(body).toStrictEqual({ ids: [{ valueType: 'number', valueText: '1' }] })
+  })
+})
+
+describe('formats and references read from text', () => {
+  it.each([
+    ['/cookies', 'mac', '00-1a-2b-3c-4d-5e'],
+    ['/cookies', 'ulid', '01ARZ3NDEKTSV4RRFFQ69G5FAU'],
+    ['/optional', 'ref_flag', 'x'],
+  ])('%s %s rejects %j', async (path, name, value) => {
+    await rejects(path, `${name}=${value}`, [name])
   })
 })

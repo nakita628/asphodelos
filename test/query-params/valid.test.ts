@@ -1,3 +1,5 @@
+// The sample ULID, KSUID and cuid2 values are random identifiers, not words.
+// cspell:ignore NDEKTSV RRFFQ ujsszw VWDTS xxat zmbrgj
 // Every parameter shape the generator supports, sent as a real query string and checked for the
 // JavaScript type and value it arrives as. HTTP carries all of them as strings, so a schema Elysia
 // cannot read back into its type rejects its own input: the failure this file exists to catch.
@@ -561,5 +563,89 @@ describe('wire: encoding, separators and repetition', () => {
     const { status, body } = await get('/optional?str_opt')
     expect(status).toBe(200)
     expect(body).toStrictEqual({ str_opt: { valueType: 'string', valueText: '' } })
+  })
+})
+
+// A format Elysia does not register is validated by the pattern a regular expression decides, the
+// one Zod checks it with; the value arrives as the string it is.
+describe('formats: checked by pattern', () => {
+  it.each([
+    ['uuidv4', 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'],
+    ['uuidv7', '0190b1f4-0000-7000-8000-000000000000'],
+    ['guid', 'a1b2c3d4-e5f6-9a7b-0c9d-0e1f2a3b4c5d'],
+    ['hex', 'deadbeef'],
+    ['base64', 'aGVsbG8='],
+    ['base64url', 'aGVsbG8'],
+    ['nanoid', 'V1StGXR8_Z5jdHi6B-myT'],
+    ['cuid2', 'tz4a98xxat96iws9zmbrgj3a'],
+    ['ulid', '01ARZ3NDEKTSV4RRFFQ69G5FAV'],
+    ['ksuid', '0ujsszwN8NRY24YaXiTIE2VWDTS'],
+    ['xid', '9m4e2mr0ui3e8a215n4g'],
+    ['cidrv4', '192.168.0.0/24'],
+    ['cidrv6', '2001:db8::/32'],
+    ['mac', '00:1a:2b:3c:4d:5e'],
+    ['e164', '+14155552671'],
+    ['httpurl', 'https://example.com/a?b=c'],
+  ])('%s accepts %j', async (name, value) => {
+    const { status, body } = await get(`/params?${name}=${q(value)}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ [name]: { valueType: 'string', valueText: value } })
+  })
+
+  it('mac_arr checks every element', async () => {
+    const { status, body } = await get(
+      `/params?mac_arr=${q('00:1a:2b:3c:4d:5e')}&mac_arr=${q('00:1A:2B:3C:4D:5E')}`,
+    )
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({
+      mac_arr: [
+        { valueType: 'string', valueText: '00:1a:2b:3c:4d:5e' },
+        { valueType: 'string', valueText: '00:1A:2B:3C:4D:5E' },
+      ],
+    })
+  })
+})
+
+// A scalar component is written for a typed value; where a parameter references it, a copy is read
+// from text.
+describe('references: a scalar component read from text', () => {
+  it.each([
+    ['level', '2', { valueType: 'number', valueText: '2' }],
+    ['flag', 'true', { valueType: 'boolean', valueText: 'true' }],
+    ['flag', 'false', { valueType: 'boolean', valueText: 'false' }],
+    ['maybe', '5', { valueType: 'number', valueText: '5' }],
+    ['maybe', 'null', { valueType: 'null', valueText: 'null' }],
+  ])('%s reads %j', async (name, value, echo) => {
+    const { status, body } = await get(`/refs?${name}=${value}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ [name]: echo })
+  })
+})
+
+// `pipeDelimited` and `spaceDelimited` join the elements with `|` or a space; the generated schema
+// splits the value, and a client that repeats the name instead is read too.
+describe('styles: delimited arrays', () => {
+  it.each([
+    ['pipes', `pipes=${q('1|2')}`],
+    ['pipes', 'pipes=1|2'],
+    ['pipes', 'pipes=1&pipes=2'],
+    ['spaces', 'spaces=1%202'],
+    ['spaces', 'spaces=1+2'],
+    ['spaces', 'spaces=1&spaces=2'],
+  ])('%s reads ?%s as [1, 2]', async (name, query) => {
+    const { status, body } = await get(`/styles?${query}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({
+      [name]: [
+        { valueType: 'number', valueText: '1' },
+        { valueType: 'number', valueText: '2' },
+      ],
+    })
+  })
+
+  it('pipes reads a single element', async () => {
+    const { status, body } = await get('/styles?pipes=7')
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ pipes: [{ valueType: 'number', valueText: '7' }] })
   })
 })

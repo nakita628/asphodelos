@@ -1,3 +1,5 @@
+// The sample ULID, KSUID and cuid2 values are random identifiers, not words.
+// cspell:ignore NDEKTSV RRFFQ
 // Every parameter shape the generator supports, sent as a real cookie and checked for the
 // JavaScript type and value it arrives as. A cookie is text like a query value, read out of the
 // `Cookie` header by Elysia's cookie jar: a schema written for a typed value rejects its own input,
@@ -376,6 +378,30 @@ describe('leniency: what is read beyond the plainest spelling (pinned, not endor
     ['date', '2020-02-30', { valueType: 'Date', valueText: '2020-03-01T00:00:00.000Z' }],
   ])('%s reads %j', async (name, value, echo) => {
     const { status, body } = await get('/cookies', `${name}=${value}`)
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ [name]: echo })
+  })
+})
+
+// A format Elysia does not register is validated by pattern — a colon travels in a cookie as it
+// is — and a scalar component a cookie references is read from text.
+describe('formats and references read from text', () => {
+  it.each([
+    [
+      '/cookies',
+      'mac',
+      '00:1a:2b:3c:4d:5e',
+      { valueType: 'string', valueText: '00:1a:2b:3c:4d:5e' },
+    ],
+    [
+      '/cookies',
+      'ulid',
+      '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      { valueType: 'string', valueText: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    ],
+    ['/optional', 'ref_flag', 'true', { valueType: 'boolean', valueText: 'true' }],
+  ])('%s %s accepts %j', async (path, name, value, echo) => {
+    const { status, body } = await get(path, `${name}=${value}`)
     expect(status).toBe(200)
     expect(body).toStrictEqual({ [name]: echo })
   })

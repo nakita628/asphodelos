@@ -19,10 +19,12 @@ GOARCH
 happydom
 healthz
 hekireki
+iban
 idents
 ienum
 injectively
 inull
+ksuid
 lowlink
 Mersenne
 Metavar

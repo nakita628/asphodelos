@@ -163,6 +163,10 @@ describe('text: what is not the spelling of a member', () => {
     await rejects('/urlencoded', `${name}=${value}`, [name])
   })
 
+  it('a boolean component property rejects a word', async () => {
+    await rejects('/urlencoded', 'flag=x', ['flag'])
+  })
+
   it('a component read from text validates its boolean', async () => {
     await rejects('/component', 'name=a&price=1&stocked=x', ['stocked'])
   })
@@ -170,15 +174,5 @@ describe('text: what is not the spelling of a member', () => {
   // A scalar of the component sent twice is an array.
   it('a component rejects a field sent twice', async () => {
     await rejects('/component', 'name=a&price=1&price=2', ['price'])
-  })
-})
-
-// What the generated schema declares but the form body does not carry as declared. Pinned so the
-// day it changes is noticed.
-describe('limitations (pinned)', () => {
-  // A property that is itself a `$ref` keeps the component, which is written for a typed value:
-  // a boolean component is not read from text, where an integer one is, by Elysia itself.
-  it('a boolean component property is not read from text', async () => {
-    await rejects('/urlencoded', 'flag=true', ['flag'])
   })
 })

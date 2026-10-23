@@ -1,3 +1,5 @@
+// The sample ULID, KSUID and cuid2 values are random identifiers, not words.
+// cspell:ignore NDEKTSV RRFFQ ujsszw VWDT xxat zmbrgj
 // Every parameter shape the generator supports, sent as a real query string and rejected. A
 // non-string shape that coerces carelessly would accept anything, and a format that is not
 // validated would pass anything through: both are what this file catches.
@@ -299,15 +301,6 @@ describe('content: a JSON document', () => {
 // Pinned so the day Elysia reads them is noticed; a document that needs them today should declare
 // the parameter as a string and read it in the handler.
 describe('limitations: what Elysia does not read from a query string (pinned)', () => {
-  // `pipeDelimited` and `spaceDelimited` are not split: the whole value is one element that is
-  // not a number.
-  it.each([
-    ['pipes', '1|2'],
-    ['spaces', '1 2'],
-  ])('%s is not split on its separator', async (name, value) => {
-    await rejects(`/styles?${name}=${q(value)}`, ['0'])
-  })
-
   // `deepObject` keys and an exploded object are not gathered into the object: they are unknown
   // keys, dropped like any other.
   it.each([`${q('deep[name]')}=bob&${q('deep[age]')}=5`, 'sort=asc&size=5'])(
@@ -322,5 +315,58 @@ describe('limitations: what Elysia does not read from a query string (pinned)', 
   // An object that does not fit its schema is rejected by property.
   it('a JSON-encoded object is validated by property', async () => {
     await rejects(`/styles?deep=${q('{"name":"bob","age":"x"}')}`, ['age'])
+  })
+})
+
+describe('formats: checked by pattern', () => {
+  it.each([
+    ['uuidv4', 'a1b2c3d4-e5f6-7a7b-8c9d-0e1f2a3b4c5d'],
+    ['uuidv7', 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'],
+    ['guid', 'a1b2c3d4e5f69a7b0c9d0e1f2a3b4c5d'],
+    ['hex', '0x1f'],
+    ['base64', 'aGVsbG8'],
+    ['base64url', 'aGVsbG8='],
+    ['nanoid', 'short'],
+    ['cuid2', 'Tz4a98xxat96iws9zmbrgj3a'],
+    ['ulid', '01ARZ3NDEKTSV4RRFFQ69G5FAU'],
+    ['ksuid', '0ujsszwN8NRY24YaXiTIE2VWDT'],
+    ['xid', '9m4e2mr0ui3e8a215n4z'],
+    ['cidrv4', '192.168.0.0/33'],
+    ['cidrv6', '2001:db8::/129'],
+    ['mac', '00-1a-2b-3c-4d-5e'],
+    ['e164', '14155552671'],
+    ['httpurl', 'ftp://example.com'],
+  ])('%s rejects %j', async (name, value) => {
+    await rejects(`/params?${name}=${q(value)}`, [name])
+  })
+
+  it('mac_arr rejects a bad element', async () => {
+    await rejects(`/params?mac_arr=${q('00:1a:2b:3c:4d:5e')}&mac_arr=nope`, ['mac_arr'])
+  })
+})
+
+describe('references: a scalar component read from text', () => {
+  it.each([
+    ['level', '4'],
+    ['level', 'x'],
+    ['flag', 'x'],
+    ['flag', '1'],
+    ['maybe', 'x'],
+    ['maybe', 'NULL'],
+  ])('%s rejects %j', async (name, value) => {
+    await rejects(`/refs?${name}=${value}`, [name])
+  })
+})
+
+// Each element of a delimited array is validated, named by its index; an empty value is one empty
+// element, which is not a number.
+describe('styles: delimited arrays', () => {
+  it.each([
+    ['pipes=1|x', ['1']],
+    ['pipes=x', ['0']],
+    ['pipes=', ['0']],
+    ['spaces=1%20x', ['1']],
+  ])('rejects ?%s', async (query, issues) => {
+    await rejects(`/styles?${query}`, issues)
   })
 })

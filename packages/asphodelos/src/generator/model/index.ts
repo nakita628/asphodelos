@@ -34,8 +34,12 @@ export const ${className}={} as const
 export type ${className}=typeof ${className}
 `
   }
+  // A delimited array decodes its elements with TypeBox's `Value`, a peer dependency of Elysia.
+  const valueImport = /\bValue\.Decode\(/u.test(entries)
+    ? `import {Value} from '@sinclair/typebox/value'\n`
+    : ''
   return `import {t,type UnwrapSchema} from 'elysia'
-${componentImport}
+${valueImport}${componentImport}
 export const ${className}={${entries}} as const
 
 export type ${className}={[k in keyof typeof ${className}]:UnwrapSchema<(typeof ${className})[k]>}

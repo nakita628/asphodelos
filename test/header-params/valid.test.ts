@@ -391,3 +391,18 @@ describe('leniency: what is read beyond the plainest spelling (pinned, not endor
     expect(body).toStrictEqual({ [name]: echo })
   })
 })
+
+// A format Elysia does not register is validated by pattern, and a scalar component a header
+// references is read from text.
+describe('formats and references read from text', () => {
+  it.each([
+    ['/headers', 'x-uuidv7', '0190b1f4-0000-7000-8000-000000000000', 'string'],
+    ['/headers', 'x-mac', '00:1a:2b:3c:4d:5e', 'string'],
+    ['/headers', 'x-e164', '+14155552671', 'string'],
+    ['/optional', 'x-ref-level', '2', 'number'],
+  ])('%s %s accepts %j', async (path, name, value, valueType) => {
+    const { status, body } = await get(path, { [name]: value })
+    expect(status).toBe(200)
+    expect(body).toStrictEqual({ [name]: { valueType, valueText: value } })
+  })
+})

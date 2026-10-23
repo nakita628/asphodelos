@@ -29,6 +29,8 @@ function childCtxFor(parentCtx: TypeboxCtx, propSchema: Schema, key?: string): T
   if (key !== undefined && parentCtx.jsonProperties?.includes(key)) {
     return { ...text, elysiaKind: 'json-string' }
   }
+  const delimiter = key === undefined ? undefined : parentCtx.delimitedProperties?.[key]
+  if (delimiter !== undefined) return { ...text, delimiter }
   if (location === 'query' && propSchema.type === 'object') {
     return { ...text, elysiaKind: 'object-string' }
   }

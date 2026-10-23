@@ -62,8 +62,9 @@ describe('urlencoded: every kind of field is read from text', () => {
     ['active', 'true', { valueType: 'boolean', valueText: 'true' }],
     ['active', 'false', { valueType: 'boolean', valueText: 'false' }],
     ['limit', '7', { valueType: 'number', valueText: '7' }],
-    // The component is written for a typed value; the text is read before it reaches it.
+    // A scalar component is written for a typed value; the form reads a copy of it from text.
     ['count', '3', { valueType: 'number', valueText: '3' }],
+    ['flag', 'true', { valueType: 'boolean', valueText: 'true' }],
     [
       'moment',
       '2020-01-02T03:04:05Z',

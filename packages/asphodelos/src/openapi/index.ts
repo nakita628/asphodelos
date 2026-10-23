@@ -188,6 +188,15 @@ type FormatString =
   | 'ipv6'
   | 'cidrv4'
   | 'cidrv6'
+  | 'guid'
+  | 'httpUrl'
+  | 'ksuid'
+  | 'xid'
+  | 'mac' /* MAC address */
+  | 'e164' /* E.164 phone */
+  | 'creditCard' /* Luhn-valid card number */
+  | 'iban' /* IBAN with a valid ISO 7064 MOD 97-10 checksum */
+  | 'currencyCode' /* ISO 4217 currency code */
   | 'date'
   | 'time'
   | 'date-time'

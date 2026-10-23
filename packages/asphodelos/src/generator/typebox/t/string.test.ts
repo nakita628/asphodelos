@@ -1,3 +1,5 @@
+// The sample ULID, KSUID and cuid2 values are random identifiers, not words; zzff is a hex test.
+// cspell:ignore NDEKTSV RRFFQ ujsszw VWDT VWDTS xxat zmbrgj zzff
 import { describe, expect, it } from 'bun:test'
 
 import { string } from './string.js'
@@ -133,4 +135,54 @@ describe('string', () => {
       't.String({pattern:"^[a-z]+$",error:(error)=>{const type=error?.errors?.[0]?.type;if(type===48||type===53)return "letters only";return "invalid"},"x-error-message":"invalid","x-pattern-message":"letters only"})',
     )
   })
+})
+
+// A format Elysia does not register but a regular expression decides is validated by `pattern`,
+// the expression Zod checks it with; the format itself stays off the schema, which TypeBox would
+// otherwise reject every value of.
+describe('string formats checked by pattern', () => {
+  it.each([
+    ['uuidv7', 'a1b2c3d4-e5f6-7a7b-8c9d-0e1f2a3b4c5d', 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'],
+    ['uuidv4', 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d', 'a1b2c3d4-e5f6-7a7b-8c9d-0e1f2a3b4c5d'],
+    ['guid', 'a1b2c3d4-e5f6-9a7b-0c9d-0e1f2a3b4c5d', 'a1b2c3d4e5f69a7b0c9d0e1f2a3b4c5d'],
+    ['hex', 'DEADbeef', '0x1f'],
+    ['base64', 'aGVsbG8=', 'aGVsbG8'],
+    ['base64url', 'a-b_', 'a+b/'],
+    ['nanoid', 'V1StGXR8_Z5jdHi6B-myT', 'short'],
+    ['cuid2', 'tz4a98xxat96iws9zmbrgj3a', 'Tz4a98'],
+    ['ulid', '01ARZ3NDEKTSV4RRFFQ69G5FAV', '01ARZ3NDEKTSV4RRFFQ69G5FAU'],
+    ['ksuid', '0ujsszwN8NRY24YaXiTIE2VWDTS', '0ujsszwN8NRY24YaXiTIE2VWDT'],
+    ['xid', '9m4e2mr0ui3e8a215n4g', '9m4e2mr0ui3e8a215n4z'],
+    ['cidrv4', '192.168.0.0/24', '192.168.0.0/33'],
+    ['cidrv6', '2001:db8::/32', '2001:db8::'],
+    ['mac', '00:1a:2b:3c:4d:5e', '00-1a-2b-3c-4d-5e'],
+    ['e164', '+14155552671', '14155552671'],
+    ['httpUrl', 'https://example.com/a?b=c', 'ftp://example.com'],
+  ] as const)('%s accepts %j and rejects %j', (format, accepted, rejected) => {
+    const emitted = string({ type: 'string', format })
+    const pattern = /pattern:("(?:[^"\\]|\\.)*")/u.exec(emitted)?.[1]
+    expect(emitted).not.toContain('format:')
+    const regex = new RegExp(JSON.parse(pattern ?? '""'), 'u')
+    expect([regex.test(accepted), regex.test(rejected)]).toStrictEqual([true, false])
+  })
+
+  it('checks the format and the document pattern together', () => {
+    const emitted = string({ type: 'string', format: 'hex', pattern: 'ff$' })
+    const regex = new RegExp(
+      JSON.parse(/pattern:("(?:[^"\\]|\\.)*")/u.exec(emitted)?.[1] ?? '""'),
+      'u',
+    )
+    expect([regex.test('00ff'), regex.test('00fe'), regex.test('zzff')]).toStrictEqual([
+      true,
+      false,
+      false,
+    ])
+  })
+
+  it.each(['creditCard', 'iban', 'currencyCode', 'emoji'])(
+    'leaves %s off the schema, which no pattern decides',
+    (format) => {
+      expect(string({ type: 'string', format })).toBe('t.String()')
+    },
+  )
 })

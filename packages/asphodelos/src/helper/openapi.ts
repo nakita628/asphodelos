@@ -137,10 +137,10 @@ export function makeRoute(
 ) {
   const operationId = resolveOperationId(operation, method, path)
   const tags = operation.tags ?? []
-  const params = makeParamsSchema(operation.parameters ?? [], 'path')
-  const query = makeParamsSchema(operation.parameters ?? [], 'query')
-  const headers = makeParamsSchema(operation.parameters ?? [], 'header')
-  const cookie = makeParamsSchema(operation.parameters ?? [], 'cookie')
+  const params = makeParamsSchema(operation.parameters ?? [], 'path', components)
+  const query = makeParamsSchema(operation.parameters ?? [], 'query', components)
+  const headers = makeParamsSchema(operation.parameters ?? [], 'header', components)
+  const cookie = makeParamsSchema(operation.parameters ?? [], 'cookie', components)
   const body = bodyInfo(operation, components)
   const synth = (kind: string) => `${toSafeIdentifier(operationId)}${kind}`
 
