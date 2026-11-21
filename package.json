@@ -14,17 +14,19 @@
     "fix": "bun run fmt && bun -F asphodelos lint --fix && markdownlint-cli2 --fix && textlint --fix --ignore-path .gitignore '**/*.md'",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "lint": "bun -F asphodelos lint && markdownlint-cli2 && textlint --ignore-path .gitignore '**/*.md' && cspell --no-progress --dot '**' && secretlint '**/*' && bun scripts/typespec.ts && bun scripts/actionlint.ts -color && bun scripts/zizmor.ts .github/workflows",
+    "lint": "bun -F asphodelos lint && bun run knip && markdownlint-cli2 && textlint --ignore-path .gitignore '**/*.md' && cspell --no-progress --dot '**' && secretlint '**/*' && bun scripts/typespec.ts && bun scripts/actionlint.ts -color && bun scripts/zizmor.ts .github/workflows",
     "test": "bun -F asphodelos test",
     "test:clients": "bun run build && bun -F @asphodelos/test typecheck && bun -F @asphodelos/test lint && bun -F @asphodelos/test test",
     "test:pack": "bun run build && bun scripts/pack-smoke.ts",
-    "typecheck": "bun -F asphodelos typecheck"
+    "typecheck": "bun -F asphodelos typecheck",
+    "knip": "knip --treat-config-hints-as-errors && knip --production --workspace packages/asphodelos --treat-config-hints-as-errors"
   },
   "devDependencies": {
     "@secretlint/secretlint-rule-preset-recommend": "13.0.7",
     "@textlint-rule/textlint-rule-no-unmatched-pair": "2.0.4",
     "@types/bun": "latest",
     "cspell": "10.4.0",
+    "knip": "^6.47.0",
     "markdownlint-cli2": "0.24.0",
     "oxfmt": "^0.74.0",
     "secretlint": "13.0.7",

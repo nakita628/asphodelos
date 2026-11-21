@@ -55,6 +55,11 @@ function pickBodyMedia(
   return undefined
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function refSchemaName(s: Schema | undefined) {
   if (!s?.$ref) return null
   const m = /^#\/components\/schemas\/([^/]+)$/u.exec(s.$ref)
@@ -81,6 +86,8 @@ function isObjectLike(schema: Schema) {
  * by a copy of the component: the component is written for a typed value, and the copy is read
  * from text where it is used. Arrays, combinators and chains of references are followed; an object
  * component stays a reference.
+ *
+ * @internal
  */
 export function inlineScalarRefs(
   schema: Schema,
@@ -291,6 +298,11 @@ export function collectSchemaRefs(schema: Schema, acc = new Set<string>()) {
   return acc
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function topoSortSchemas<T extends { name: string; schema: Schema }>(
   schemas: readonly T[],
 ): T[] {

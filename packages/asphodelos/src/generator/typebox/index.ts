@@ -51,7 +51,7 @@ export type TypeboxCtx = {
 }
 
 /** Whether the value this schema describes reaches Elysia as text. */
-export function isTextInput(context: TypeboxCtx) {
+function isTextInput(context: TypeboxCtx) {
   return context.text === true
 }
 

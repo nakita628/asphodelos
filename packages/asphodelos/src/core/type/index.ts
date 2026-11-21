@@ -50,6 +50,11 @@ function primaryType(s: Schema) {
   return undefined
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function schemaToTs(schema: Schema | undefined): string {
   if (!schema) return 'unknown'
   if (schema.$ref) {
@@ -307,6 +312,11 @@ function collectRefs(openAPI: OpenAPI) {
   return [...seen]
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function makeAppType(openAPI: OpenAPI, prefix?: string) {
   const refNames = collectRefs(openAPI)
   const refAliases = refNames.map((name) => {

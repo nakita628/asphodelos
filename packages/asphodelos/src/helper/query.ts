@@ -20,7 +20,7 @@ import { responseInfo } from './schema.js'
  * of one in Solid and Svelte), or Angular's inject options. The hooks forward it, so a caller can
  * target a client other than the provided one, or run outside an injection context.
  */
-export type HookTail = {
+type HookTail = {
   readonly name: string
   readonly query: string
   readonly infinite: string

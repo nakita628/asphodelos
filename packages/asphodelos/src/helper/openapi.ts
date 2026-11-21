@@ -20,7 +20,7 @@ import { bodyInfo, makeParamsSchema, responseInfo } from './schema.js'
  * for each unique first path segment, mirroring hono-takibi. Used for
  * per-resource cache invalidation.
  */
-export function makePrefixKeyCode(prefix: string): string {
+function makePrefixKeyCode(prefix: string): string {
   return `export function get${pascalCase(prefix)}Key() {\n  return ['${prefix}'] as const\n}`
 }
 
@@ -33,7 +33,7 @@ export function makePrefixKeyCodes(openAPI: OpenAPI, basePath: string): readonly
   return [...prefixes].toSorted().map(makePrefixKeyCode)
 }
 
-export function tagName(tag: string) {
+function tagName(tag: string) {
   const cleaned = tag.replaceAll(/[^a-zA-Z0-9]+/gu, ' ').trim()
   if (!cleaned) return 'default'
   const parts = cleaned.split(/\s+/u)
@@ -44,11 +44,21 @@ export function tagName(tag: string) {
     .join('')
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function resourceName(pathStr: string) {
   const first = pathStr.split('/').find((s) => s.length > 0 && !s.startsWith('{'))
   return first ? tagName(first) : 'root'
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function makeOperationId(method: string, path: string) {
   const parts = path
     .replaceAll(/\{([^}]+)\}/gu, 'By-$1')
@@ -131,6 +141,11 @@ export type Route = {
   callbacks?: { readonly [k: string]: unknown }
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function makeRoute(
   method: (typeof HTTP_METHODS)[number],
   path: string,

@@ -55,6 +55,11 @@ const TANSTACK: QueryHookConfig = {
   hookTail: QUERY_CLIENT_TAIL,
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export const HOOK_CONFIGS = {
   swr: {
     label: 'swr',

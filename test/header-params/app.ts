@@ -32,7 +32,7 @@ function echoValue(value: unknown): Echo {
  * object key by key. A key the schema left out stays out: an absent optional header is absent
  * here too, and so is a header the schema does not declare.
  */
-export function echoFields(fields: { [key: string]: unknown }) {
+function echoFields(fields: { [key: string]: unknown }) {
   const described: { [key: string]: Echo | Echo[] | { [key: string]: Echo } } = {}
   for (const [name, value] of Object.entries(fields)) {
     if (value === undefined) continue
@@ -53,7 +53,7 @@ export function echoFields(fields: { [key: string]: unknown }) {
  * The header each validation issue names, or `''` when Elysia validates a coerced number on its
  * own and reports it without a path.
  */
-export function issuesOf(error: unknown) {
+function issuesOf(error: unknown) {
   const issues: unknown =
     typeof error === 'object' && error !== null && 'all' in error ? error.all : undefined
   if (Array.isArray(issues)) {

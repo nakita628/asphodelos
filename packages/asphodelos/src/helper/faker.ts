@@ -59,7 +59,7 @@ export function numericFakerExpr(schema: Schema, isInt: boolean) {
  * value (`^abc$`), which then fails the very pattern it was drawn from. The anchors are removed
  * here instead, together with the no-op `\/` escape that faker would copy verbatim as well.
  */
-export function fakerPattern(pattern: string) {
+function fakerPattern(pattern: string) {
   return pattern
     .replace(/^\^+/u, '')
     .replace(/(?<!\\)(?:\\\\)*\$+$/u, (anchor) => anchor.replaceAll('$', ''))

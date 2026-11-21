@@ -17,6 +17,11 @@ function safeObjectKey(key: string) {
 // Identifier for a schema's mock factory. Dots are dropped (`Foo.Bar` →
 // `FooBar`) and any other non-identifier character is neutralized so a hostile
 // `$ref`/component name cannot inject code at the call site.
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function mockName(schemaName: string) {
   return `mock${schemaName.replaceAll('.', '').replaceAll(/[^A-Za-z0-9_$]/gu, '_')}`
 }
