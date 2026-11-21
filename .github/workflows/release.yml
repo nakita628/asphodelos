@@ -8,8 +8,10 @@ name: release
 # is safe to re-run.
 #
 # `workflow_run` is the trigger zizmor warns about because it hands a token to code from a pull
-# request when misused; here it runs only for a `push` to main, every job works from the commit
-# Test ran on, and the token stays read-only except where a tag or a release is written.
+# request when misused; here it runs only for a `push` to main, or a Test run dispatched on main
+# (release-merge.yml dispatches one after merging the release pull request, since a merge made with
+# its GITHUB_TOKEN starts no workflow, and a dispatch needs write access), every job works from the
+# commit Test ran on, and the token stays read-only except where a tag or a release is written.
 #
 # Action versions are pinned to a commit digest with the tag kept as a comment.
 
@@ -28,7 +30,9 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
     permissions:
       contents: read
     outputs:

@@ -1,0 +1,79 @@
+name: release-merge
+
+# Merges the release pull request that release-pr.yml keeps open, as soon as Test passes on it,
+# whether it bumps the patch or the minor version, and starts the release. A merge made with the
+# job's GITHUB_TOKEN starts no workflow, so Test is then dispatched on `main`, and release.yml follows
+# that run as it follows a push. Nothing here publishes.
+#
+# It merges only what release-pr.yml writes, and only the commit Test passed on: a pull request opened
+# by github-actions[bot] from this repository's `release-pr` branch, still at the head Test ran on,
+# that changes the version line of packages/asphodelos/package.json and of bun.lock and nothing else.
+# The branch is deleted after the merge, so the next release starts from `main` again.
+#
+# `workflow_run` is the trigger zizmor warns about because it hands a token to code from a pull
+# request when misused; here it acts only on a dispatched Test run on `release-pr` (a dispatch needs
+# write access), checks nothing out, runs nothing from the branch, and reads the pull request afresh
+# from the API rather than trusting the event.
+
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [Test]
+    types: [completed]
+    branches: [release-pr]
+
+permissions: {}
+
+concurrency:
+  group: release-merge
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    permissions:
+      contents: write # merge the release pull request and delete its branch
+      pull-requests: write # merge the release pull request
+      actions: write # dispatch Test on main
+    steps:
+      - name: Merge the release pull request and start the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          PULL=$(gh api "repos/$GH_REPO/pulls?head=${GH_REPO%%/*}:release-pr&base=main&state=open" \
+            --jq '[.[] | select(.user.login == "github-actions[bot]")] | first // empty')
+          if [ -z "$PULL" ]; then
+            echo "::notice::No release pull request is open"
+            exit 0
+          fi
+          NUMBER=$(jq -r .number <<< "$PULL")
+          if [ "$(jq -r .head.repo.full_name <<< "$PULL")" != "$GH_REPO" ]; then
+            echo "::notice::#$NUMBER does not come from $GH_REPO; leaving it alone"
+            exit 0
+          fi
+          if [ "$(jq -r .head.sha <<< "$PULL")" != "$HEAD_SHA" ]; then
+            echo "::notice::#$NUMBER has moved on from $HEAD_SHA since Test ran on it; the run on its new head decides"
+            exit 0
+          fi
+
+          # Nothing but the two version lines: one line out and one in, in each of the two files.
+          FILES=$(gh api "repos/$GH_REPO/pulls/$NUMBER/files" --jq '
+            [.[] | select(.additions == 1 and .deletions == 1
+              and (.patch | test("\\n\\+ *\"version\": \"[0-9]+[.][0-9]+[.][0-9]+\",?\\n"))) | .filename]
+            | sort | join(" ")')
+          if [ "$FILES" != "bun.lock packages/asphodelos/package.json" ]; then
+            echo "::error::#$NUMBER changes more than the version lines of package.json and bun.lock; merge or close it by hand"
+            exit 1
+          fi
+
+          gh pr merge "$NUMBER" --squash --match-head-commit "$HEAD_SHA"
+          # The merge started no workflow: Test on main is what release.yml waits for.
+          gh workflow run test.yml --ref main
+          if ! gh api -X DELETE "repos/$GH_REPO/git/refs/heads/release-pr" > /dev/null; then
+            echo "::notice::release-pr was already deleted"
+          fi

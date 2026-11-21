@@ -1,9 +1,9 @@
 name: release-pr
 
 # Keeps one pull request open that releases what has reached `main` since the last tag: it bumps
-# `version` in packages/asphodelos/package.json and the workspace version bun.lock records, and
-# merging it is the release, which release.yml then tags, publishes and announces. Nothing here
-# publishes.
+# `version` in packages/asphodelos/package.json and the workspace version bun.lock records.
+# release-merge.yml merges it as soon as Test passes on it, and that merge is the release, which
+# release.yml then tags, publishes and announces. Nothing here publishes.
 #
 # The bump is mechanical: a patch, or a minor while the version is 0.x (a major from 1.0) when a
 # pull request merged since the tag carries the `breaking` label. A push that changes nothing npm
@@ -221,8 +221,8 @@ jobs:
             printf '## How\n\n'
             printf 'Opened by `.github/workflows/release-pr.yml`, which keeps it up to date with `main`: '
             printf 'a patch, or a minor while the version is 0.x when a pull request merged since the last tag '
-            printf 'carries the `breaking` label. Merging it publishes asphodelos@%s to npm through ' "$NEXT"
-            printf '`release.yml`, once Test passes on `main`.\n'
+            printf 'carries the `breaking` label. `release-merge.yml` merges it as soon as its Test check passes, '
+            printf 'and `release.yml` then publishes asphodelos@%s to npm once Test passes on `main`.\n' "$NEXT"
           } > "$BODY"
 
           NEW_PR=false
