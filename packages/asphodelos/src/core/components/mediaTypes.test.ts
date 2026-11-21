@@ -72,7 +72,7 @@ describe('mediaTypes — caller ≡ generator contract', () => {
       Xml: { schema: { type: 'string' } },
     } as const
     await runGenerator(mediaTypes(sample, output, false, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = mediaTypesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)MediaTypeSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -88,7 +88,7 @@ describe('mediaTypes — caller ≡ generator contract', () => {
       Json: { schema: { type: 'string' } },
     } as const
     await runGenerator(mediaTypes(sample, output, true, false))
-    const emitted = fs.readFileSync(path.join(dir, 'mediaTypes', 'json.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(dir, 'mediaTypes', 'json.ts'), 'utf8')
     const generated = mediaTypesCode({ Json: sample.Json })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)MediaTypeSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))

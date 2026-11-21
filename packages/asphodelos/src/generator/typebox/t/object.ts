@@ -4,10 +4,12 @@ import { filterDefined } from '../../../utils/index.js'
 import { isFormMedia, typebox } from '../index.js'
 import type { TypeboxCtx } from '../index.js'
 
-function pickObjectFactory(ctx: TypeboxCtx) {
-  if (ctx.elysiaKind === 'object-string' || ctx.elysiaKind === 'json-string') return 'ObjectString'
-  if (ctx.elysiaKind === 'cookie') return 'Cookie'
-  if (ctx.mediaType === 'multipart/form-data') return 'Form'
+function pickObjectFactory(context: TypeboxCtx) {
+  if (context.elysiaKind === 'object-string' || context.elysiaKind === 'json-string') {
+    return 'ObjectString'
+  }
+  if (context.elysiaKind === 'cookie') return 'Cookie'
+  if (context.mediaType === 'multipart/form-data') return 'Form'
   return 'Object'
 }
 
@@ -37,11 +39,11 @@ function childCtxFor(parentCtx: TypeboxCtx, propSchema: Schema, key?: string): T
   return text
 }
 
-export function object(schema: Schema, ctx: TypeboxCtx = {}) {
+export function object(schema: Schema, context: TypeboxCtx = {}) {
   const properties = schema.properties ?? {}
   const required = new Set(schema.required)
   const propEntries = Object.entries(properties).map(([key, propSchema]) => {
-    const inner = typebox(propSchema, childCtxFor(ctx, propSchema, key))
+    const inner = typebox(propSchema, childCtxFor(context, propSchema, key))
     const isRequired = required.has(key)
     const isReadOnly = propSchema.readOnly === true
     const wrapped = isReadOnly
@@ -55,8 +57,8 @@ export function object(schema: Schema, ctx: TypeboxCtx = {}) {
   })
 
   const additional = schema.additionalProperties
-  if (Object.keys(properties).length === 0 && additional && typeof additional === 'object') {
-    const additionalCtx = childCtxFor(ctx, additional)
+  if (Object.keys(properties).length === 0 && typeof additional === 'object') {
+    const additionalCtx = childCtxFor(context, additional)
     const valueExpr = typebox(additional, additionalCtx)
     const opts = options([
       ['minProperties', schema.minProperties],
@@ -74,8 +76,8 @@ export function object(schema: Schema, ctx: TypeboxCtx = {}) {
   const additionalOption =
     additional === false
       ? false
-      : additional && typeof additional === 'object'
-        ? raw(typebox(additional, childCtxFor(ctx, additional)))
+      : typeof additional === 'object'
+        ? raw(typebox(additional, childCtxFor(context, additional)))
         : undefined
   const opts = options([
     ['minProperties', schema.minProperties],
@@ -85,8 +87,8 @@ export function object(schema: Schema, ctx: TypeboxCtx = {}) {
     ...commonOpts(schema),
   ])
   const body = `{${propEntries.join(',')}}`
-  const factory = pickObjectFactory(ctx)
+  const factory = pickObjectFactory(context)
   const objectExpr = opts ? `t.${factory}(${body},${opts})` : `t.${factory}(${body})`
-  const subCtx: TypeboxCtx = ctx.mediaType ? { mediaType: ctx.mediaType } : {}
+  const subCtx: TypeboxCtx = context.mediaType ? { mediaType: context.mediaType } : {}
   return transformWrap(objectExpr, schema, (s) => typebox(s, subCtx))
 }

@@ -5,8 +5,8 @@ import { filterDefined } from '../../../utils/index.js'
 import { readsTextItself, typebox } from '../index.js'
 import type { TypeboxCtx } from '../index.js'
 
-function isMultipartBinaryArray(items: Schema, ctx: TypeboxCtx) {
-  return items.format === 'binary' && ctx.mediaType === 'multipart/form-data'
+function isMultipartBinaryArray(items: Schema, context: TypeboxCtx) {
+  return items.format === 'binary' && context.mediaType === 'multipart/form-data'
 }
 
 /**
@@ -26,17 +26,17 @@ function delimited(arrayExpr: string, separator: '|' | ' ') {
   return `t.Transform(t.Union([t.String(),t.Array(t.String())])).Decode((v)=>Value.Decode(${arrayExpr},(Array.isArray(v)?v:[v]).flatMap((s)=>s.split(${sep})))).Encode((v)=>v.join(${sep}))`
 }
 
-function arrayFactory(ctx: TypeboxCtx) {
-  if (ctx.elysiaKind === 'json-string') return 't.ArrayString'
-  if (readsTextItself(ctx)) return 't.ArrayQuery'
-  if (ctx.parameterLocation === 'header' || ctx.parameterLocation === 'cookie') {
+function arrayFactory(context: TypeboxCtx) {
+  if (context.elysiaKind === 'json-string') return 't.ArrayString'
+  if (readsTextItself(context)) return 't.ArrayQuery'
+  if (context.parameterLocation === 'header' || context.parameterLocation === 'cookie') {
     return 't.ArrayQuery'
   }
   return 't.Array'
 }
 
-export function array(schema: Schema, ctx: TypeboxCtx = {}) {
-  const childCtx: TypeboxCtx = ctx.mediaType ? { mediaType: ctx.mediaType } : {}
+export function array(schema: Schema, context: TypeboxCtx = {}) {
+  const childCtx: TypeboxCtx = context.mediaType ? { mediaType: context.mediaType } : {}
   if (schema.prefixItems) {
     return `t.Tuple([${schema.prefixItems.map((s) => typebox(s, childCtx)).join(',')}])`
   }
@@ -44,7 +44,7 @@ export function array(schema: Schema, ctx: TypeboxCtx = {}) {
   if (items && isSchemaArray(items)) {
     return `t.Tuple([${items.map((s) => typebox(s, childCtx)).join(',')}])`
   }
-  if (items && !isSchemaArray(items) && isMultipartBinaryArray(items, ctx)) {
+  if (items && !isSchemaArray(items) && isMultipartBinaryArray(items, context)) {
     const filesOpts = options([
       ['type', items.contentMediaType],
       ['minItems', schema.minItems],
@@ -56,7 +56,7 @@ export function array(schema: Schema, ctx: TypeboxCtx = {}) {
     ])
     return filesOpts ? `t.Files(${filesOpts})` : 't.Files()'
   }
-  const itemCtx: TypeboxCtx = ctx.delimiter ? { text: true, readsText: true } : childCtx
+  const itemCtx: TypeboxCtx = context.delimiter ? { text: true, readsText: true } : childCtx
   const itemExpr = items ? typebox(items, itemCtx) : 't.Unknown()'
   const containsExpr = schema.contains ? raw(typebox(schema.contains, childCtx)) : undefined
   const opts = options([
@@ -69,9 +69,12 @@ export function array(schema: Schema, ctx: TypeboxCtx = {}) {
     ...filterDefined([errorCallback(schema, 'array')]),
     ...commonOpts(schema),
   ])
-  if (ctx.delimiter) {
-    return delimited(opts ? `t.Array(${itemExpr},${opts})` : `t.Array(${itemExpr})`, ctx.delimiter)
+  if (context.delimiter) {
+    return delimited(
+      opts ? `t.Array(${itemExpr},${opts})` : `t.Array(${itemExpr})`,
+      context.delimiter,
+    )
   }
-  const factory = arrayFactory(ctx)
+  const factory = arrayFactory(context)
   return opts ? `${factory}(${itemExpr},${opts})` : `${factory}(${itemExpr})`
 }

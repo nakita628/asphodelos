@@ -130,7 +130,7 @@ export const HOOK_CONFIGS = {
     infiniteOptionsType: 'CreateInfiniteQueryOptions',
     hookTail: INJECT_OPTIONS_TAIL,
   },
-} as const satisfies Record<HookLibrary, QueryHookConfig>
+} as const satisfies { readonly [K in HookLibrary]: QueryHookConfig }
 
 /**
  * Generates the hooks of one client library into `output`.

@@ -72,7 +72,7 @@ describe('securitySchemes — caller ≡ generator contract', () => {
       Bearer: { type: 'http', scheme: 'bearer' },
     }
     await runGenerator(securitySchemes(sample, output, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = securitySchemesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)SecurityScheme\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -88,7 +88,7 @@ describe('securitySchemes — caller ≡ generator contract', () => {
       ApiKey: { type: 'apiKey', name: 'X-Api-Key', in: 'header' },
     }
     await runGenerator(securitySchemes(sample, output, true))
-    const emitted = fs.readFileSync(path.join(dir, 'securitySchemes', 'apiKey.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(dir, 'securitySchemes', 'apiKey.ts'), 'utf8')
     const generated = securitySchemesCode({ ApiKey: sample.ApiKey })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)SecurityScheme\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))

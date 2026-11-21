@@ -117,7 +117,7 @@ describe('components — single-file aggregate', () => {
     }
     const result = await runGenerator(components(sample, output, false))
     expect(result).toStrictEqual(`Generated components code written to ${output}`)
-    expect(fs.readFileSync(output, 'utf-8')).toBe(`import { t } from 'elysia'
+    expect(fs.readFileSync(output, 'utf8')).toBe(`import { t } from 'elysia'
 
 export const ItemSchema = t.Object({ id: t.String(), name: t.String() })
 
@@ -198,7 +198,7 @@ export const JsonItemMediaTypeSchema = ItemSchema
       mediaTypes: { Mt: { schema: { type: 'string' } } },
     }
     await runGenerator(components(sample, output, true))
-    expect(fs.readFileSync(output, 'utf-8')).toBe(`import { t } from 'elysia'
+    expect(fs.readFileSync(output, 'utf8')).toBe(`import { t } from 'elysia'
 
 export const ItemSchema = t.Readonly(t.Object({ id: t.Optional(t.String()) }))
 
@@ -234,7 +234,7 @@ export const MtMediaTypeSchema = t.Readonly(t.String())
     }
     const result = await runGenerator(components(sample, output, false))
     expect(result).toStrictEqual(`Generated components code written to ${output}`)
-    expect(fs.readFileSync(output, 'utf-8')).toBe(`import { t } from 'elysia'
+    expect(fs.readFileSync(output, 'utf8')).toBe(`import { t } from 'elysia'
 
 export const PetSchema = t.Object({ name: t.Optional(t.String()) })
 

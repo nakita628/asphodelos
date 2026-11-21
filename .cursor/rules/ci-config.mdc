@@ -56,7 +56,8 @@ comments explain every choice. `test/oxlint.config.ts` imports it rather than co
 ## The oxlint plugin
 
 `packages/asphodelos/lint/custom.js` holds the conventions a glob cannot express (the Effect
-program shape, function declarations, `no-let`, predicate and type naming). It is an oxlint JS
+program shape, function declarations, `no-let`, predicate, type and identifier naming, and the
+declared-dependency check). It is an oxlint JS
 plugin: untyped ESTree in, a default export out. When adding a rule there:
 
 - Report a message that tells the author what to write instead, in the voice of the existing

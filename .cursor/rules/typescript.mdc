@@ -21,6 +21,14 @@ rule. Effect-specific shapes are in the Effect rule.
 - A pure boolean predicate reads as a question: **`is*` / `has*` / `can*`**
   (`custom/predicate-is-name`).
 - A `type` alias is **PascalCase** (`custom/type-pascal-case`).
+- Bindings are **camelCase**, PascalCase or UPPER_SNAKE_CASE — never snake_case
+  (`custom/identifier-case`).
+- **No vague or one-letter names** (`id-denylist`, `id-length`). `ctx`, `res`, `data`, `e`,
+  `err`, `fn`, `x`, `arr`, `str`, `obj` and the like are rejected; write `context`, `response`,
+  `error`. One letter is allowed only for the conventional cases: `k` / `v`, `s` / `p` / `n` /
+  `m` / `i` in a one-line callback, `a` / `b` in a comparator, and type parameters.
+- Size is capped: block depth 4, callback nesting 4, 13 imports per module. Extract a function
+  rather than nest deeper.
 - Initialize at the declaration (`init-declarations`). No reassigning or writing through a
   parameter (`no-param-reassign` with `props: true`), no `++` (`no-plusplus`; use `+= 1`).
 
@@ -35,6 +43,15 @@ rule. Effect-specific shapes are in the Effect rule.
 - `noUncheckedIndexedAccess: true` — an indexed access includes `undefined`. Handle it with a
   guard or `??`, not an assertion.
 - `@ts-ignore` is banned; `@ts-expect-error` needs a description.
+- **A condition is a boolean, or a string that may be absent** (`strict-boolean-expressions` with
+  `allowNumber: false`). A number is compared (`if (minimum !== undefined)`), so `0` is never
+  dropped; an object is asked `!== undefined` or through a guard.
+- **What the types call impossible is not asked** (`no-unnecessary-condition`). When a document
+  may really hold what the type omits (a `paths` key with no body is `null`, `Media.schema` and
+  `Operation.responses` may be absent), fix the type in `src/openapi/index.ts` — do not delete
+  the guard, and do not keep a guard the type contradicts.
+- A dictionary is an index signature (`{ readonly [k: string]: X }`), not `Record<string, X>`
+  (`consistent-indexed-object-style`). No `enum`, `namespace` or parameter properties.
 
 ## Imports and exports
 
@@ -43,6 +60,12 @@ rule. Effect-specific shapes are in the Effect rule.
 - **No default exports**, except in `*.config.ts` files, where the tool requires one.
 - Respect the layering in the architecture rule; `no-restricted-imports` reports a wrong edge.
 - ESM only: no `require`, no CommonJS. Node built-ins use the `node:` prefix.
+- **A bare import in `src` must be a `dependency` or `peerDependency`** of
+  `packages/asphodelos/package.json` (`custom/no-undeclared-dependency`). A devDependency that
+  reaches `src` passes every local check and breaks the published package.
+- No `process.env`, `process.exit` or `*Sync` call in `src` (`node/no-process-env`,
+  `unicorn/no-process-exit`, `node/no-sync`), and no `new Promise` (`promise/avoid-new`): read
+  files through the Effect `FileSystem`, wrap a promise API with `Effect.tryPromise`.
 
 ## Errors and async
 

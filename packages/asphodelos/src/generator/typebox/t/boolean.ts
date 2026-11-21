@@ -4,13 +4,13 @@ import { filterDefined } from '../../../utils/index.js'
 import { readsTextItself } from '../index.js'
 import type { TypeboxCtx } from '../index.js'
 
-export function boolean(schema: Schema, ctx: TypeboxCtx = {}) {
+export function boolean(schema: Schema, context: TypeboxCtx = {}) {
   const opts = options([
     ['format', schema.format],
     ...filterDefined([errorCallback(schema, 'boolean')]),
     ...commonOpts(schema),
   ])
   const factory =
-    schema.format === 'boolean-string' || readsTextItself(ctx) ? 't.BooleanString' : 't.Boolean'
+    schema.format === 'boolean-string' || readsTextItself(context) ? 't.BooleanString' : 't.Boolean'
   return `${factory}(${opts})`
 }

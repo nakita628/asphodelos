@@ -4,7 +4,7 @@ import { filterDefined } from '../../../utils/index.js'
 import { readsTextItself } from '../index.js'
 import type { TypeboxCtx } from '../index.js'
 
-export function number(schema: Schema, ctx: TypeboxCtx = {}) {
+export function number(schema: Schema, context: TypeboxCtx = {}) {
   const bounds = normalizeBounds(schema)
   const opts = options([
     ['format', schema.format],
@@ -16,6 +16,6 @@ export function number(schema: Schema, ctx: TypeboxCtx = {}) {
     ...filterDefined([errorCallback(schema, 'number')]),
     ...commonOpts(schema),
   ])
-  const factory = schema.format === 'numeric' || readsTextItself(ctx) ? 't.Numeric' : 't.Number'
+  const factory = schema.format === 'numeric' || readsTextItself(context) ? 't.Numeric' : 't.Number'
   return `${factory}(${opts})`
 }

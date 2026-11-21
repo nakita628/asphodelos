@@ -106,7 +106,7 @@ describe('asphodelos --help / --version', () => {
   // The README quotes the help block; a flag that changes here has to change there.
   it('is what the README prints in its CLI reference', async () => {
     project()
-    const readme = readFileSync(path.join(PKG_ROOT, 'README.md'), 'utf-8')
+    const readme = readFileSync(path.join(PKG_ROOT, 'README.md'), 'utf8')
     const marker = '`asphodelos --help`:\n\n```text\n'
     const opening = readme.indexOf(marker)
     expect(opening).toBeGreaterThan(-1)
@@ -120,7 +120,7 @@ describe('asphodelos --help / --version', () => {
 
   it('answers with the version from the package manifest', async () => {
     project()
-    const manifest = JSON.parse(readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf-8')) as {
+    const manifest = JSON.parse(readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8')) as {
       version: string
     }
     const result = await run(['--version'])
@@ -177,7 +177,7 @@ describe('asphodelos — config mode', () => {
     )
     await run([])
 
-    expect(readFileSync(path.join(dir, 'src/index.ts'), 'utf-8')).toContain('from "elysia";')
+    expect(readFileSync(path.join(dir, 'src/index.ts'), 'utf8')).toContain('from "elysia";')
   })
 
   it('runs a config from another location through --config', async () => {

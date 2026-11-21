@@ -72,7 +72,7 @@ describe('pathItems — caller ≡ generator contract', () => {
       Ready: { get: { responses: { '200': { description: 'ok' } } } },
     }
     await runGenerator(pathItems(sample, output, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = pathItemsCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)PathItem\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -88,7 +88,7 @@ describe('pathItems — caller ≡ generator contract', () => {
       Health: { get: { responses: { '200': { description: 'ok' } } } },
     }
     await runGenerator(pathItems(sample, output, true))
-    const emitted = fs.readFileSync(path.join(dir, 'pathItems', 'health.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(dir, 'pathItems', 'health.ts'), 'utf8')
     const generated = pathItemsCode({ Health: sample.Health })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)PathItem\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))

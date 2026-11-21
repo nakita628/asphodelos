@@ -21,7 +21,7 @@ export function isMediaWithSchema(v: unknown): v is { readonly schema: Schema } 
 export function isSecurityArray(
   v: unknown,
 ): v is readonly { readonly [k: string]: readonly string[] }[] {
-  return Array.isArray(v) && v.every((x) => typeof x === 'object' && x !== null)
+  return Array.isArray(v) && v.every((item) => typeof item === 'object' && item !== null)
 }
 
 export function isSchemaArray(v: Schema | readonly Schema[] | undefined): v is readonly Schema[] {

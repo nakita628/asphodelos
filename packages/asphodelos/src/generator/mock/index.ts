@@ -397,7 +397,7 @@ export function makeMock(spec: OpenAPI, options: MockOptions = {}) {
     ...(useExamples === 'all' ? { useExamples: true } : {}),
   }
   const components = spec.components
-  const routes = Object.entries(spec.paths).flatMap(([path, pathItem]) => {
+  const routes = Object.entries(spec.paths ?? {}).flatMap(([path, pathItem]) => {
     if (!pathItem) return [] as const
     return HTTP_METHODS.flatMap((method) => {
       const operation = pathItem[method]
@@ -427,30 +427,30 @@ export function makeMock(spec: OpenAPI, options: MockOptions = {}) {
       // answers with the requested status. The success response's default body stays the final
       // return.
       const preferTable = Object.fromEntries(
-        responses.map((r) => [r.key, r.named.map(([name]) => name)]),
+        responses.map((entry) => [entry.key, entry.named.map(([name]) => name)]),
       )
-      const render = (r: (typeof responses)[number], example: unknown) => {
-        const status = /^\d{3}$/u.test(r.key)
-          ? r.key
-          : `prefer.status ?? ${/^[1-5]XX$/u.test(r.key) ? `${r.key.slice(0, 1)}00` : '200'}`
-        return indent(returnStatement(status, responseBody(r.response, example, fakerOptions)))
+      const render = (entry: (typeof responses)[number], example: unknown) => {
+        const status = /^\d{3}$/u.test(entry.key)
+          ? entry.key
+          : `prefer.status ?? ${/^[1-5]XX$/u.test(entry.key) ? `${entry.key.slice(0, 1)}00` : '200'}`
+        return indent(returnStatement(status, responseBody(entry.response, example, fakerOptions)))
       }
       // Every named-example branch comes before the plain per-response branches, so a request
       // naming an example is never caught by its response's default answer. An entry that is
       // already the default answer (the first one) needs no branch.
-      const namedBranches = responses.flatMap((r) =>
-        r.named
-          .filter(([, value]) => value !== r.example)
+      const namedBranches = responses.flatMap((entry) =>
+        entry.named
+          .filter(([, value]) => value !== entry.example)
           .map(
             ([name, value]) =>
-              `if (prefer.key === ${quoteSingle(r.key)} && prefer.example === ${quoteSingle(name)}) {\n      ${render(r, value)}\n    }\n    `,
+              `if (prefer.key === ${quoteSingle(entry.key)} && prefer.example === ${quoteSingle(name)}) {\n      ${render(entry, value)}\n    }\n    `,
           ),
       )
       const responseBranches = responses
-        .filter((r) => !(r.key === success.key && /^\d{3}$/u.test(r.key)))
+        .filter((entry) => !(entry.key === success.key && /^\d{3}$/u.test(entry.key)))
         .map(
-          (r) =>
-            `if (prefer.key === ${quoteSingle(r.key)}) {\n      ${render(r, r.example)}\n    }\n    `,
+          (entry) =>
+            `if (prefer.key === ${quoteSingle(entry.key)}) {\n      ${render(entry, entry.example)}\n    }\n    `,
         )
       const branches = [namedBranches, responseBranches].flat()
       const prefer = `const prefer = resolvePrefer(c.headers.prefer, c.query, ${JSON.stringify(preferTable)}, ${quoteSingle(success.key)})\n    if (prefer.problem) return prefer.problem\n    ${branches.join('')}`
@@ -481,13 +481,14 @@ export function makeMock(spec: OpenAPI, options: MockOptions = {}) {
       return [{ method, path, code: `.${method}(${routePath(path)}, ${handler})`, refs }] as const
     })
   })
-  const usedSchemaNames = new Set(routes.flatMap((r) => r.refs))
+  const usedSchemaNames = new Set(routes.flatMap((route) => route.refs))
   const mockFunctions = makeMockFunctions(spec, usedSchemaNames, fakerOptions)
   const ctorArgs = prefix ? `{ prefix: ${quoteSingle(prefix)} }` : ''
-  const routeChain = routes.map((r) => `  ${r.code}`).join('\n')
+  const routeChain = routes.map((route) => `  ${route.code}`).join('\n')
   const listenBlock =
     '\n\nif (import.meta.main) {\n' +
     `  app.listen(${port})\n` +
+    // oxlint-disable-next-line no-template-curly-in-string -- emitted source: the `${...}` is the generated template literal
     '  console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`)\n' +
     '}'
   const appCode = `export const app = new Elysia(${ctorArgs})${delayMiddleware(delay)}\n${routeChain}${listenBlock}`

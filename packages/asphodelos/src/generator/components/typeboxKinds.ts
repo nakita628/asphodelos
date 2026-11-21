@@ -37,8 +37,8 @@ function makeCode<T>(
 export const responsesCode = makeCode<NonNullable<Components['responses']>[string]>(
   'ResponseSchema',
   (s) =>
-    Object.entries(s).map(([name, res]) => {
-      const schema = jsonSchema(res.content)
+    Object.entries(s).map(([name, response]) => {
+      const schema = jsonSchema(response.content)
       return [name, schema ? typebox(schema) : 't.Void()'] as const
     }),
 )
@@ -67,9 +67,11 @@ export const requestBodiesCode = makeCode<NonNullable<Components['requestBodies'
 )
 
 export const headersCode = makeCode<Header | Reference>('HeaderSchema', (s) =>
-  Object.entries(s).map(([name, h]) => {
-    if (isReference(h) && h.$ref) return [name, refIdent(h.$ref) ?? 't.Unknown()'] as const
-    const schema = 'schema' in h ? h.schema : undefined
+  Object.entries(s).map(([name, header]) => {
+    if (isReference(header) && header.$ref) {
+      return [name, refIdent(header.$ref) ?? 't.Unknown()'] as const
+    }
+    const schema = 'schema' in header ? header.schema : undefined
     return [name, schema ? typebox(schema) : 't.Unknown()'] as const
   }),
 )

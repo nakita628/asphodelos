@@ -21,7 +21,9 @@ The package suite is `bun run test`; the client suite under `test/` is `bun run 
   - a row that is itself an array is spread into arguments — wrap it: `inputs.map((i) => [i] as const)`;
   - a computed title is a precomputed `title` field, used as `'$title'`. Avoid `%#`, which bun
     formats inconsistently.
-- `toStrictEqual` over `toEqual`; an equality matcher over `toBe(true)` on a comparison.
+- `toStrictEqual` over `toEqual` (`toEqual` is a restricted matcher); `toBe` for a primitive,
+  `toHaveLength` for a length; an equality matcher over `toBe(true)` on a comparison.
+- No snapshots: the expected text is written out in the test, where a reviewer reads it.
 - `expect` only inside a test, never conditionally (`jest/no-conditional-expect`). For "this
   value, or anything when none is pinned" use `toStrictEqual(value ?? expect.any(String))`.
 - `it.only`, `it.skip`, `xit`, `fit` and commented-out tests fail lint.
@@ -33,7 +35,9 @@ The package suite is `bun run test`; the client suite under `test/` is `bun run 
 
 `*.test.ts` is exempt from the structural rules and the cast rules: `let`, `any`, type
 assertions, arrow functions at module scope, empty stub callbacks, `console`, cross-layer
-imports and awaiting inside a loop are all fine when they spell the fixture out most clearly.
+imports, awaiting inside a loop, synchronous `fs` calls, hand-built promises, `process.env` for a
+spawned process, short or vague names, and truthiness checks on fixture values are all fine when
+they spell the fixture out most clearly.
 Everything else in the TypeScript rule still applies.
 
 ## Working with the filesystem

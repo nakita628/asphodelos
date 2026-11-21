@@ -44,11 +44,15 @@ const FORMAT_TO_FAKER: { [k: string]: string } = {
   // value passes the model's own format check, plus common ones it leaves unchecked.
   'iso-time': 'faker.date.past().toISOString().slice(11, 19)',
   'iso-date-time': 'faker.date.past().toISOString()',
+  // oxlint-disable-next-line no-template-curly-in-string -- emitted source: the `${...}` is the generated template literal
   duration: '`P${faker.number.int({ min: 1, max: 30 })}D`',
   'uri-reference': 'faker.internet.url()',
   'uri-template': 'faker.internet.url()',
+  // oxlint-disable-next-line no-template-curly-in-string -- emitted source: the `${...}` is the generated template literal
   'json-pointer': '`/${faker.string.alpha(8)}`',
+  // oxlint-disable-next-line no-template-curly-in-string -- emitted source: the `${...}` is the generated template literal
   'json-pointer-uri-fragment': '`#/${faker.string.alpha(8)}`',
+  // oxlint-disable-next-line no-template-curly-in-string -- emitted source: the `${...}` is the generated template literal
   'relative-json-pointer': '`0/${faker.string.alpha(8)}`',
   iri: 'faker.internet.url()',
   'iri-reference': 'faker.internet.url()',
@@ -132,7 +136,9 @@ function propertyNameHint(propertyName: string) {
     lookup(PROPERTY_NAME_TO_FAKER, propertyName) ??
     lookup(
       PROPERTY_NAME_TO_FAKER,
-      propertyName.replaceAll(/[_-]+([a-zA-Z0-9])/gu, (_: string, c: string) => c.toUpperCase()),
+      propertyName.replaceAll(/[_-]+([a-zA-Z0-9])/gu, (_: string, letter: string) =>
+        letter.toUpperCase(),
+      ),
     )
   )
 }
@@ -141,7 +147,7 @@ function propertyNameHint(propertyName: string) {
 // Collapse to a single representative type, preferring the first non-null member —
 // the member the TypeBox model is built from.
 function primaryType(type: Type | readonly Type[] | undefined) {
-  if (isTypeArray(type)) return type.find((t) => t !== 'null') ?? type[0]
+  if (isTypeArray(type)) return type.find((kind) => kind !== 'null') ?? type[0]
   return type
 }
 
@@ -252,7 +258,12 @@ export function schemaToFaker(
   if (type === 'object' && schema.properties) {
     return `{ ${renderProps(schema.properties, schema.required)} }`
   }
-  if (type === 'object' && !schema.properties && schema.additionalProperties) {
+  if (
+    type === 'object' &&
+    !schema.properties &&
+    schema.additionalProperties !== undefined &&
+    schema.additionalProperties !== false
+  ) {
     // A map (`t.Record(t.String(), X)`) gets a few entries so consumers see its shape.
     // `additionalProperties: true` says nothing about the values, and
     // `propertyNames`/`patternProperties` constrain keys a random key would violate.

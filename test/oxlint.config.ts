@@ -13,13 +13,34 @@ export default defineConfig({
   jsPlugins: ['../packages/asphodelos/lint/custom.js'],
   ignorePatterns: ['**/node_modules/**', '**/__generated__/**'],
   overrides: [
-    ...(packageConfig.overrides ?? []).filter((override) =>
+    ...packageConfig.overrides.filter((override) =>
       override.files.every((glob) => glob.startsWith('**/')),
     ),
     {
       // The scripts are command-line programs: printing a report is what they are for.
       files: ['scripts/**'],
       rules: { 'no-console': 'off' },
+    },
+    {
+      // The scripts and hosts are the suite's own processes: they are pointed at a server through
+      // the environment, probe the file system synchronously before anything runs, and wrap
+      // `child_process` / `server.listen` callbacks in a promise.
+      files: ['scripts/**', 'hosts/**'],
+      rules: {
+        'node/no-process-env': 'off',
+        'node/no-sync': 'off',
+        'promise/avoid-new': 'off',
+      },
+    },
+    {
+      // A case's app imports every generated route of the case it serves.
+      files: ['*/app.ts'],
+      rules: { 'import/max-dependencies': 'off' },
+    },
+    {
+      // These assert the types of third-party query clients, whose result field is named `data`.
+      files: ['types/**'],
+      rules: { 'id-denylist': 'off' },
     },
   ],
 })

@@ -50,7 +50,7 @@ function lint(rule: string, code: string, filename = 'src/core/thing.ts') {
 
   const run = spawnSync(OXLINT, ['-c', '.oxlintrc.json', '.'], {
     cwd: dir,
-    encoding: 'utf-8',
+    encoding: 'utf8',
   })
   const output = `${run.stdout ?? ''}${run.stderr ?? ''}`
   return {
@@ -100,23 +100,70 @@ const SPEC = 'src/core/thing.test.ts'
 
 describe('the plugin exposes every rule the config enables', () => {
   it(
-    'registers all nine rules under the `custom` namespace',
+    'registers all eleven rules under the `custom` namespace',
     () => {
       expect(plugin.meta.name).toBe('custom')
       expect(Object.keys(plugin.rules).toSorted()).toStrictEqual([
         'effect-gen-return',
         'effect-promise-import',
         'function-declaration',
+        'identifier-case',
         'no-effect-flatmap',
         'no-effect-fn',
         'no-effect-run',
         'no-let',
+        'no-undeclared-dependency',
         'predicate-is-name',
         'type-pascal-case',
       ])
     },
     SPAWN_TIMEOUT_MS,
   )
+})
+
+check('identifier-case', {
+  valid: [
+    'const schemaName = 1\n',
+    'const MAX_DEPTH = 4\n',
+    'const UserSchema = 1\n',
+    'function toSafeIdentifier(input: string) {\n  return input\n}\n',
+    'const { _unused, ...rest } = { _unused: 1, kept: 2 }\n',
+    'const $ref = "#/components/schemas/User"\n',
+    'try {\n  run()\n} catch (error) {\n  report(error)\n}\n',
+    // A test names its throwaway values as it likes.
+    ['const snake_case = 1\n', SPEC],
+  ],
+  invalid: [
+    'const snake_case = 1\n',
+    'const trailing_ = 1\n',
+    'function do_thing() {}\n',
+    'function run(path_item: string) {\n  return path_item\n}\n',
+    'const { a_b } = { a_b: 1 }\n',
+    'try {\n  run()\n} catch (my_error) {\n  report(my_error)\n}\n',
+  ],
+})
+
+check('no-undeclared-dependency', {
+  valid: [
+    "import { Effect } from 'effect'\n",
+    "import { NodeFileSystem } from '@effect/platform-node'\n",
+    "import { parseSync } from 'oxc-parser'\n",
+    "import path from 'node:path'\n",
+    "import { helper } from '../utils/index.js'\n",
+    "export { Effect } from 'effect'\n",
+    // A test may import the devDependencies it exercises against, and so may code outside `src`.
+    ["import { Elysia } from 'elysia'\n", SPEC],
+    ["import { Elysia } from 'elysia'\n", 'lint/thing.ts'],
+  ],
+  invalid: [
+    // devDependencies: installed here, absent where the published package runs.
+    "import { Elysia } from 'elysia'\n",
+    "import { Type } from '@sinclair/typebox'\n",
+    "export * from 'tsdown'\n",
+    "const module = await import('@faker-js/faker')\n",
+    // A Node built-in spelled without its `node:` scheme.
+    "import path from 'path'\n",
+  ],
 })
 
 check('effect-gen-return', {
@@ -346,7 +393,7 @@ describe('oxlint.config.ts — the boundary exemption', () => {
       writeFileSync(path.join(PKG, relative), code)
     }
     try {
-      const run = spawnSync(OXLINT, ['-f', 'json', ...PROBES], { cwd: PKG, encoding: 'utf-8' })
+      const run = spawnSync(OXLINT, ['-f', 'json', ...PROBES], { cwd: PKG, encoding: 'utf8' })
       if (run.error !== undefined || run.stdout === '') {
         throw new Error(`oxlint did not run: ${String(run.error ?? run.stderr)}`)
       }

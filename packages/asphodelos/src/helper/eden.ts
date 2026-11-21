@@ -22,14 +22,14 @@ export function edenChain(pathStr: string, client: string, method: string) {
     (acc, seg) => {
       const m = /^\{([^}]+)\}$/u.exec(seg)
       if (m) {
-        const t = acc.typeIsValue ? `typeof ${acc.typeChain}` : acc.typeChain
+        const fnType = acc.typeIsValue ? `typeof ${acc.typeChain}` : acc.typeChain
         const name = acc.paramArgs.length === 0 ? 'params' : `params${acc.paramArgs.length + 1}`
         return {
           callChain: `${acc.callChain}(${name})`,
-          typeChain: `ReturnType<${t}>`,
+          typeChain: `ReturnType<${fnType}>`,
           typeIsValue: false,
           typeChainHasBracket: acc.typeChainHasBracket,
-          paramArgs: [...acc.paramArgs, { name, typeExpr: `Parameters<${t}>[0]` }],
+          paramArgs: [...acc.paramArgs, { name, typeExpr: `Parameters<${fnType}>[0]` }],
         }
       }
       const isIdent = isIdentifierSegment(seg)

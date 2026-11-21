@@ -23,7 +23,7 @@ function echoValue(value: unknown): Echo {
   if (value instanceof Date) return { valueType: 'Date', valueText: value.toISOString() }
   return {
     valueType: value === null ? 'null' : typeof value,
-    valueText: JSON.stringify(value) ?? 'undefined',
+    valueText: value === undefined ? 'undefined' : JSON.stringify(value),
   }
 }
 
@@ -32,8 +32,8 @@ function echoValue(value: unknown): Echo {
  * object key by key. A key the schema left out stays out: an absent optional header is absent
  * here too, and so is a header the schema does not declare.
  */
-export function echoFields(fields: Record<string, unknown>) {
-  const described: Record<string, Echo | Echo[] | Record<string, Echo>> = {}
+export function echoFields(fields: { [key: string]: unknown }) {
+  const described: { [key: string]: Echo | Echo[] | { [key: string]: Echo } } = {}
   for (const [name, value] of Object.entries(fields)) {
     if (value === undefined) continue
     if (Array.isArray(value)) {

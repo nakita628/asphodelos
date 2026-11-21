@@ -19,6 +19,7 @@ export type Source = {
 }
 
 export function parseSource(code: string): Source {
+  // oxlint-disable-next-line node/no-sync -- parses a string in memory; there is no I/O to block on
   const { program, comments, errors } = parseSync('module.ts', code, {
     lang: 'ts',
     sourceType: 'module',

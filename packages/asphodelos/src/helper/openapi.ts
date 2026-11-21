@@ -57,7 +57,7 @@ export function makeOperationId(method: string, path: string) {
   const camel = parts
     .map((p, i) => (i === 0 ? p : p.charAt(0).toUpperCase() + p.slice(1)))
     .join('')
-    .replaceAll(/-([a-z])/giu, (_, c: string) => c.toUpperCase())
+    .replaceAll(/-([a-z])/giu, (_, letter: string) => letter.toUpperCase())
   return camel ? `${method}${camel.charAt(0).toUpperCase()}${camel.slice(1)}` : method
 }
 
@@ -89,9 +89,11 @@ function resolveRequestBody(
   return b
 }
 
-function resolveResponse(r: Responses | Reference, components: Components | undefined) {
-  if (isReference(r) && r.$ref) return lookup(r.$ref, 'responses', components?.responses) ?? {}
-  return r
+function resolveResponse(response: Responses | Reference, components: Components | undefined) {
+  if (isReference(response) && response.$ref) {
+    return lookup(response.$ref, 'responses', components?.responses) ?? {}
+  }
+  return response
 }
 
 export function resolveOperation(operation: Operation, components: Components | undefined) {
@@ -102,9 +104,9 @@ export function resolveOperation(operation: Operation, components: Components | 
       .filter((p): p is Parameter => p !== undefined),
     requestBody: resolveRequestBody(operation.requestBody, components),
     responses: Object.fromEntries(
-      Object.entries(operation.responses ?? {}).map(([status, res]) => [
+      Object.entries(operation.responses ?? {}).map(([status, response]) => [
         status,
-        resolveResponse(res, components),
+        resolveResponse(response, components),
       ]),
     ),
   }
@@ -144,8 +146,8 @@ export function makeRoute(
   const body = bodyInfo(operation, components)
   const synth = (kind: string) => `${toSafeIdentifier(operationId)}${kind}`
 
-  const responsesAndInline = Object.entries(operation.responses ?? {}).map(([status, res]) => {
-    const info = responseInfo(res)
+  const responsesAndInline = Object.entries(operation.responses ?? {}).map(([status, response]) => {
+    const info = responseInfo(response)
     if (info.ref) return { entry: { status, schema: { kind: 'ref' as const, name: info.ref } } }
     if (info.inline) {
       const name = synth(`Response${status}`)
@@ -157,12 +159,14 @@ export function makeRoute(
     return { entry: { status, schema: { kind: 'void' as const } } }
   })
 
-  const inlineSchemas: { name: string; schema: Schema; ctx?: TypeboxCtx }[] = [
-    ...(params ? [{ name: synth('Params'), schema: params.schema, ctx: params.ctx }] : []),
-    ...(query ? [{ name: synth('Query'), schema: query.schema, ctx: query.ctx }] : []),
-    ...(headers ? [{ name: synth('Headers'), schema: headers.schema, ctx: headers.ctx }] : []),
-    ...(cookie ? [{ name: synth('Cookie'), schema: cookie.schema, ctx: cookie.ctx }] : []),
-    ...(body.inline ? [{ name: synth('Body'), schema: body.inline, ctx: body.ctx }] : []),
+  const inlineSchemas: { name: string; schema: Schema; context?: TypeboxCtx }[] = [
+    ...(params ? [{ name: synth('Params'), schema: params.schema, context: params.context }] : []),
+    ...(query ? [{ name: synth('Query'), schema: query.schema, context: query.context }] : []),
+    ...(headers
+      ? [{ name: synth('Headers'), schema: headers.schema, context: headers.context }]
+      : []),
+    ...(cookie ? [{ name: synth('Cookie'), schema: cookie.schema, context: cookie.context }] : []),
+    ...(body.inline ? [{ name: synth('Body'), schema: body.inline, context: body.context }] : []),
     ...responsesAndInline.flatMap((item) => ('inline' in item && item.inline ? [item.inline] : [])),
   ]
 
@@ -250,22 +254,22 @@ function walk(
 
 export function operationsByResource(api: OpenAPI) {
   const canonical = canonicalParamNames([
-    ...Object.keys(api.paths),
+    ...Object.keys(api.paths ?? {}),
     ...Object.keys(api.webhooks ?? {}).map((event) => `/webhooks/${event}`),
   ])
   const grouped = new Map<
     string,
-    { route: Route; inlineSchemas: { name: string; schema: Schema; ctx?: TypeboxCtx }[] }[]
+    { route: Route; inlineSchemas: { name: string; schema: Schema; context?: TypeboxCtx }[] }[]
   >()
   const collect = (
     resource: string,
-    item: { route: Route; inlineSchemas: { name: string; schema: Schema; ctx?: TypeboxCtx }[] },
+    item: { route: Route; inlineSchemas: { name: string; schema: Schema; context?: TypeboxCtx }[] },
   ) => {
     const bucket = grouped.get(resource) ?? []
     bucket.push(item)
     grouped.set(resource, bucket)
   }
-  for (const [path, pathItem] of Object.entries(api.paths)) {
+  for (const [path, pathItem] of Object.entries(api.paths ?? {})) {
     if (!pathItem) continue
     for (const [resource, route] of walk(path, resourceName(path), pathItem, api, canonical)) {
       collect(resource, route)

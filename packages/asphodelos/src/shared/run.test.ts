@@ -71,7 +71,11 @@ const OPENAPI = {
  * first fill with what a project would already hold, and `cwd` names the subdirectory the
  * generator runs from, for a layout of several packages.
  */
-async function runJobs(config: Record<string, unknown>, seed?: (dir: string) => void, cwd = '.') {
+async function runJobs(
+  config: { [key: string]: unknown },
+  seed?: (dir: string) => void,
+  cwd = '.',
+) {
   const dir = mkdtempSync(path.join(PKG_ROOT, 'tmp-jobs-'))
   workdirs.push(dir)
   seed?.(dir)
@@ -321,7 +325,7 @@ describe('makeJob — every job actually runs', () => {
     const layout = (dir: string) => {
       packages(dir, ['apps/elysia', 'apps/client', 'apps/react'])
     }
-    const failure = async (config: Record<string, unknown>) => {
+    const failure = async (config: { [key: string]: unknown }) => {
       try {
         await runJobs(config, layout, 'apps/elysia')
         return 'generated'

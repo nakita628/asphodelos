@@ -10,7 +10,7 @@ function isImport(statement: Statement): statement is ImportDeclaration {
 
 /** The names an import binds as the generated file would claim them: `a` in `{ a as b }`. */
 function importedNames(source: Source, declaration: ImportDeclaration) {
-  return (declaration.specifiers ?? []).map((specifier) =>
+  return declaration.specifiers.map((specifier) =>
     specifier.type === 'ImportSpecifier'
       ? textOf(source.code, specifier.imported)
       : specifier.local.name,
@@ -39,7 +39,7 @@ function mergeImports(existing: Source, generated: Source) {
       importBySpec.set(spec, text)
       continue
     }
-    const specifiers = declaration.specifiers ?? []
+    const specifiers = declaration.specifiers
     const named = specifiers.filter((specifier) => specifier.type === 'ImportSpecifier')
     const def = specifiers.find((specifier) => specifier.type === 'ImportDefaultSpecifier')
     const ns = specifiers.find((specifier) => specifier.type === 'ImportNamespaceSpecifier')

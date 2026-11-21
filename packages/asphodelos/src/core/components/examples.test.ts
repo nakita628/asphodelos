@@ -63,7 +63,7 @@ describe('examples — caller ≡ generator contract', () => {
     const output = path.join(dir, 'examples.ts')
     const sample = { Hello: { value: 'hi' }, World: { value: 'wat' } }
     await runGenerator(examples(sample, output, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = examplesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Example\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -77,7 +77,7 @@ describe('examples — caller ≡ generator contract', () => {
     const output = path.join(dir, 'examples.ts')
     const sample = { Hello: { value: 'hi' } }
     await runGenerator(examples(sample, output, true))
-    const emitted = fs.readFileSync(path.join(dir, 'examples', 'hello.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(dir, 'examples', 'hello.ts'), 'utf8')
     const generated = examplesCode({ Hello: sample.Hello })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Example\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))

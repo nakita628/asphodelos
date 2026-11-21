@@ -42,7 +42,9 @@ export function controllerFile(
     const handlerArg = argKeys.length > 0 ? `({${argKeys.join(',')}})` : '()'
     const handler = `${handlerArg}=>{}`
     const responseEntries = route.responses
-      .map((res) => `${safeStatusKey(res.status)}:${renderResponseValue(res.schema)}`)
+      .map(
+        (response) => `${safeStatusKey(response.status)}:${renderResponseValue(response.schema)}`,
+      )
       .join(',')
     const detail = join(
       [

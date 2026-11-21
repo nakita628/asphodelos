@@ -23,7 +23,7 @@ function echoValue(value: unknown): Echo {
   if (value instanceof Date) return { valueType: 'Date', valueText: value.toISOString() }
   return {
     valueType: value === null ? 'null' : typeof value,
-    valueText: JSON.stringify(value) ?? 'undefined',
+    valueText: value === undefined ? 'undefined' : JSON.stringify(value),
   }
 }
 
@@ -32,8 +32,8 @@ function echoValue(value: unknown): Echo {
  * it. An array is described element by element and an object key by key. A cookie that was not
  * sent and has no default is absent here too.
  */
-function echoCookies(jar: Record<string, { readonly value: unknown }>) {
-  const described: Record<string, Echo | Echo[] | Record<string, Echo>> = {}
+function echoCookies(jar: { [key: string]: { readonly value: unknown } }) {
+  const described: { [key: string]: Echo | Echo[] | { [key: string]: Echo } } = {}
   for (const [name, cookie] of Object.entries(jar)) {
     const value = cookie.value
     if (value === undefined) continue

@@ -53,7 +53,7 @@ export function queryOptionsAssertions() {
 
   // `select` binds TData through the slot — without the Omit it could not.
   const names = createUsers<string[]>(() => ({
-    query: { select: (data) => data.map((u) => u.name) },
+    query: { select: (data) => data.map((user) => user.name) },
   }))
   const selected = createUsers(() => ({ query: { select: (users) => users.length } }))
   assertType<Equal<typeof selected.data, number | undefined>>(true)
