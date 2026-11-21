@@ -54,7 +54,7 @@ async function generate(api: OpenAPI) {
       )
       return new Elysia().use(mod[resource] as never)
     },
-    schemasSource: () => readFile(componentsOutput, 'utf-8'),
+    schemasSource: () => readFile(componentsOutput, 'utf8'),
   }
 }
 
@@ -807,7 +807,7 @@ describe('coercion', () => {
       CoerceModel: { readonly [k: string]: never }
     }
     const echo = (value: unknown) => ({ value, type: typeof value, isArray: Array.isArray(value) })
-    const field = (value: unknown, key: string) => (value as Record<string, unknown>)[key]
+    const field = (value: unknown, key: string) => (value as { [key: string]: unknown })[key]
     return new Elysia()
       .get('/coerce/integer', ({ query }) => echo(query.value), {
         query: CoerceModel.coerceIntegerQuery,
@@ -842,7 +842,7 @@ describe('coercion', () => {
       )
   }
 
-  const get = async (url: string, headers: Record<string, string> = {}) =>
+  const get = async (url: string, headers: { [key: string]: string } = {}) =>
     (await coerceApp()).handle(new Request(`http://localhost${url}`, { headers }))
 
   it('caps t.Integer() at MAX_SAFE_INTEGER so a past-2^53 wire value cannot round silently', async () => {
@@ -956,7 +956,7 @@ describe('coercion', () => {
 
   it('format: numeric / boolean-string route to t.Numeric() and t.BooleanString()', async () => {
     const { dir } = await built()
-    const source = await readFile(path.join(dir, 'src/modules/coerce/model.ts'), 'utf-8')
+    const source = await readFile(path.join(dir, 'src/modules/coerce/model.ts'), 'utf8')
     expect(source).toContain('t.Numeric(')
     expect(source).toContain('t.BooleanString(')
 
@@ -1006,7 +1006,7 @@ describe('header / cookie / query parameter wiring', () => {
   const UUID = '00000000-0000-0000-0000-000000000000'
   const VALID = { 'x-api-key': 'long-enough-key', cookie: `session_id=${UUID}` }
 
-  const check = async (headers: Record<string, string>, query = '?tenant=acme') => {
+  const check = async (headers: { [key: string]: string }, query = '?tenant=acme') => {
     const app = await (await built()).mount('check')
     return app.handle(new Request(`http://localhost/check${query}`, { headers }))
   }
@@ -1044,7 +1044,7 @@ describe('header / cookie / query parameter wiring', () => {
 // that the emitted module compiles under TypeBox and still discriminates valid from invalid.
 
 describe('recursive component schemas', () => {
-  const recursive = (name: string, extra: Record<string, unknown>) =>
+  const recursive = (name: string, extra: { [key: string]: unknown }) =>
     ({
       type: 'object',
       required: ['id'],

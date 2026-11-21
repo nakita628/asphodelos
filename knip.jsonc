@@ -1,0 +1,56 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  // Knip finds unused files, dependencies and exports. It runs twice in `bun run lint`: once over
+  // everything, and once with `--production` over the published package, which reads only the
+  // shipped code, so a module or an export that only a test still uses shows up as dead, and a
+  // package only a test imports cannot hide in `dependencies`. `test/` ships nothing, so it
+  // takes part only in the first run.
+  //
+  // Everything below is something the import graph cannot see: a file a CLI reads by name, a
+  // package that only source text written at runtime imports. An entry here needs its reason
+  // beside it; code that is simply unused is deleted instead. Prefer `entry` over `ignore`:
+  // `ignore` hides every issue type in the files it matches.
+  "workspaces": {
+    ".": {
+      // The repository's own command-line checks, run by name from package.json scripts.
+      "entry": ["scripts/*.ts"],
+      "ignoreDependencies": [
+        // Named by id in .secretlintrc.json, which secretlint resolves at runtime.
+        "@secretlint/secretlint-rule-preset-recommend",
+      ],
+    },
+    "packages/asphodelos": {
+      // The entries (the CLI and the `exports` subpaths) come from package.json `bin` and the
+      // `@asphodelos/source` export condition. The `!` marks shipped code for `--production`;
+      // `src/testing` holds the test helpers and is not shipped. An export that exists only so
+      // its unit test can reach it carries `@internal`, which production mode leaves alone.
+      "project": ["src/**/*.ts!", "!src/testing/**!", "lint/**/*.{js,ts}"],
+      "ignoreDependencies": [
+        // Not imported: declared so that npm resolves it to the same rc as `effect`. A newer
+        // copy installs a second `effect` and the CLI fails with "Service not found"
+        // (scripts/pack-smoke.ts checks for exactly one copy; renovate.json moves them together).
+        "@effect/platform-node-shared",
+        // Imported by the mock servers the generator writes and by the TypeSpec documents the
+        // tests compile. The specifiers are inside strings, but the packages must be installed.
+        "@faker-js/faker",
+        "@typespec/rest",
+      ],
+    },
+    "test": {
+      "entry": [
+        // Read by the asphodelos CLI (scripts/generate.ts), one per case.
+        "**/asphodelos.config.ts",
+        // Started by `spawn('bun', [...])` from the client and monorepo tests.
+        "hosts/users-server.ts",
+        // Imported by the generated clients through each case's config (`hosts/env`) and the
+        // `@asphodelos/host` tsconfig alias, both pointing into __generated__ (gitignored).
+        "hosts/env.ts",
+        "hosts/users-app.ts",
+        // Compiled by `tsc -p cases/<name>` through each case's tsconfig `include`.
+        "types/*.ts",
+        // Preloaded by bunfig.toml, or spawned by one that is.
+        "scripts/*.ts",
+      ],
+    },
+  },
+}

@@ -33,7 +33,7 @@ function echoValue(value: unknown): Echo {
   if (value instanceof Date) return { valueType: 'Date', valueText: value.toISOString() }
   return {
     valueType: value === null ? 'null' : typeof value,
-    valueText: JSON.stringify(value) ?? 'undefined',
+    valueText: value === undefined ? 'undefined' : JSON.stringify(value),
   }
 }
 
@@ -42,8 +42,8 @@ function echoValue(value: unknown): Echo {
  * object key by key, so a test can tell `[1, 2]` from `['1', '2']` and from `'1,2'`. A key the
  * schema left out stays out: an absent optional parameter is absent here too.
  */
-function echoFields(fields: Record<string, unknown>) {
-  const described: Record<string, Echo | Echo[] | Record<string, Echo>> = {}
+function echoFields(fields: { [key: string]: unknown }) {
+  const described: { [key: string]: Echo | Echo[] | { [key: string]: Echo } } = {}
   for (const [name, value] of Object.entries(fields)) {
     if (value === undefined) continue
     if (Array.isArray(value)) {

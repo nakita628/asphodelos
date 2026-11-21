@@ -712,7 +712,8 @@ Lint and tests run from the repository root:
 ```bash
 bun run check          # format check, lint, type check, tests, then the client suite
 bun run fix            # autofix formatting, oxlint, markdownlint and textlint
-bun run lint           # oxlint, markdownlint, textlint, cspell, secretlint, actionlint
+bun run lint           # oxlint, knip, markdownlint, textlint, cspell, secretlint, actionlint
+bun run knip           # unused files, dependencies and exports, then the same over shipped code only
 bun run test           # unit tests
 bun run test:clients   # build, then compile and run the generated hooks under test/
 bun run test:pack      # build, pack, and install the tarball with npm into an empty project

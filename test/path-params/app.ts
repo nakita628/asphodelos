@@ -58,7 +58,7 @@ function echoValue(value: unknown): Echo {
   if (value instanceof Date) return { valueType: 'Date', valueText: value.toISOString() }
   return {
     valueType: value === null ? 'null' : typeof value,
-    valueText: JSON.stringify(value) ?? 'undefined',
+    valueText: value === undefined ? 'undefined' : JSON.stringify(value),
   }
 }
 

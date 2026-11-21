@@ -27,8 +27,8 @@ export function pascalCase(s: string) {
   return /^[0-9]/u.test(result) ? `_${result}` : result
 }
 
-export function filterDefined<T>(arr: readonly (T | null | undefined)[]) {
-  return arr.filter((e): e is T => e !== null && e !== undefined)
+export function filterDefined<T>(items: readonly (T | null | undefined)[]) {
+  return items.filter((item): item is T => item !== null && item !== undefined)
 }
 
 const JS_RESERVED: ReadonlySet<string> = new Set([

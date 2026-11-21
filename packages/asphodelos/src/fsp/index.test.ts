@@ -155,7 +155,7 @@ describe('fsp', () => {
     it('writes file successfully', async () => {
       const filePath = path.join(TEST_DIR, 'ok.txt')
       await runGenerator(writeFile(filePath, 'hello'))
-      const text = await fsp.readFile(filePath, 'utf-8')
+      const text = await fsp.readFile(filePath, 'utf8')
       expect(text).toBe('hello')
     })
 
@@ -175,21 +175,21 @@ describe('fsp', () => {
       const filePath = path.join(TEST_DIR, 'differ.txt')
       await fsp.writeFile(filePath, 'old content')
       await runGenerator(writeFile(filePath, 'new content'))
-      const text = await fsp.readFile(filePath, 'utf-8')
+      const text = await fsp.readFile(filePath, 'utf8')
       expect(text).toBe('new content')
     })
 
     it('creates file when it does not exist', async () => {
       const filePath = path.join(TEST_DIR, 'new-file.txt')
       await runGenerator(writeFile(filePath, 'brand new'))
-      const text = await fsp.readFile(filePath, 'utf-8')
+      const text = await fsp.readFile(filePath, 'utf8')
       expect(text).toBe('brand new')
     })
 
     it('handles empty string content', async () => {
       const filePath = path.join(TEST_DIR, 'empty.txt')
       await runGenerator(writeFile(filePath, ''))
-      const text = await fsp.readFile(filePath, 'utf-8')
+      const text = await fsp.readFile(filePath, 'utf8')
       expect(text).toBe('')
     })
 
@@ -197,7 +197,7 @@ describe('fsp', () => {
       const filePath = path.join(TEST_DIR, 'unicode.txt')
       const content = '日本語テスト 🎉 émojis'
       await runGenerator(writeFile(filePath, content))
-      const text = await fsp.readFile(filePath, 'utf-8')
+      const text = await fsp.readFile(filePath, 'utf8')
       expect(text).toBe(content)
     })
 

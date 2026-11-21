@@ -20,7 +20,7 @@ import { responseInfo } from './schema.js'
  * of one in Solid and Svelte), or Angular's inject options. The hooks forward it, so a caller can
  * target a client other than the provided one, or run outside an injection context.
  */
-export type HookTail = {
+type HookTail = {
   readonly name: string
   readonly query: string
   readonly infinite: string
@@ -317,19 +317,19 @@ type Spelling = {
 }
 
 const PLAIN: Spelling = {
-  paramSig: (t) => t.params.map((p) => `${p.name}: ${p.type}`),
-  paramRead: (t) => t.params.map((p) => p.name),
-  paramPass: (t) => t.params.map((p) => p.name),
+  paramSig: (target) => target.params.map((p) => `${p.name}: ${p.type}`),
+  paramRead: (target) => target.params.map((p) => p.name),
+  paramPass: (target) => target.params.map((p) => p.name),
 }
 const THUNK: Spelling = {
-  paramSig: (t) => t.params.map((p) => `${p.name}: () => ${p.type}`),
-  paramRead: (t) => t.params.map((p) => `${p.name}()`),
-  paramPass: (t) => t.params.map((p) => `${p.name}()`),
+  paramSig: (target) => target.params.map((p) => `${p.name}: () => ${p.type}`),
+  paramRead: (target) => target.params.map((p) => `${p.name}()`),
+  paramPass: (target) => target.params.map((p) => `${p.name}()`),
 }
 const REF: Spelling = {
-  paramSig: (t) => t.params.map((p) => `${p.name}: MaybeRefOrGetter<${p.type}>`),
-  paramRead: (t) => t.params.map((p) => `toValue(${p.name})`),
-  paramPass: (t) => t.params.map((p) => p.name),
+  paramSig: (target) => target.params.map((p) => `${p.name}: MaybeRefOrGetter<${p.type}>`),
+  paramRead: (target) => target.params.map((p) => `toValue(${p.name})`),
+  paramPass: (target) => target.params.map((p) => p.name),
 }
 
 /** How the key getters and factories of a library spell the path parameters. */
@@ -822,7 +822,7 @@ export function makeQueryHooks(
 ) {
   return Effect.gen(function* () {
     const prefix = basePath && basePath !== '/' ? basePath : ''
-    const operations = Object.entries(openAPI.paths).flatMap(([pathStr, pathItem]) =>
+    const operations = Object.entries(openAPI.paths ?? {}).flatMap(([pathStr, pathItem]) =>
       pathItem
         ? HTTP_METHODS.flatMap((method) => {
             const rawOperation = pathItem[method]

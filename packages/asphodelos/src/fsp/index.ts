@@ -12,8 +12,8 @@ import type { PlatformError } from 'effect'
 export const fileSystemLayer = NodeFileSystem.layer
 
 /** Whether a platform failure is "the path is not there", the one case worth absorbing. */
-function isNotFound(e: PlatformError.PlatformError) {
-  return e.reason._tag === 'NotFound'
+function isNotFound(error: PlatformError.PlatformError) {
+  return error.reason._tag === 'NotFound'
 }
 
 /** Removes a file. A path that is already gone is not an error. */
@@ -54,11 +54,11 @@ export function readFile(path: string) {
  * That skip is contract, not optimization: the Vite plugin watches its own output, so rewriting
  * an unchanged file would feed a change event straight back into the generator.
  */
-export function writeFile(path: string, data: string) {
+export function writeFile(path: string, content: string) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const existing = yield* fs.readFileString(path).pipe(Effect.orElseSucceed(() => null))
-    if (existing === data) return
-    yield* fs.writeFileString(path, data)
+    if (existing === content) return
+    yield* fs.writeFileString(path, content)
   })
 }

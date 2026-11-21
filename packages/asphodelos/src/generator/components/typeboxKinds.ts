@@ -37,15 +37,17 @@ function makeCode<T>(
 export const responsesCode = makeCode<NonNullable<Components['responses']>[string]>(
   'ResponseSchema',
   (s) =>
-    Object.entries(s).map(([name, res]) => {
-      const schema = jsonSchema(res.content)
+    Object.entries(s).map(([name, response]) => {
+      const schema = jsonSchema(response.content)
       return [name, schema ? typebox(schema) : 't.Void()'] as const
     }),
 )
 
 /** What `responsesCode` renders a `$ref` as: the schemas of the JSON content. */
 export function responsesRefKinds(section: Components['responses']) {
-  return schemaRefKinds(Object.values(section ?? {}).map((res) => jsonSchema(res.content)))
+  return schemaRefKinds(
+    Object.values(section ?? {}).map((response) => jsonSchema(response.content)),
+  )
 }
 
 export const parametersCode = makeCode<Parameter>('ParamsSchema', (s) =>
@@ -82,9 +84,11 @@ export function requestBodiesRefKinds(section: Components['requestBodies']) {
 }
 
 export const headersCode = makeCode<Header | Reference>('HeaderSchema', (s) =>
-  Object.entries(s).map(([name, h]) => {
-    if (isReference(h) && h.$ref) return [name, refIdent(h.$ref) ?? 't.Unknown()'] as const
-    const schema = 'schema' in h ? h.schema : undefined
+  Object.entries(s).map(([name, header]) => {
+    if (isReference(header) && header.$ref) {
+      return [name, refIdent(header.$ref) ?? 't.Unknown()'] as const
+    }
+    const schema = 'schema' in header ? header.schema : undefined
     return [name, schema ? typebox(schema) : 't.Unknown()'] as const
   }),
 )
@@ -97,11 +101,17 @@ export function headersRefKinds(section: { readonly [k: string]: Header | Refere
   const entries = Object.values(section ?? {})
   return new Map([
     ...schemaRefKinds(
-      entries.map((h) =>
-        isReference(h) && h.$ref ? undefined : 'schema' in h ? h.schema : undefined,
+      entries.map((header) =>
+        isReference(header) && header.$ref
+          ? undefined
+          : 'schema' in header
+            ? header.schema
+            : undefined,
       ),
     ),
-    ...stringifiedRefKinds(entries.filter((h) => isReference(h) && h.$ref)),
+    ...stringifiedRefKinds(
+      entries.filter((header) => isReference(header) && header.$ref !== undefined),
+    ),
   ])
 }
 
@@ -125,6 +135,6 @@ export function mediaTypesRefKinds(
     ...schemaRefKinds(
       entries.map((mt) => (!isReference(mt) && 'schema' in mt ? mt.schema : undefined)),
     ),
-    ...stringifiedRefKinds(entries.filter((mt) => isReference(mt) && mt.$ref)),
+    ...stringifiedRefKinds(entries.filter((mt) => isReference(mt) && mt.$ref !== undefined)),
   ])
 }

@@ -7,7 +7,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
  * imported at module scope would otherwise see a `window` that does not exist yet.
  */
 
-type Descriptors = Record<string | symbol, PropertyDescriptor | undefined>
+type Descriptors = { [key: string | symbol]: PropertyDescriptor | undefined }
 
 function ownDescriptors(target: object): Descriptors {
   return Object.fromEntries(

@@ -19,7 +19,7 @@ export function parseOpenAPI(input: `${string}.tsp` | `${string}.yaml` | `${stri
       const program = await compile(NodeHost, path.resolve(input), { noEmit: true })
       if (program.diagnostics.length > 0) {
         throw new Error(
-          `TypeSpec compile failed:\n${program.diagnostics.map((d) => d.message).join('\n')}`,
+          `TypeSpec compile failed:\n${program.diagnostics.map((diagnostic) => diagnostic.message).join('\n')}`,
         )
       }
       const [record] = await getOpenAPI3(program)
@@ -55,10 +55,8 @@ export type OpenAPI = {
   }
   readonly jsonSchemaDialect?: string
   readonly servers?: readonly Server[]
-  readonly paths: OpenAPIPaths
-  readonly webhooks?: {
-    readonly [k: string]: PathItem
-  }
+  readonly paths?: OpenAPIPaths
+  readonly webhooks?: OpenAPIPaths
   readonly components?: Components
   readonly security?: readonly { readonly [k: string]: readonly string[] }[]
   readonly tags?: {
@@ -152,8 +150,11 @@ type OAuthFlow = {
   readonly deviceAuthorization?: OAuthFlowDetail
 }
 
+// A path key written with nothing after it (`/pets:` in YAML) parses as `null`, so every reader
+// of `paths` / `webhooks` asks before it reads. OpenAPI 3.1 makes `paths` optional: a document
+// may describe webhooks only.
 type OpenAPIPaths = {
-  readonly [k: string]: PathItem
+  readonly [k: string]: PathItem | null
 }
 
 export type Type =
@@ -331,7 +332,7 @@ export type Operation = {
   readonly operationId?: string
   readonly parameters?: readonly (Parameter | Reference)[]
   readonly requestBody?: RequestBody | Reference
-  readonly responses: {
+  readonly responses?: {
     readonly [k: string]: Responses
   }
   readonly callbacks?: {
@@ -533,7 +534,7 @@ export type RequestBody = {
 } & VendorExtensions
 
 export type Media = {
-  readonly schema: Schema
+  readonly schema?: Schema
   readonly itemSchema?: Schema
   readonly example?: unknown
   readonly examples?: {

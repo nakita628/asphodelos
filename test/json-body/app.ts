@@ -21,7 +21,7 @@ function echoValue(value: unknown): Echo {
   if (value instanceof Date) return { valueType: 'Date', valueText: value.toISOString() }
   return {
     valueType: value === null ? 'null' : typeof value,
-    valueText: JSON.stringify(value) ?? 'undefined',
+    valueText: value === undefined ? 'undefined' : JSON.stringify(value),
   }
 }
 
@@ -30,8 +30,8 @@ function echoValue(value: unknown): Echo {
  * object as its JSON text, so a test can tell `[1, 2]` from `['1', '2']`. A key the schema left
  * out stays out: an absent optional field is absent here too.
  */
-function echoFields(fields: Record<string, unknown>) {
-  const described: Record<string, Echo | Echo[]> = {}
+function echoFields(fields: { [key: string]: unknown }) {
+  const described: { [key: string]: Echo | Echo[] } = {}
   for (const [name, value] of Object.entries(fields)) {
     if (value === undefined) continue
     described[name] = Array.isArray(value) ? value.map(echoValue) : echoValue(value)

@@ -18,11 +18,11 @@ import type {
 } from '../../openapi/index.js'
 import { pascalCase } from '../../utils/index.js'
 
-function primitiveTypeToTs(t: string) {
-  if (t === 'string') return 'string'
-  if (t === 'number' || t === 'integer') return 'number'
-  if (t === 'boolean') return 'boolean'
-  if (t === 'null') return 'null'
+function primitiveTypeToTs(type: string) {
+  if (type === 'string') return 'string'
+  if (type === 'number' || type === 'integer') return 'number'
+  if (type === 'boolean') return 'boolean'
+  if (type === 'null') return 'null'
   return 'unknown'
 }
 
@@ -40,16 +40,21 @@ function literalToTs(v: unknown) {
 
 function isNullable(s: Schema) {
   if (s.nullable === true) return true
-  if (Array.isArray(s.type)) return s.type.some((t) => t === 'null')
+  if (Array.isArray(s.type)) return s.type.some((kind) => kind === 'null')
   return false
 }
 
 function primaryType(s: Schema) {
   if (typeof s.type === 'string') return s.type
-  if (Array.isArray(s.type)) return s.type.find((t) => t !== 'null')
+  if (Array.isArray(s.type)) return s.type.find((kind) => kind !== 'null')
   return undefined
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function schemaToTs(schema: Schema | undefined): string {
   if (!schema) return 'unknown'
   if (schema.$ref) {
@@ -89,7 +94,7 @@ export function schemaToTs(schema: Schema | undefined): string {
     })
     const additional = schema.additionalProperties
     const propsTs = entries.length === 0 ? '' : `{ ${entries.join('; ')} }`
-    if (additional && typeof additional === 'object') {
+    if (typeof additional === 'object') {
       const valueTs = schemaToTs(additional)
       const recordTs = `Record<string, ${valueTs}>`
       return wrap(propsTs === '' ? recordTs : `${propsTs} & ${recordTs}`)
@@ -229,7 +234,7 @@ function nestRoute(keys: readonly string[], method: string, opTs: string) {
 function makeRoutes(openAPI: OpenAPI, prefix?: string) {
   const out: string[] = []
   const prefixKeys: readonly string[] = prefix && prefix !== '/' ? pathToKeys(prefix) : []
-  for (const [pathStr, pathItem] of Object.entries(openAPI.paths)) {
+  for (const [pathStr, pathItem] of Object.entries(openAPI.paths ?? {})) {
     if (!pathItem) continue
     const keys = [...prefixKeys, ...pathToKeys(pathStr)]
     for (const method of HTTP_METHODS) {
@@ -280,24 +285,23 @@ function collectRefs(openAPI: OpenAPI) {
     }
     if (resp.content) walkContentMap(resp.content)
   }
-  for (const [, pathItem] of Object.entries(openAPI.paths)) {
+  const walkParameter = (p: Parameter | Reference) => {
+    if (isStringRef(p) && p.$ref) {
+      const name = p.$ref.split('/').pop()
+      const resolved = name ? components?.parameters?.[decodeURIComponent(name)] : undefined
+      if (resolved) enqueue(resolved.schema)
+      return
+    }
+    if ('schema' in p) enqueue(parameterSchema(p))
+  }
+  for (const [, pathItem] of Object.entries(openAPI.paths ?? {})) {
     if (!pathItem) continue
     for (const method of HTTP_METHODS) {
       const op = pathItem[method]
       if (!op) continue
       walkRequestBody(op.requestBody)
-      for (const p of op.parameters ?? []) {
-        if (isStringRef(p) && p.$ref) {
-          const pname = p.$ref.split('/').pop()
-          const resolved = pname ? components?.parameters?.[decodeURIComponent(pname)] : undefined
-          if (resolved) enqueue(resolved.schema)
-        } else if ('schema' in p) {
-          enqueue(parameterSchema(p))
-        }
-      }
-      for (const resp of Object.values(op.responses ?? {})) {
-        if (resp) walkResponse(resp)
-      }
+      for (const p of op.parameters ?? []) walkParameter(p)
+      for (const resp of Object.values(op.responses ?? {})) walkResponse(resp)
     }
   }
   while (queue.length > 0) {
@@ -308,6 +312,11 @@ function collectRefs(openAPI: OpenAPI) {
   return [...seen]
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function makeAppType(openAPI: OpenAPI, prefix?: string) {
   const refNames = collectRefs(openAPI)
   const refAliases = refNames.map((name) => {

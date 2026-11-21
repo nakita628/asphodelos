@@ -51,8 +51,8 @@ export type TypeboxCtx = {
 }
 
 /** Whether the value this schema describes reaches Elysia as text. */
-export function isTextInput(ctx: TypeboxCtx) {
-  return ctx.text === true
+function isTextInput(context: TypeboxCtx) {
+  return context.text === true
 }
 
 /**
@@ -60,15 +60,16 @@ export function isTextInput(ctx: TypeboxCtx) {
  * a boolean there is read through `t.Numeric` / `t.BooleanString`, the way Elysia itself reads a
  * query or a header; a JSON body carries its own types and keeps the plain factories.
  */
-export function isFormMedia(ctx: TypeboxCtx) {
+export function isFormMedia(context: TypeboxCtx) {
   return (
-    ctx.mediaType === 'multipart/form-data' || ctx.mediaType === 'application/x-www-form-urlencoded'
+    context.mediaType === 'multipart/form-data' ||
+    context.mediaType === 'application/x-www-form-urlencoded'
   )
 }
 
 /** Whether a number or a boolean has to be read from text by the schema itself. */
-export function readsTextItself(ctx: TypeboxCtx) {
-  return isFormMedia(ctx) || ctx.readsText === true
+export function readsTextItself(context: TypeboxCtx) {
+  return isFormMedia(context) || context.readsText === true
 }
 
 /**
@@ -77,8 +78,8 @@ export function readsTextItself(ctx: TypeboxCtx) {
  * and is typed `1 | 2 | 3`. A string member needs no reading, and a value that is not text, a JSON
  * body, is left as it is.
  */
-function readLiteralsFromText(expr: string, values: readonly unknown[], ctx: TypeboxCtx) {
-  if (!isTextInput(ctx) || values.length === 0) return expr
+function readLiteralsFromText(expr: string, values: readonly unknown[], context: TypeboxCtx) {
+  if (!isTextInput(context) || values.length === 0) return expr
   if (!values.every((v) => typeof v === 'number' || typeof v === 'boolean')) return expr
   const spelled = values.map((v) => `t.Literal(${JSON.stringify(String(v))})`)
   const asText = spelled.length === 1 ? spelled[0] : `t.Union([${spelled.join(',')}])`
@@ -86,20 +87,20 @@ function readLiteralsFromText(expr: string, values: readonly unknown[], ctx: Typ
   return `t.Transform(t.Union([${asText},${expr}])).Decode((v):${type}=>(typeof v==='string'?JSON.parse(v):v)).Encode((v)=>v)`
 }
 
-export function typebox(schema: Schema, ctx: TypeboxCtx = {}): string {
+export function typebox(schema: Schema, context: TypeboxCtx = {}): string {
   const enabled = schema['x-readonly'] === true
   const rawTransform = schema['x-transform']
   if (typeof rawTransform === 'string' && rawTransform.length > 0) {
-    return readonly(wrap(brand(rawTransform, schema), schema, ctx), enabled)
+    return readonly(wrap(brand(rawTransform, schema), schema, context), enabled)
   }
   if (schema.$ref) return ref(schema)
-  if (schema.allOf) return readonly(wrap(intersect(schema.allOf, schema), schema, ctx), enabled)
-  if (schema.oneOf) return readonly(wrap(union(schema.oneOf, schema), schema, ctx), enabled)
-  if (schema.anyOf) return readonly(wrap(union(schema.anyOf, schema), schema, ctx), enabled)
-  if (schema.not) return readonly(wrap(notType(schema.not, schema), schema, ctx), enabled)
+  if (schema.allOf) return readonly(wrap(intersect(schema.allOf, schema), schema, context), enabled)
+  if (schema.oneOf) return readonly(wrap(union(schema.oneOf, schema), schema, context), enabled)
+  if (schema.anyOf) return readonly(wrap(union(schema.anyOf, schema), schema, context), enabled)
+  if (schema.not) return readonly(wrap(notType(schema.not, schema), schema, context), enabled)
   if (schema.enum) {
-    const literal = readLiteralsFromText(_enum(schema), schema.enum, ctx)
-    return readonly(wrap(brand(literal, schema), schema, ctx), enabled)
+    const literal = readLiteralsFromText(_enum(schema), schema.enum, context)
+    return readonly(wrap(brand(literal, schema), schema, context), enabled)
   }
   if (schema.const !== undefined) {
     const opts = options([
@@ -115,20 +116,24 @@ export function typebox(schema: Schema, ctx: TypeboxCtx = {}): string {
         : typeof schema.const === 'object'
           ? literalSchema(schema.const)
           : `t.Literal(${JSON.stringify(schema.const)}${optsPart})`
-    const read = readLiteralsFromText(literal, [schema.const], ctx)
-    return readonly(wrap(brand(read, schema), schema, ctx), enabled)
+    const read = readLiteralsFromText(literal, [schema.const], context)
+    return readonly(wrap(brand(read, schema), schema, context), enabled)
   }
   // `type: [integer, string]` is a union of the types it lists, each read with the constraints
   // that apply to it; `null` among them is added by `wrap`, as it is for a single type.
-  const listed = isTypeArray(schema.type) ? schema.type.filter((t) => t !== 'null') : []
+  const listed = isTypeArray(schema.type) ? schema.type.filter((kind) => kind !== 'null') : []
   if (listed.length > 1) {
-    const members = listed.map((t) => typebox({ ...schema, type: t, nullable: undefined }, ctx))
-    return readonly(wrap(`t.Union([${members.join(',')}])`, schema, ctx), enabled)
+    const members = listed.map((kind) =>
+      typebox({ ...schema, type: kind, nullable: undefined }, context),
+    )
+    return readonly(wrap(`t.Union([${members.join(',')}])`, schema, context), enabled)
   }
   const primaryType = (): Type | undefined => {
     if (typeof schema.type === 'string') return schema.type
-    if (isTypeArray(schema.type)) return schema.type.find((t) => t !== 'null')
-    if (schema.properties ?? schema.additionalProperties !== undefined) return 'object'
+    if (isTypeArray(schema.type)) return schema.type.find((kind) => kind !== 'null')
+    if (schema.properties !== undefined || schema.additionalProperties !== undefined) {
+      return 'object'
+    }
     if (schema.items ?? schema.prefixItems) return 'array'
     return undefined
   }
@@ -136,17 +141,17 @@ export function typebox(schema: Schema, ctx: TypeboxCtx = {}): string {
   const primary = primaryType()
   switch (primary) {
     case 'string':
-      return readonly(wrap(brand(string(schema, ctx), schema), schema, ctx), enabled)
+      return readonly(wrap(brand(string(schema, context), schema), schema, context), enabled)
     case 'integer':
-      return readonly(wrap(brand(integer(schema), schema), schema, ctx), enabled)
+      return readonly(wrap(brand(integer(schema), schema), schema, context), enabled)
     case 'number':
-      return readonly(wrap(brand(number(schema, ctx), schema), schema, ctx), enabled)
+      return readonly(wrap(brand(number(schema, context), schema), schema, context), enabled)
     case 'boolean':
-      return readonly(wrap(brand(boolean(schema, ctx), schema), schema, ctx), enabled)
+      return readonly(wrap(brand(boolean(schema, context), schema), schema, context), enabled)
     case 'array':
-      return readonly(wrap(array(schema, ctx), schema, ctx), enabled)
+      return readonly(wrap(array(schema, context), schema, context), enabled)
     case 'object':
-      return readonly(wrap(object(schema, ctx), schema, ctx), enabled)
+      return readonly(wrap(object(schema, context), schema, context), enabled)
     case 'null':
       return nullType()
     // `date` never arrives from a parsed document — OpenAPI spells dates as

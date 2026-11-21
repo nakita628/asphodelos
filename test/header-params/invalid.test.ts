@@ -17,13 +17,17 @@ import { headerParamsApp } from './app.js'
 beforeAll(suspendHappyDom)
 afterAll(resumeHappyDom)
 
-async function get(path: string, headers: Record<string, string> = {}) {
+async function get(path: string, headers: { [key: string]: string } = {}) {
   const res = await headerParamsApp.handle(new Request(`http://localhost${path}`, { headers }))
   const body: unknown = await res.json()
   return { status: res.status, body }
 }
 
-async function rejects(path: string, headers: Record<string, string>, issues: readonly string[]) {
+async function rejects(
+  path: string,
+  headers: { [key: string]: string },
+  issues: readonly string[],
+) {
   const { status, body } = await get(path, headers)
   expect(status).toBe(422)
   expect(body).toStrictEqual({ issues })

@@ -7,7 +7,7 @@ import type { TypeboxCtx } from '../typebox/index.js'
 
 export function modelFile(
   tag: string,
-  schemas: readonly { name: string; schema: Schema; ctx?: TypeboxCtx }[],
+  schemas: readonly { name: string; schema: Schema; context?: TypeboxCtx }[],
   componentNames: ReadonlySet<string> = new Set(),
   schemasImportPath = '../../components',
   readonlyMode?: boolean,
@@ -15,8 +15,8 @@ export function modelFile(
   const className = `${pascalCase(tag)}Model`
   const referenced = new Set<string>()
   for (const { schema } of schemas) {
-    for (const r of collectSchemaRefs(schema)) {
-      if (componentNames.has(r)) referenced.add(r)
+    for (const ref of collectSchemaRefs(schema)) {
+      if (componentNames.has(ref)) referenced.add(ref)
     }
   }
   const importedIdents = [...referenced].toSorted().map((n) => `${pascalCase(n)}Schema`)
@@ -25,7 +25,9 @@ export function modelFile(
       ? `import {${importedIdents.join(',')}} from '${schemasImportPath}'\n`
       : ''
   const entries = schemas
-    .map(({ name, schema, ctx }) => `${name}:${readonly(typebox(schema, ctx), readonlyMode)}`)
+    .map(
+      ({ name, schema, context }) => `${name}:${readonly(typebox(schema, context), readonlyMode)}`,
+    )
     .join(',')
   if (entries === '') {
     return `${componentImport}

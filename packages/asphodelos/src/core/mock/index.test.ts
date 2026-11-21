@@ -78,7 +78,7 @@ describe('mock', () => {
     const output = path.join(dir, 'mock.ts')
     const result = await runGenerator(mock(spec, output, { prefix: '/api' }))
     expect(result).toStrictEqual(`Generated mock server written to ${output}`)
-    expect(withoutPreferHelpers(await readFile(output, 'utf-8')))
+    expect(withoutPreferHelpers(await readFile(output, 'utf8')))
       .toBe(`import { Elysia } from 'elysia'
 import { faker } from '@faker-js/faker'
 
@@ -145,7 +145,7 @@ if (import.meta.main) {
     dirs.push(dir)
     const output = path.join(dir, 'mock.ts')
     await runGenerator(mock(spec, output, { prefix: '/api' }))
-    expect(withoutPreferHelpers(await readFile(output, 'utf-8')))
+    expect(withoutPreferHelpers(await readFile(output, 'utf8')))
       .toBe(`import { Elysia } from 'elysia'
 import { faker } from '@faker-js/faker'
 

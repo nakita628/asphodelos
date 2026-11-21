@@ -72,7 +72,7 @@ describe('links — caller ≡ generator contract', () => {
       GetPost: { operationId: 'getPost' },
     }
     await runGenerator(links(sample, output, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = linksCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Link\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -86,7 +86,7 @@ describe('links — caller ≡ generator contract', () => {
     const output = path.join(dir, 'links.ts')
     const sample = { GetUser: { operationId: 'getUser' } }
     await runGenerator(links(sample, output, true))
-    const emitted = fs.readFileSync(path.join(dir, 'links', 'getUser.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(dir, 'links', 'getUser.ts'), 'utf8')
     const generated = linksCode({ GetUser: sample.GetUser })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Link\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -107,7 +107,7 @@ describe('links — a referenced schema named like another component kind', () =
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-links-'))
     const output = path.join(tmpDir, 'links.ts')
     await runGenerator(links(section, output, split))
-    const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf-8')
+    const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
     expect(emitted).toContain(`import { SearchParamsSchema } from '${specifier}'`)
     expect(emitted).not.toContain('parameters')
   })

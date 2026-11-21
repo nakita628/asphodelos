@@ -268,12 +268,12 @@ export function errorCallback(schema: Schema, kind: ErrorKind) {
     return [...acc, { message: b.message, types: [b.type] }]
   }, [])
   const ifs = grouped
-    .map((g) => {
-      const cond = [...g.types]
+    .map((group) => {
+      const cond = [...group.types]
         .toSorted((a, b) => a - b)
-        .map((t) => `type===${t}`)
+        .map((tag) => `type===${tag}`)
         .join('||')
-      return `if(${cond})return ${JSON.stringify(g.message)}`
+      return `if(${cond})return ${JSON.stringify(group.message)}`
     })
     .join(';')
   const body = `(error)=>{const type=error?.errors?.[0]?.type;${ifs};return ${fallbackExpr}}`
@@ -366,19 +366,19 @@ function dependentRequiredSection(schema: Schema): Section | null {
   const map = schema.dependentRequired
   if (message === undefined || !map || Object.keys(map).length === 0) return null
   const emptyEntries = Object.entries(map)
-    .filter(([, requiredKeys]) => !requiredKeys || requiredKeys.length === 0)
+    .filter(([, requiredKeys]) => requiredKeys.length === 0)
     .map(([trigger]) => trigger)
   if (emptyEntries.length > 0) {
     console.warn(
       `[asphodelos] x-dependentRequired-message: dependentRequired entries with empty ` +
-        `arrays are silently skipped — ${emptyEntries.map((t) => `\`${t}\``).join(', ')} ` +
+        `arrays are silently skipped — ${emptyEntries.map((trigger) => `\`${trigger}\``).join(', ')} ` +
         `produce no runtime check. Add at least one required key or remove the entry.`,
     )
   }
   const check = Object.entries(map)
     .map(([trigger, requiredKeys]) => {
       const triggerJson = JSON.stringify(trigger)
-      const missing = (requiredKeys ?? []).map((k) => `!(${JSON.stringify(k)} in v)`).join('||')
+      const missing = requiredKeys.map((k) => `!(${JSON.stringify(k)} in v)`).join('||')
       return missing
         ? `if(${triggerJson} in v&&(${missing}))throw new Error(${JSON.stringify(message)})`
         : null
@@ -397,7 +397,7 @@ function dependentSchemasSection(
   if (message === undefined || !map || Object.keys(map).length === 0) return null
   if (renderSubSchema) {
     for (const [trigger, sub] of Object.entries(map)) {
-      if (sub?.additionalProperties === false) {
+      if (sub.additionalProperties === false) {
         const declared = Object.keys(sub.properties ?? {})
         if (!declared.includes(trigger)) {
           console.warn(
@@ -411,7 +411,7 @@ function dependentSchemasSection(
           )
         }
       }
-      const subType = sub?.type
+      const subType = sub.type
       if (subType !== undefined && subType !== 'object') {
         console.warn(
           `[asphodelos] x-dependentSchemas-message: sub-schema for \`${trigger}\` has ` +
@@ -441,7 +441,7 @@ function dependentSchemasSection(
   const check = Object.entries(map)
     .map(([trigger, sub]) => {
       const triggerJson = JSON.stringify(trigger)
-      const requiredKeys = Array.isArray(sub?.required) ? sub.required : []
+      const requiredKeys = Array.isArray(sub.required) ? sub.required : []
       const missing = requiredKeys.map((k) => `!(${JSON.stringify(k)} in v)`).join('||')
       return missing
         ? `if(${triggerJson} in v&&(${missing}))throw new Error(${JSON.stringify(message)})`
@@ -497,14 +497,17 @@ export function stringTransformWrap(expr: string, schema: Schema) {
  * `null` is read as the value: a query, a header or a form field has no other way to spell it. A
  * nullable string keeps the word as text, which is what it is there.
  */
-export function wrap(expr: string, schema: Schema, ctx: TypeboxCtx = {}) {
+export function wrap(expr: string, schema: Schema, context: TypeboxCtx = {}) {
   const nullable =
     schema.nullable === true || (Array.isArray(schema.type) && schema.type.includes('null'))
   if (!nullable) return expr
   const union = `t.Union([${expr},t.Null()])`
-  const primary = Array.isArray(schema.type) ? schema.type.find((t) => t !== 'null') : schema.type
+  const primary = Array.isArray(schema.type)
+    ? schema.type.find((kind) => kind !== 'null')
+    : schema.type
   const readsNull =
-    ctx.text === true && (primary === 'integer' || primary === 'number' || primary === 'boolean')
+    context.text === true &&
+    (primary === 'integer' || primary === 'number' || primary === 'boolean')
   if (!readsNull) return union
   return `t.Transform(t.Union([t.Literal("null"),${union}])).Decode((v)=>(v==="null"?null:v)).Encode((v)=>v)`
 }
@@ -526,7 +529,7 @@ export function brand(expr: string, schema: Schema) {
     typeof schema.type === 'string'
       ? schema.type
       : Array.isArray(schema.type)
-        ? schema.type.find((t) => t !== 'null')
+        ? schema.type.find((kind) => kind !== 'null')
         : undefined
   const base = primary ? TS_BASE_TYPE[primary] : undefined
   if (!base) return expr

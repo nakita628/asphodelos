@@ -1,5 +1,5 @@
 import type { TypeboxCtx } from '../generator/typebox/index.js'
-import { isReference, isSchemaArray } from '../guard/index.js'
+import { isMediaWithSchema, isReference, isSchemaArray } from '../guard/index.js'
 import type {
   Components,
   Operation,
@@ -55,6 +55,11 @@ function pickBodyMedia(
   return undefined
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function refSchemaName(s: Schema | undefined) {
   if (!s?.$ref) return null
   const m = /^#\/components\/schemas\/([^/]+)$/u.exec(s.$ref)
@@ -81,6 +86,8 @@ function isObjectLike(schema: Schema) {
  * by a copy of the component: the component is written for a typed value, and the copy is read
  * from text where it is used. Arrays, combinators and chains of references are followed; an object
  * component stays a reference.
+ *
+ * @internal
  */
 export function inlineScalarRefs(
   schema: Schema,
@@ -150,11 +157,11 @@ export function bodyInfo(operation: Operation, components?: Components) {
     ...schemaExt,
   }
   if (mediaType === 'application/json') return { inline }
-  return { inline, ctx: { mediaType } }
+  return { inline, context: { mediaType } }
 }
 
-export function responseInfo(res: Responses) {
-  const schema = jsonSchema(res.content)
+export function responseInfo(response: Responses) {
+  const schema = jsonSchema(response.content)
   if (!schema) return { void: true }
   const ref = refSchemaName(schema)
   return ref ? { ref } : { inline: schema }
@@ -164,7 +171,7 @@ export function makeParamsSchema(
   params: readonly (Parameter | Reference)[],
   where: 'path' | 'query' | 'header' | 'cookie',
   components?: Components,
-): { schema: Schema; ctx?: TypeboxCtx } | undefined {
+): { schema: Schema; context?: TypeboxCtx } | undefined {
   const filtered = params.filter((p): p is Parameter => !isReference(p) && p.in === where)
   if (filtered.length === 0) return undefined
   // A parameter declares its schema directly, or under `content` as one document of a media
@@ -212,19 +219,19 @@ export function makeParamsSchema(
     ...(required.length > 0 ? { required } : {}),
     ...hoisted,
   }
-  const ctx: TypeboxCtx = {
+  const context: TypeboxCtx = {
     parameterLocation: where,
     ...(where === 'cookie' ? { elysiaKind: 'cookie' } : {}),
     ...(jsonProperties.length > 0 ? { jsonProperties } : {}),
     ...(Object.keys(delimitedProperties).length > 0 ? { delimitedProperties } : {}),
   }
-  return { schema, ctx }
+  return { schema, context }
 }
 
 /** The one document a parameter declares under `content`, with its media type. */
 function contentSchema(p: Parameter): { mediaType: string; schema: Schema } | undefined {
   for (const [mediaType, media] of Object.entries(p.content ?? {})) {
-    if (media && !isReference(media) && media.schema) return { mediaType, schema: media.schema }
+    if (isMediaWithSchema(media)) return { mediaType, schema: media.schema }
   }
   return undefined
 }
@@ -253,7 +260,7 @@ export function collectSchemaRefs(schema: Schema, acc = new Set<string>()) {
       collectSchemaRefs(i, acc)
     }
   }
-  if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+  if (typeof schema.additionalProperties === 'object') {
     collectSchemaRefs(schema.additionalProperties, acc)
   }
   if (schema.$ref) {
@@ -291,6 +298,11 @@ export function collectSchemaRefs(schema: Schema, acc = new Set<string>()) {
   return acc
 }
 
+/**
+ * Exported for its unit tests; nothing outside this module imports it.
+ *
+ * @internal
+ */
 export function topoSortSchemas<T extends { name: string; schema: Schema }>(
   schemas: readonly T[],
 ): T[] {
@@ -336,23 +348,25 @@ export function sccSchemas(
     counter.value += 1
     stack.push(v)
     onStack.add(v)
-    for (const w of refsOf(v)) {
-      if (!index.has(w)) {
-        strongconnect(w)
-        lowlink.set(v, Math.min(lowlink.get(v) ?? 0, lowlink.get(w) ?? 0))
-      } else if (onStack.has(w)) {
-        lowlink.set(v, Math.min(lowlink.get(v) ?? 0, index.get(w) ?? 0))
+    for (const next of refsOf(v)) {
+      if (!index.has(next)) {
+        strongconnect(next)
+        lowlink.set(v, Math.min(lowlink.get(v) ?? 0, lowlink.get(next) ?? 0))
+      } else if (onStack.has(next)) {
+        lowlink.set(v, Math.min(lowlink.get(v) ?? 0, index.get(next) ?? 0))
       }
     }
     if ((lowlink.get(v) ?? 0) === (index.get(v) ?? 0)) {
       const group: { name: string; schema: Schema }[] = []
-      while (true) {
-        const w = stack.pop()
-        if (w === undefined) break
-        onStack.delete(w)
-        const def = byName.get(w)
+      // Pop the component off the stack, down to and including its root `v`.
+      for (
+        let member = stack.pop();
+        member !== undefined;
+        member = member === v ? undefined : stack.pop()
+      ) {
+        onStack.delete(member)
+        const def = byName.get(member)
         if (def) group.push(def)
-        if (w === v) break
       }
       groups.push(group)
     }
@@ -479,11 +493,11 @@ export function moduleComponentRefs(
   componentSchemas: { readonly [k: string]: Schema } = {},
 ) {
   const direct = new Set<string>()
-  for (const r of routes) {
-    if (r.bodyRef && componentNames.has(r.bodyRef)) direct.add(r.bodyRef)
-    for (const res of r.responses) {
-      if (res.schema.kind === 'ref' && componentNames.has(res.schema.name)) {
-        direct.add(res.schema.name)
+  for (const route of routes) {
+    if (route.bodyRef && componentNames.has(route.bodyRef)) direct.add(route.bodyRef)
+    for (const response of route.responses) {
+      if (response.schema.kind === 'ref' && componentNames.has(response.schema.name)) {
+        direct.add(response.schema.name)
       }
     }
   }
