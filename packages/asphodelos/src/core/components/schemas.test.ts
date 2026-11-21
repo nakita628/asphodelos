@@ -92,3 +92,22 @@ describe('schemas — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('schemas — split mode, a sibling named like another component kind', () => {
+  it('imports a schema named `ErrorResponse` from its own file only', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-schemas-'))
+    const output = path.join(tmpDir, 'schemas.ts')
+    const sample = {
+      Wrapper: {
+        type: 'object',
+        properties: { error: { $ref: '#/components/schemas/ErrorResponse' } },
+      },
+      ErrorResponse: { type: 'object', properties: { message: { type: 'string' } } },
+    } as const
+    await runGenerator(schemas(sample, output, true, false))
+    const emitted = fs.readFileSync(path.join(tmpDir, 'schemas', 'wrapper.ts'), 'utf-8')
+    expect(emitted).toStrictEqual(
+      `import { t } from 'elysia'\nimport { ErrorResponseSchema } from './errorResponse'\n\nexport const WrapperSchema = t.Object({ error: t.Optional(ErrorResponseSchema) })\n`,
+    )
+  })
+})

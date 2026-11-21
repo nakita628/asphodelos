@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 
 import { emit } from '../../emit/index.js'
 import { GenerateError } from '../../error/index.js'
-import { mediaTypesCode } from '../../generator/components/index.js'
+import { mediaTypesCode, mediaTypesRefKinds } from '../../generator/components/index.js'
 import { makeImports, makeBarrel } from '../../helper/index.js'
 import type { Components } from '../../openapi/index.js'
 import { uncapitalize } from '../../utils/index.js'
@@ -35,7 +35,7 @@ export function mediaTypes(
             const code = mediaTypesCode({ [name]: value }, readonly, exportTypes)
             const filePath = path.join(outDir, `${uncapitalize(name)}.ts`)
             return emit(
-              makeImports(code, filePath, components, split),
+              makeImports(code, filePath, components, split, mediaTypesRefKinds({ [name]: value })),
               path.dirname(filePath),
               filePath,
             )
@@ -47,7 +47,11 @@ export function mediaTypes(
       return `Generated mediaTypes code written to ${outDir}/*.ts (index.ts included)`
     }
     const definitions = mediaTypesCode(section, readonly, exportTypes)
-    yield* emit(makeImports(definitions, output, components, split), path.dirname(output), output)
+    yield* emit(
+      makeImports(definitions, output, components, split, mediaTypesRefKinds(section)),
+      path.dirname(output),
+      output,
+    )
     return `Generated mediaTypes code written to ${output}`
   })
 }

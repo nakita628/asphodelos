@@ -126,6 +126,28 @@ describe('makeImports — components classification (longest-suffix)', () => {
   })
 })
 
+describe('makeImports — the kinds of the $refs the code was rendered from', () => {
+  it.each([
+    ['ErrorResponseSchema', 'schemas', './schemas'],
+    ['ErrorResponseSchema', 'responses', './responses'],
+    ['SearchParamsSchema', 'schemas', './schemas'],
+    ['SearchParamsSchema', 'parameters', './parameters'],
+  ] as const)('%s rendered from a $ref to the %s is imported from %s', (ident, kind, specifier) => {
+    const code = `const X = ${ident}`
+    expect(makeImports(code, '/gen/a.ts', undefined, false, new Map([[ident, kind]]))).toBe(
+      `import {${ident}} from '${specifier}'\n\n${code}`,
+    )
+  })
+
+  it('classifies an identifier no $ref was rendered as by its suffix', () => {
+    const code = 'const X = NotFoundResponseSchema'
+    const refKinds = new Map([['UserSchema', 'schemas']])
+    expect(makeImports(code, '/gen/a.ts', undefined, false, refKinds)).toBe(
+      `import {NotFoundResponseSchema} from './responses'\n\n${code}`,
+    )
+  })
+})
+
 describe('makeImports — excludeKinds + local exports', () => {
   it('skips identifiers exported locally in the same file', () => {
     const code = 'export const UserSchema = t.Object({})\nconst X = UserSchema'
@@ -134,7 +156,9 @@ describe('makeImports — excludeKinds + local exports', () => {
 
   it('skips identifiers from explicitly excluded kinds', () => {
     const code = 'const X = UserSchema'
-    expect(makeImports(code, '/gen/a.ts', undefined, false, new Set(['schemas']))).toBe(code)
+    expect(makeImports(code, '/gen/a.ts', undefined, false, undefined, new Set(['schemas']))).toBe(
+      code,
+    )
   })
 })
 

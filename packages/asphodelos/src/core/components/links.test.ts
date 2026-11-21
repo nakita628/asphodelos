@@ -94,3 +94,21 @@ describe('links — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('links — a referenced schema named like another component kind', () => {
+  const section = {
+    Next: { operationId: 'listUsers', requestBody: { $ref: '#/components/schemas/SearchParams' } },
+  } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'links.ts', specifier: './schemas' },
+    { mode: 'split', split: true, file: 'links/next.ts', specifier: '../schemas' },
+  ])('$mode: imports SearchParamsSchema from the schemas', async ({ split, file, specifier }) => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-links-'))
+    const output = path.join(tmpDir, 'links.ts')
+    await runGenerator(links(section, output, split))
+    const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf-8')
+    expect(emitted).toContain(`import { SearchParamsSchema } from '${specifier}'`)
+    expect(emitted).not.toContain('parameters')
+  })
+})
