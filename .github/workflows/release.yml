@@ -1,17 +1,21 @@
 name: release
 
 # Publishes packages/asphodelos to npm and cuts a GitHub release, driven entirely by the `version`
-# field of its package.json: bump it on main and, once Test is green for that push, the version
+# field of its package.json: bump it on main and, once Test is green for that commit, the version
 # is tagged, published (only if npm does not have it yet) and released. Every job works from the
-# commit Test ran on (`head_sha`), so the tag, the npm tarball and the GitHub release always
-# describe the same commit. A push that does not change the version does nothing, and every job
-# is safe to re-run.
+# commit Test passed on, so the tag, the npm tarball and the GitHub release always describe the
+# same commit. A commit that does not change the version does nothing, and every job is safe to
+# re-run.
+#
+# It starts two ways: after Test passes on main for a push (or a run someone dispatched there),
+# from that run's commit; or dispatched with a commit, which release-pr.yml does after merging the
+# release pull request, because neither that merge nor the Test run it then dispatches can start a
+# `workflow_run` workflow (both come from its GITHUB_TOKEN). A dispatched commit is checked first:
+# it has to be on main, and Test's check has to have passed on it.
 #
 # `workflow_run` is the trigger zizmor warns about because it hands a token to code from a pull
-# request when misused; here it runs only for a `push` to main, or a Test run dispatched on main
-# (release-merge.yml dispatches one after merging the release pull request, since a merge made with
-# its GITHUB_TOKEN starts no workflow, and a dispatch needs write access), every job works from the
-# commit Test ran on, and the token stays read-only except where a tag or a release is written.
+# request when misused; here it runs only for Test on main, every job works from the commit Test
+# passed on, and the token stays read-only except where a tag or a release is written.
 #
 # Action versions are pinned to a commit digest with the tag kept as a comment.
 
@@ -20,6 +24,12 @@ on:
     workflows: [Test]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: The commit on main to release. Test has to have passed on it.
+        required: true
+        type: string
 
 permissions: {}
 
@@ -31,17 +41,51 @@ jobs:
   check:
     runs-on: ubuntu-latest
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))
     permissions:
       contents: read
+      checks: read # a dispatched commit has to carry Test's passing check
     outputs:
+      sha: ${{ steps.commit.outputs.sha }}
       version: ${{ steps.ver.outputs.version }}
       unpublished: ${{ steps.ver.outputs.unpublished }}
     steps:
+      - name: Settle the commit to release
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          DISPATCHED_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DISPATCHED_SHA" ]; then
+            echo "sha=$RUN_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! [[ $DISPATCHED_SHA =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::$DISPATCHED_SHA is not a full commit SHA"
+            exit 1
+          fi
+          # On main: main is the commit, or is ahead of it.
+          STATUS=$(gh api "repos/$GH_REPO/compare/$DISPATCHED_SHA...main" --jq .status)
+          if [ "$STATUS" != identical ] && [ "$STATUS" != ahead ]; then
+            echo "::error::$DISPATCHED_SHA is not on main"
+            exit 1
+          fi
+          PASSED=$(gh api "repos/$GH_REPO/commits/$DISPATCHED_SHA/check-runs?check_name=check" \
+            --jq '[.check_runs[] | select(.app.slug == "github-actions" and .conclusion == "success")] | length')
+          if [ "$PASSED" -eq 0 ]; then
+            echo "::error::Test has not passed on $DISPATCHED_SHA"
+            exit 1
+          fi
+          echo "sha=$DISPATCHED_SHA" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ steps.commit.outputs.sha }}
           persist-credentials: false
 
       - name: Check version and npm publish state
@@ -78,7 +122,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.check.outputs.version }}
           UNPUBLISHED: ${{ needs.check.outputs.unpublished }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_SHA: ${{ needs.check.outputs.sha }}
         run: |
           set -euo pipefail
           REF="refs/tags/v$VERSION"
@@ -128,7 +172,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.check.outputs.sha }}
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
