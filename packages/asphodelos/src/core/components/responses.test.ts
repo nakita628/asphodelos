@@ -81,3 +81,41 @@ describe('responses — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('responses — a referenced schema named like another component kind', () => {
+  // A schema named `ErrorResponse` renders as `ErrorResponseSchema`, which ends in the suffix of
+  // the responses themselves: the import follows the `$ref` it was rendered from.
+  const sectionFor = (name: string) => ({
+    ClientError: {
+      description: 'client error',
+      content: {
+        'application/json': { schema: { $ref: `#/components/schemas/${name}` as const } },
+      },
+    },
+  })
+
+  it.each([
+    'ErrorResponse',
+    'SearchParams',
+    'CreateUserRequestBody',
+    'RateLimitHeader',
+    'JsonMediaType',
+  ] as const)('imports %sSchema from the schemas', async (name) => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
+    const output = path.join(tmpDir, 'responses.ts')
+    await runGenerator(responses(sectionFor(name), output, false, false))
+    expect(fs.readFileSync(output, 'utf-8')).toStrictEqual(
+      `import { ${name}Schema } from './schemas'\n\nexport const ClientErrorResponseSchema = ${name}Schema\n`,
+    )
+  })
+
+  it('imports it from the schemas in split mode too', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
+    const output = path.join(tmpDir, 'responses.ts')
+    await runGenerator(responses(sectionFor('ErrorResponse'), output, true, false))
+    const emitted = fs.readFileSync(path.join(tmpDir, 'responses', 'clientError.ts'), 'utf-8')
+    expect(emitted).toStrictEqual(
+      `import { ErrorResponseSchema } from '../schemas'\n\nexport const ClientErrorResponseSchema = ErrorResponseSchema\n`,
+    )
+  })
+})

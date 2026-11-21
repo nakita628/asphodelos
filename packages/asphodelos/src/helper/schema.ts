@@ -387,6 +387,26 @@ export function refIdent(ref: string): string | undefined {
   return `${pascalCase(decodeURIComponent(m[2]))}${suffix}`
 }
 
+function refKindEntries(value: unknown): readonly (readonly [ident: string, kind: string])[] {
+  if (Array.isArray(value)) return value.flatMap(refKindEntries)
+  if (typeof value !== 'object' || value === null) return []
+  if (isReference(value) && value.$ref) {
+    const kind = REF_PATTERN.exec(value.$ref)?.[1]
+    const ident = refIdent(value.$ref)
+    return kind && ident ? [[ident, kind]] : []
+  }
+  return Object.values(value).flatMap(refKindEntries)
+}
+
+/**
+ * The component kind of each identifier the `$ref`s in `value` render to, keyed by the identifier.
+ * The identifier's suffix cannot tell: `#/components/schemas/ErrorResponse` renders to
+ * `ErrorResponseSchema` as `#/components/responses/Error` does.
+ */
+export function refKinds(value: unknown): ReadonlyMap<string, string> {
+  return new Map(refKindEntries(value))
+}
+
 export function stringifyRefs(value: unknown): string {
   if (value === null) return 'null'
   if (value === undefined) return 'undefined'

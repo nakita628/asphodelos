@@ -126,6 +126,29 @@ describe('makeImports — components classification (longest-suffix)', () => {
   })
 })
 
+describe('makeImports — kinds read off the source the code was generated from', () => {
+  it.each([
+    ['#/components/schemas/ErrorResponse', 'ErrorResponseSchema', './schemas'],
+    ['#/components/responses/Error', 'ErrorResponseSchema', './responses'],
+    ['#/components/schemas/SearchParams', 'SearchParamsSchema', './schemas'],
+    ['#/components/parameters/Search', 'SearchParamsSchema', './parameters'],
+  ] as const)('%s renders %s, imported from %s', (ref, ident, specifier) => {
+    const code = `const X = ${ident}`
+    const source = { content: { 'application/json': { schema: { $ref: ref } } } }
+    expect(makeImports(code, '/gen/a.ts', undefined, false, source)).toBe(
+      `import {${ident}} from '${specifier}'\n\n${code}`,
+    )
+  })
+
+  it('classifies an identifier no `$ref` in the source renders by its suffix', () => {
+    const code = 'const X = NotFoundResponseSchema'
+    const source = { $ref: '#/components/schemas/User' }
+    expect(makeImports(code, '/gen/a.ts', undefined, false, source)).toBe(
+      `import {NotFoundResponseSchema} from './responses'\n\n${code}`,
+    )
+  })
+})
+
 describe('makeImports — excludeKinds + local exports', () => {
   it('skips identifiers exported locally in the same file', () => {
     const code = 'export const UserSchema = t.Object({})\nconst X = UserSchema'
@@ -134,7 +157,9 @@ describe('makeImports — excludeKinds + local exports', () => {
 
   it('skips identifiers from explicitly excluded kinds', () => {
     const code = 'const X = UserSchema'
-    expect(makeImports(code, '/gen/a.ts', undefined, false, new Set(['schemas']))).toBe(code)
+    expect(makeImports(code, '/gen/a.ts', undefined, false, undefined, new Set(['schemas']))).toBe(
+      code,
+    )
   })
 })
 

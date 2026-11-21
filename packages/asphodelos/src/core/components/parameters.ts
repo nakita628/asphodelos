@@ -35,7 +35,7 @@ export function parameters(
             const code = parametersCode({ [name]: value }, readonly, exportTypes)
             const filePath = path.join(outDir, `${uncapitalize(name)}.ts`)
             return emit(
-              makeImports(code, filePath, components, split),
+              makeImports(code, filePath, components, split, value),
               path.dirname(filePath),
               filePath,
             )
@@ -47,7 +47,11 @@ export function parameters(
       return `Generated parameters code written to ${outDir}/*.ts (index.ts included)`
     }
     const definitions = parametersCode(section, readonly, exportTypes)
-    yield* emit(makeImports(definitions, output, components, split), path.dirname(output), output)
+    yield* emit(
+      makeImports(definitions, output, components, split, section),
+      path.dirname(output),
+      output,
+    )
     return `Generated parameters code written to ${output}`
   })
 }

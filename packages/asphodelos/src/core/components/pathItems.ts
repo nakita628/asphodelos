@@ -33,7 +33,7 @@ export function pathItems(
             const code = pathItemsCode({ [name]: value })
             const filePath = path.join(outDir, `${uncapitalize(name)}.ts`)
             return emit(
-              makeImports(code, filePath, components, split),
+              makeImports(code, filePath, components, split, value),
               path.dirname(filePath),
               filePath,
             )
@@ -45,7 +45,11 @@ export function pathItems(
       return `Generated pathItems code written to ${outDir}/*.ts (index.ts included)`
     }
     const definitions = pathItemsCode(section)
-    yield* emit(makeImports(definitions, output, components, split), path.dirname(output), output)
+    yield* emit(
+      makeImports(definitions, output, components, split, section),
+      path.dirname(output),
+      output,
+    )
     return `Generated pathItems code written to ${output}`
   })
 }
