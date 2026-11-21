@@ -81,3 +81,77 @@ describe('responses — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('responses — a referenced schema named like another component kind', () => {
+  // A schema named `ErrorResponse` renders as `ErrorResponseSchema`, which ends in the suffix of
+  // the responses themselves: the import follows the `$ref` it was rendered from.
+  const sectionFor = (name: string) => ({
+    ClientError: {
+      description: 'client error',
+      content: {
+        'application/json': { schema: { $ref: `#/components/schemas/${name}` as const } },
+      },
+    },
+  })
+
+  it.each([
+    'ErrorResponse',
+    'SearchParams',
+    'CreateUserRequestBody',
+    'RateLimitHeader',
+    'JsonMediaType',
+  ] as const)('imports %sSchema from the schemas', async (name) => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
+    const output = path.join(tmpDir, 'responses.ts')
+    await runGenerator(responses(sectionFor(name), output, false, false))
+    expect(fs.readFileSync(output, 'utf8')).toStrictEqual(
+      `import { ${name}Schema } from './schemas'\n\nexport const ClientErrorResponseSchema = ${name}Schema\n`,
+    )
+  })
+
+  it('ignores a header $ref the response does not render, though it renders as the same identifier', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
+    const output = path.join(tmpDir, 'responses.ts')
+    const section = {
+      TooManyRequests: {
+        description: 'too many requests',
+        content: {
+          'application/json': { schema: { $ref: '#/components/schemas/RateLimitHeader' as const } },
+        },
+        headers: { 'X-RateLimit': { $ref: '#/components/headers/RateLimit' as const } },
+      },
+    }
+    await runGenerator(responses(section, output, false, false))
+    expect(fs.readFileSync(output, 'utf8')).toStrictEqual(
+      `import { RateLimitHeaderSchema } from './schemas'\n\nexport const TooManyRequestsResponseSchema = RateLimitHeaderSchema\n`,
+    )
+  })
+
+  it('writes the file when a $ref it does not render is not valid percent-encoding', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
+    const output = path.join(tmpDir, 'responses.ts')
+    const section = {
+      TooManyRequests: {
+        description: 'too many requests',
+        content: {
+          'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' as const } },
+        },
+        headers: { 'X-RateLimit': { $ref: '#/components/headers/Rate%Limit' as const } },
+      },
+    }
+    await runGenerator(responses(section, output, false, false))
+    expect(fs.readFileSync(output, 'utf8')).toStrictEqual(
+      `import { ErrorResponseSchema } from './schemas'\n\nexport const TooManyRequestsResponseSchema = ErrorResponseSchema\n`,
+    )
+  })
+
+  it('imports it from the schemas in split mode too', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
+    const output = path.join(tmpDir, 'responses.ts')
+    await runGenerator(responses(sectionFor('ErrorResponse'), output, true, false))
+    const emitted = fs.readFileSync(path.join(tmpDir, 'responses', 'clientError.ts'), 'utf8')
+    expect(emitted).toStrictEqual(
+      `import { ErrorResponseSchema } from '../schemas'\n\nexport const ClientErrorResponseSchema = ErrorResponseSchema\n`,
+    )
+  })
+})

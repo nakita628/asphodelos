@@ -5,7 +5,7 @@ import { Effect } from 'effect'
 import { emit } from '../../emit/index.js'
 import { GenerateError } from '../../error/index.js'
 import { schemasCode } from '../../generator/components/index.js'
-import { makeImports } from '../../helper/index.js'
+import { makeImports, schemaRefKinds } from '../../helper/index.js'
 import { collectSchemaRefs, sccSchemas } from '../../helper/schema.js'
 import type { Components, Schema } from '../../openapi/index.js'
 import { pascalCase, uncapitalize } from '../../utils/index.js'
@@ -27,7 +27,7 @@ function splitSchemaFiles(
     const fileName = fileNameOf(group)
     const subSection = Object.fromEntries(group.map((member) => [member.name, member.schema]))
     const body = schemasCode(subSection, readonly, exportTypes)
-    if (body === '') return { fileName, code: '' }
+    if (body === '') return { fileName, code: '', refKinds: new Map<string, string>() }
     const memberNames = new Set(group.map((member) => member.name))
     const bySibling = new Map<string, Set<string>>()
     for (const { schema } of group) {
@@ -45,7 +45,11 @@ function splitSchemaFiles(
         ([sibling, idents]) => `import {${[...idents].toSorted().join(',')}} from './${sibling}'`,
       )
       .join('\n')
-    return { fileName, code: siblingImports ? `${siblingImports}\n\n${body}` : body }
+    return {
+      fileName,
+      code: siblingImports ? `${siblingImports}\n\n${body}` : body,
+      refKinds: schemaRefKinds(group.map((member) => member.schema)),
+    }
   })
 }
 
@@ -78,7 +82,9 @@ export function schemas(
           ...files.map((file) => {
             const filePath = path.join(outDir, `${file.fileName}.ts`)
             const code =
-              file.code === '' ? '' : makeImports(file.code, filePath, components, true, exclude)
+              file.code === ''
+                ? ''
+                : makeImports(file.code, filePath, components, true, file.refKinds, exclude)
             return emit(code, path.dirname(filePath), filePath)
           }),
           emit(`${barrelLines.join('\n')}\n`, outDir, path.join(outDir, 'index.ts')),
@@ -89,7 +95,11 @@ export function schemas(
     }
     const code = schemasCode(section, readonly, exportTypes)
     if (code === '') return 'No schemas found'
-    yield* emit(makeImports(code, abs, components, false), path.dirname(abs), abs)
+    yield* emit(
+      makeImports(code, abs, components, false, schemaRefKinds(Object.values(section))),
+      path.dirname(abs),
+      abs,
+    )
     return `Generated schemas code written to ${output}`
   })
 }

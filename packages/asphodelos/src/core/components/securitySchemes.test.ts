@@ -96,3 +96,25 @@ describe('securitySchemes — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('securitySchemes — a referenced schema named like another component kind', () => {
+  const section = {
+    Bearer: {
+      type: 'http',
+      scheme: 'bearer',
+      'x-claims': { $ref: '#/components/schemas/ClaimsHeader' },
+    },
+  } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'securitySchemes.ts', specifier: './schemas' },
+    { mode: 'split', split: true, file: 'securitySchemes/bearer.ts', specifier: '../schemas' },
+  ])('$mode: imports ClaimsHeaderSchema from the schemas', async ({ split, file, specifier }) => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-security-schemes-'))
+    const output = path.join(tmpDir, 'securitySchemes.ts')
+    await runGenerator(securitySchemes(section, output, split))
+    const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
+    expect(emitted).toContain(`import { ClaimsHeaderSchema } from '${specifier}'`)
+    expect(emitted).not.toContain('headers')
+  })
+})

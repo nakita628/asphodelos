@@ -96,3 +96,22 @@ describe('mediaTypes — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('mediaTypes — a referenced schema named like another component kind', () => {
+  const section = { Json: { schema: { $ref: '#/components/schemas/PayloadMediaType' } } } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'mediaTypes.ts', specifier: './schemas' },
+    { mode: 'split', split: true, file: 'mediaTypes/json.ts', specifier: '../schemas' },
+  ])(
+    '$mode: imports PayloadMediaTypeSchema from the schemas',
+    async ({ split, file, specifier }) => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-media-types-'))
+      const output = path.join(tmpDir, 'mediaTypes.ts')
+      await runGenerator(mediaTypes(section, output, split, false))
+      expect(fs.readFileSync(path.join(tmpDir, file), 'utf8')).toStrictEqual(
+        `import { PayloadMediaTypeSchema } from '${specifier}'\n\nexport const JsonMediaTypeSchema = PayloadMediaTypeSchema\n`,
+      )
+    },
+  )
+})

@@ -57,6 +57,11 @@ function classifyRef(name: string) {
   )?.[0]
 }
 
+/**
+ * `code` with the imports it needs prepended: Elysia's `t` and types, TypeBox's `Value`, and each
+ * component it references. A component comes from the kind `refKinds` gives it (the kind of the
+ * `$ref` it was rendered from), and is classified by its suffix otherwise.
+ */
 export function makeImports(
   code: string,
   fromFile: string,
@@ -70,6 +75,7 @@ export function makeImports(
       }
     | undefined,
   split = false,
+  refKinds: ReadonlyMap<string, string> = new Map(),
   excludeKinds: ReadonlySet<string> = new Set(),
 ) {
   const fallbackPrefix = split ? '..' : '.'
@@ -87,7 +93,7 @@ export function makeImports(
   for (const match of code.matchAll(SCAN)) {
     const name = match[1]
     if (!name || definedConsts.has(name) || definedTypes.has(name)) continue
-    const kind = classifyRef(name)
+    const kind = refKinds.get(name) ?? classifyRef(name)
     if (!kind || excludeKinds.has(kind)) continue
     const bucket = grouped.get(kind) ?? new Set()
     bucket.add(name)

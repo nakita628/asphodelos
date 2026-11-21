@@ -5,7 +5,7 @@ import { Effect } from 'effect'
 import { emit } from '../../emit/index.js'
 import { GenerateError } from '../../error/index.js'
 import { callbacksCode } from '../../generator/components/index.js'
-import { makeImports, makeBarrel } from '../../helper/index.js'
+import { makeImports, makeBarrel, stringifiedRefKinds } from '../../helper/index.js'
 import type { Components } from '../../openapi/index.js'
 import { uncapitalize } from '../../utils/index.js'
 
@@ -33,7 +33,7 @@ export function callbacks(
             const code = callbacksCode({ [name]: value })
             const filePath = path.join(outDir, `${uncapitalize(name)}.ts`)
             return emit(
-              makeImports(code, filePath, components, split),
+              makeImports(code, filePath, components, split, stringifiedRefKinds(value)),
               path.dirname(filePath),
               filePath,
             )
@@ -45,7 +45,11 @@ export function callbacks(
       return `Generated callbacks code written to ${outDir}/*.ts (index.ts included)`
     }
     const definitions = callbacksCode(section)
-    yield* emit(makeImports(definitions, output, components, split), path.dirname(output), output)
+    yield* emit(
+      makeImports(definitions, output, components, split, stringifiedRefKinds(section)),
+      path.dirname(output),
+      output,
+    )
     return `Generated callbacks code written to ${output}`
   })
 }

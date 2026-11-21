@@ -11,6 +11,8 @@ import {
   refSchemaName,
   responseInfo,
   sccSchemas,
+  schemaRefKinds,
+  stringifiedRefKinds,
   stringifyRefs,
   topoSortSchemas,
 } from './schema.js'
@@ -1368,5 +1370,65 @@ describe('inlineScalarRefs', () => {
       },
       context: { mediaType: 'application/x-www-form-urlencoded' },
     })
+  })
+})
+
+describe('schemaRefKinds', () => {
+  it('keys the identifier of each schema a $ref names to the schemas', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        error: { $ref: '#/components/schemas/ErrorResponse' },
+        tags: { type: 'array', items: { $ref: '#/components/schemas/Tag' } },
+      },
+    } as const
+    expect(schemaRefKinds([schema, undefined])).toStrictEqual(
+      new Map([
+        ['ErrorResponseSchema', 'schemas'],
+        ['TagSchema', 'schemas'],
+      ]),
+    )
+  })
+
+  it('leaves out a $ref-shaped value in example data, which typebox does not render', () => {
+    const schema = {
+      type: 'object',
+      properties: { error: { $ref: '#/components/schemas/ErrorResponse' } },
+      example: { error: { $ref: '#/components/responses/Error' } },
+    } as const
+    expect(schemaRefKinds([schema])).toStrictEqual(new Map([['ErrorResponseSchema', 'schemas']]))
+  })
+
+  it('leaves out a schema whose $ref is not valid percent-encoding instead of throwing', () => {
+    expect(schemaRefKinds([{ $ref: '#/components/schemas/Rate%Limit' }])).toStrictEqual(new Map())
+  })
+})
+
+describe('stringifiedRefKinds', () => {
+  it('keys the identifier stringifyRefs renders each $ref as to the kind it names', () => {
+    const pathItem = {
+      get: {
+        responses: {
+          '200': {
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+          '404': { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    }
+    expect(stringifiedRefKinds(pathItem)).toStrictEqual(
+      new Map([
+        ['ErrorResponseSchema', 'schemas'],
+        ['NotFoundResponseSchema', 'responses'],
+      ]),
+    )
+  })
+
+  it('leaves out a $ref that is not valid percent-encoding instead of throwing', () => {
+    expect(stringifiedRefKinds({ $ref: '#/components/headers/Rate%Limit' })).toStrictEqual(
+      new Map(),
+    )
   })
 })

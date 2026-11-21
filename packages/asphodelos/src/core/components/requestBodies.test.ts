@@ -154,3 +154,28 @@ describe('requestBodies — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('requestBodies — a referenced schema named like another component kind', () => {
+  const section = {
+    NewUser: {
+      content: {
+        'application/json': { schema: { $ref: '#/components/schemas/CreateUserRequestBody' } },
+      },
+    },
+  } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'requestBodies.ts', specifier: './schemas' },
+    { mode: 'split', split: true, file: 'requestBodies/newUser.ts', specifier: '../schemas' },
+  ])(
+    '$mode: imports CreateUserRequestBodySchema from the schemas',
+    async ({ split, file, specifier }) => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-request-bodies-'))
+      const output = path.join(tmpDir, 'requestBodies.ts')
+      await runGenerator(requestBodies(section, output, split, false))
+      expect(fs.readFileSync(path.join(tmpDir, file), 'utf8')).toStrictEqual(
+        `import { CreateUserRequestBodySchema } from '${specifier}'\n\nexport const NewUserRequestBodySchema = CreateUserRequestBodySchema\n`,
+      )
+    },
+  )
+})

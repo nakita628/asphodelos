@@ -110,3 +110,35 @@ describe('callbacks — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('callbacks — a referenced schema named like another component kind', () => {
+  const section = {
+    OnEvent: {
+      '{$request.body#/callbackUrl}': {
+        post: {
+          requestBody: {
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/EventRequestBody' } },
+            },
+          },
+          responses: { '200': { description: 'ok' } },
+        },
+      },
+    },
+  } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'callbacks.ts', specifier: './schemas' },
+    { mode: 'split', split: true, file: 'callbacks/onEvent.ts', specifier: '../schemas' },
+  ])(
+    '$mode: imports EventRequestBodySchema from the schemas',
+    async ({ split, file, specifier }) => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-callbacks-'))
+      const output = path.join(tmpDir, 'callbacks.ts')
+      await runGenerator(callbacks(section, output, split))
+      const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
+      expect(emitted).toContain(`import { EventRequestBodySchema } from '${specifier}'`)
+      expect(emitted).not.toContain('requestBodies')
+    },
+  )
+})

@@ -96,3 +96,36 @@ describe('pathItems — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('pathItems — referenced components named like another kind', () => {
+  const sample = {
+    Ping: {
+      get: {
+        responses: {
+          '200': {
+            description: 'ok',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+          '404': { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+  } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'pathItems.ts', prefix: '.' },
+    { mode: 'split', split: true, file: 'pathItems/ping.ts', prefix: '..' },
+  ])(
+    '$mode: imports each component from the kind its reference names',
+    async ({ split, file, prefix }) => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-path-items-'))
+      const output = path.join(tmpDir, 'pathItems.ts')
+      await runGenerator(pathItems(sample, output, split))
+      const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
+      expect(emitted).toContain(`import { NotFoundResponseSchema } from '${prefix}/responses'`)
+      expect(emitted).toContain(`import { ErrorResponseSchema } from '${prefix}/schemas'`)
+    },
+  )
+})
