@@ -21,10 +21,16 @@ alwaysApply: false
   `uses: actions/checkout@fbc6f399… # v5.1.0`. A floating tag is a mutable dependency with
   access to the job — never introduce one. Resolve a tag with
   `git ls-remote https://github.com/<owner>/<repo> 'refs/tags/<tag>^{}'`.
-- `permissions` stays minimal (`contents: read`); checkout uses `persist-credentials: false`.
+- `permissions` stays minimal (`contents: read`); checkout uses `persist-credentials: false`. A
+  job that writes is granted each permission on its own, with the reason beside it.
 - Bun comes from `packageManager` in the root `package.json` (`bun-version-file`); change that
   field to move Bun, not the workflow.
 - `.github/workflows/release.yml` runs after Test succeeds on a push to `main`; see Releasing.
+- `.github/workflows/release-pr.yml` opens or updates the release pull request after each push to
+  `main`; see Releasing. It runs on the job's `GITHUB_TOKEN` alone, so no secret is stored, and
+  two things follow: the repository setting that allows GitHub Actions to create pull requests
+  stays on, and Test carries `workflow_dispatch` so the release branch can be tested, since a pull
+  request that token opens starts no workflow.
 - actionlint (`scripts/actionlint.ts`) and zizmor (`scripts/zizmor.ts`, the workflow security
   audit) download a pinned release and verify its sha256. Bumping one means changing `VERSION`
   and **every checksum** together: actionlint's from the release's `*_checksums.txt`, zizmor's
@@ -133,10 +139,19 @@ exact commit Test ran on:
 4. **release** — creates the GitHub release for the tag with generated notes.
 
 So the tag, the npm tarball and the GitHub release always describe the same commit, and every job
-is safe to re-run. Rules that follow:
+is safe to re-run.
 
-- **To release, bump `version` in its own commit whose subject is the version (`0.1.0`), with
-  `bun run check` green, and push to `main`.** Nothing else publishes.
+The bump comes from `release-pr.yml`. After each push to `main` that changes what npm users
+receive (the package source without its tests, the build config, the README, the LICENSE, or the
+manifest beyond `version`, `scripts` and `devDependencies`), it opens or updates one pull request
+from the `release-pr` branch. Its commit sets the next version in the manifest and in the workspace
+entry of `bun.lock`: a patch, or a minor while the version is `0.x` when a pull request merged since
+the last tag carries the `breaking` label. It waits while the current version is still untagged,
+writes through the REST API, never force-pushes, and dispatches Test on the branch. Rules that
+follow:
+
+- **To release, merge the release pull request** (titled with the version) once its Test check is
+  green. Nothing else publishes, and the merge is the owner's call.
 - **Never `npm publish` or `bun publish` by hand, and never create or move a `v*` tag by hand.**
   The root is `private` and has a `version` only so npm refuses a root publish with `EPRIVATE`.
 - Never reuse or roll back a published version; to fix a release, bump again.

@@ -1,0 +1,242 @@
+name: release-pr
+
+# Keeps one pull request open that releases what has reached `main` since the last tag: it bumps
+# `version` in packages/asphodelos/package.json and the workspace version bun.lock records, and
+# merging it is the release, which release.yml then tags, publishes and announces. Nothing here
+# publishes.
+#
+# The bump is mechanical: a patch, or a minor while the version is 0.x (a major from 1.0) when a
+# pull request merged since the tag carries the `breaking` label. A push that changes nothing npm
+# users receive (tests, CI, the lint config, devDependencies, bun.lock) proposes nothing.
+#
+# It runs on the job's own GITHUB_TOKEN, so no secret is stored. Two things follow: the repository
+# has to allow GitHub Actions to create pull requests (Settings > Actions > General > Workflow
+# permissions), and a pull request that token opens starts no `pull_request` workflow, so Test is
+# dispatched on the release branch instead and its check lands on the pull request's head commit.
+#
+# The commit is written through the REST API, as release.yml writes its tag: no credentials persist
+# on disk, and the branch only moves forward (main becomes a second parent once it has moved on), so
+# nothing is ever force-pushed.
+#
+# Action versions are pinned to a commit digest with the tag kept as a comment. A floating tag is
+# a mutable dependency with write access to the job.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-pr
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the release branch and its commit
+      pull-requests: write # open, edit and close the release pull request
+      actions: write # dispatch Test on the release branch
+    steps:
+      # Full history and tags: the release is measured from the last `v*` tag.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Work out the release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          MANIFEST=packages/asphodelos/package.json
+          CURRENT=$(jq -r .version "$MANIFEST")
+          if ! [[ $CURRENT =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::$MANIFEST has version $CURRENT, which is not MAJOR.MINOR.PATCH. Set the next version by hand"
+            exit 1
+          fi
+          MAJOR=${BASH_REMATCH[1]}
+          MINOR=${BASH_REMATCH[2]}
+          PATCH=${BASH_REMATCH[3]}
+          TAG="v$CURRENT"
+
+          # release.yml tags a version once Test passes on the push that bumps it. Until the tag
+          # exists that release is still running, or failed, and nothing is proposed after it.
+          if ! git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+            echo "::notice::$TAG does not exist yet: release.yml has not finished releasing $CURRENT"
+            exit 0
+          fi
+
+          OPEN=$(gh pr list --head release-pr --base main --state open --json number --jq '.[0].number // empty')
+
+          # What npm users receive: the package's source without its tests and test helpers, the
+          # build config, the README and LICENSE npm always packs, and the manifest apart from the
+          # fields only this repository reads.
+          SHIPPED=$(git diff --name-only "$TAG" HEAD -- packages/asphodelos \
+            | { grep -E '^packages/asphodelos/(src/|tsdown\.config\.ts$|README\.md$|LICENSE$)' || true; } \
+            | { grep -Ev '\.test\.ts$|^packages/asphodelos/src/testing/' || true; })
+          OWN='del(.version, .scripts, .devDependencies)'
+          if [ "$(git show "$TAG:$MANIFEST" | jq -S "$OWN")" != "$(jq -S "$OWN" "$MANIFEST")" ]; then
+            SHIPPED+=$'\n'"$MANIFEST"
+          fi
+          if [ -z "${SHIPPED//[[:space:]]/}" ]; then
+            echo "::notice::Nothing npm users receive has changed since $TAG"
+            if [ -n "$OPEN" ]; then
+              gh pr close "$OPEN" --comment "Nothing npm users receive has changed since $TAG, so there is nothing to release."
+            fi
+            exit 0
+          fi
+
+          # A pull request merged since the tag with the `breaking` label makes the bump a minor
+          # while the version is 0.x, and a major from 1.0. Anything else is a patch. The pull
+          # requests come from each commit through the REST API rather than from search, whose
+          # index can lag behind the merge that triggered this run.
+          BREAKING=$(git rev-list "$TAG..HEAD" \
+            | while read -r SHA; do
+                gh api "repos/{owner}/{repo}/commits/$SHA/pulls" \
+                  --jq '.[] | select(any(.labels[]; .name == "breaking")) | "#\(.number)"'
+              done \
+            | sort -u | paste -sd ' ' -)
+          if [ -z "$BREAKING" ]; then
+            NEXT="$MAJOR.$MINOR.$((PATCH + 1))"
+          elif [ "$MAJOR" -eq 0 ]; then
+            NEXT="0.$((MINOR + 1)).0"
+          else
+            NEXT="$((MAJOR + 1)).0.0"
+          fi
+          {
+            echo "current=$CURRENT"
+            echo "next=$NEXT"
+            echo "breaking=$BREAKING"
+            echo "open=$OPEN"
+          } >> "$GITHUB_OUTPUT"
+
+      # No token in this step: `bun install` runs code from the registry. Scripts are skipped too;
+      # the only thing wanted from it is the workspace version it writes into bun.lock.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.release.outputs.next != ''
+        with:
+          bun-version-file: package.json
+
+      - name: Bump the version
+        if: steps.release.outputs.next != ''
+        env:
+          CURRENT: ${{ steps.release.outputs.current }}
+          NEXT: ${{ steps.release.outputs.next }}
+        run: |
+          set -euo pipefail
+          MANIFEST=packages/asphodelos/package.json
+          # The version line is edited in place so the manifest keeps its formatting.
+          sed -i -E "s/^(  \"version\": )\"${CURRENT//./\\.}\"/\1\"$NEXT\"/" "$MANIFEST"
+          if [ "$(jq -r .version "$MANIFEST")" != "$NEXT" ]; then
+            echo "::error::Could not set the version in $MANIFEST to $NEXT"
+            exit 1
+          fi
+          bun install --ignore-scripts
+          if [ -n "$(git status --porcelain -- . ':!bun.lock' ":!$MANIFEST")" ]; then
+            echo "::error::Bumping the version changed more than $MANIFEST and bun.lock"
+            git status --short
+            exit 1
+          fi
+
+      - name: Open or update the release pull request
+        if: steps.release.outputs.next != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CURRENT: ${{ steps.release.outputs.current }}
+          NEXT: ${{ steps.release.outputs.next }}
+          BREAKING: ${{ steps.release.outputs.breaking }}
+          OPEN: ${{ steps.release.outputs.open }}
+        run: |
+          set -euo pipefail
+          MANIFEST=packages/asphodelos/package.json
+          TAG="v$CURRENT"
+          MAIN_SHA=$(git rev-parse HEAD)
+
+          BRANCH_SHA=
+          STATUS=
+          BRANCH_VERSION=
+          if BRANCH_SHA=$(gh api "repos/{owner}/{repo}/git/ref/heads/release-pr" --jq .object.sha 2> /dev/null); then
+            STATUS=$(gh api "repos/{owner}/{repo}/compare/$MAIN_SHA...$BRANCH_SHA" --jq .status)
+            BRANCH_VERSION=$(gh api "repos/{owner}/{repo}/contents/$MANIFEST?ref=$BRANCH_SHA" --jq .content \
+              | base64 -d | jq -r .version)
+          else
+            BRANCH_SHA=
+          fi
+
+          # Up to date when the branch already holds main and the version this run wants.
+          COMMITTED=false
+          if [ -z "$BRANCH_SHA" ] || [ "$BRANCH_VERSION" != "$NEXT" ] \
+            || { [ "$STATUS" != ahead ] && [ "$STATUS" != identical ]; }; then
+            blob() {
+              base64 -w0 "$1" | jq -Rs '{content: ., encoding: "base64"}' \
+                | gh api "repos/{owner}/{repo}/git/blobs" --input - --jq .sha
+            }
+            MANIFEST_BLOB=$(blob "$MANIFEST")
+            LOCK_BLOB=$(blob bun.lock)
+            TREE=$(jq -n --arg base "$(git rev-parse 'HEAD^{tree}')" --arg manifest "$MANIFEST" \
+                --arg manifestBlob "$MANIFEST_BLOB" --arg lockBlob "$LOCK_BLOB" \
+                '{base_tree: $base, tree: [
+                  {path: $manifest, mode: "100644", type: "blob", sha: $manifestBlob},
+                  {path: "bun.lock", mode: "100644", type: "blob", sha: $lockBlob}]}' \
+              | gh api "repos/{owner}/{repo}/git/trees" --input - --jq .sha)
+            # The new commit sits on top of the branch, with main as a second parent when the
+            # branch does not hold it yet, so the ref only ever moves forward.
+            PARENTS=$(jq -cn --arg main "$MAIN_SHA" --arg branch "$BRANCH_SHA" --arg status "$STATUS" '
+              if $branch == "" then [$main]
+              elif $status == "ahead" or $status == "identical" then [$branch]
+              else [$branch, $main] end')
+            COMMIT=$(jq -n --arg message "$NEXT"$'\n\n'"Release the changes merged since $TAG." \
+                --arg tree "$TREE" --argjson parents "$PARENTS" \
+                '{message: $message, tree: $tree, parents: $parents}' \
+              | gh api "repos/{owner}/{repo}/git/commits" --input - --jq .sha)
+            if [ -z "$BRANCH_SHA" ]; then
+              gh api "repos/{owner}/{repo}/git/refs" -f ref=refs/heads/release-pr -f sha="$COMMIT" > /dev/null
+            else
+              gh api -X PATCH "repos/{owner}/{repo}/git/refs/heads/release-pr" -f sha="$COMMIT" -F force=false > /dev/null
+            fi
+            COMMITTED=true
+          fi
+
+          BODY="$RUNNER_TEMP/release-pr.md"
+          # The body is Markdown: the backticks in these single-quoted formats are code spans, not
+          # command substitutions.
+          # shellcheck disable=SC2016
+          {
+            printf '## Why\n\nRelease what has reached `main` since %s.\n\n' "$TAG"
+            printf '## What\n\n'
+            git log --reverse --format='- %s' "$TAG..$MAIN_SHA"
+            printf '\n## Where\n\n`version` in `%s`, and the workspace version `bun.lock` records.\n\n' "$MANIFEST"
+            if [ -n "$BREAKING" ]; then
+              printf '## Who\n\nBreaking for some users: the `breaking` label is on %s.\n\n' "$BREAKING"
+            else
+              printf '## Who\n\nNo pull request merged since %s carries the `breaking` label.\n\n' "$TAG"
+            fi
+            printf '## When\n\nversion bumped to %s\n\n' "$NEXT"
+            printf '## How\n\n'
+            printf 'Opened by `.github/workflows/release-pr.yml`, which keeps it up to date with `main`: '
+            printf 'a patch, or a minor while the version is 0.x when a pull request merged since the last tag '
+            printf 'carries the `breaking` label. Merging it publishes asphodelos@%s to npm through ' "$NEXT"
+            printf '`release.yml`, once Test passes on `main`.\n'
+          } > "$BODY"
+
+          NEW_PR=false
+          if [ -n "$OPEN" ]; then
+            gh pr edit "$OPEN" --title "$NEXT" --body-file "$BODY"
+          elif gh pr create --base main --head release-pr --title "$NEXT" --body-file "$BODY"; then
+            NEW_PR=true
+          else
+            echo "::error::Could not open the release pull request. Allow GitHub Actions to create pull requests: Settings > Actions > General > Workflow permissions"
+            exit 1
+          fi
+
+          # A push by this token starts no workflow, so Test is dispatched on the release branch;
+          # its check lands on the pull request's head commit.
+          if [ "$COMMITTED" = true ] || [ "$NEW_PR" = true ]; then
+            gh workflow run test.yml --ref release-pr
+          fi

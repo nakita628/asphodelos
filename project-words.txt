@@ -2,6 +2,7 @@
 # unless the casing itself is the point. Adding a word is a one-line diff; adding a *typo* here
 # Words cspell does not know but this project uses on purpose. One per line, sorted, lowercase
 apidevtools
+argjson
 asphodelos
 bogeychan
 bsdtar
@@ -43,6 +44,7 @@ sapegin
 schemaref
 sconst
 senum
+shellcheck
 simplearr
 strongconnect
 tagless

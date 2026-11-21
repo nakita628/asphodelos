@@ -38,6 +38,7 @@ oxfmt.config.ts               source of truth for formatting (printWidth 100, si
 renovate.json                 dependency updates (Saturdays, Asia/Tokyo); see the CI rule's Dependencies
 .github/workflows/test.yml    CI (Test): the same commands as below, in the same order
 .github/workflows/release.yml after Test on main: tag, npm publish, GitHub release
+.github/workflows/release-pr.yml after a push to main: open or update the release PR (the bump)
 ```
 
 ## Commands
@@ -98,10 +99,11 @@ If you only ran part of it, say which part.
   (`4.0.0-rc.112`, an rc whose API still moves) and move together, in one change. Leaving one of
   them to a range lets npm install a second `effect` for users, and the CLI then fails with
   "Service not found"; `bun run test:pack` checks that exactly one `effect` is installed.
-- **Never bump `version` in `packages/asphodelos/package.json`** unless the task is a release
-  that was asked for: pushing a new version to `main` is what publishes it. Never `npm publish`,
-  `bun publish` or push a `v*` tag by hand — `.github/workflows/release.yml` tags, publishes and
-  releases, from one commit.
+- **Never bump `version` in `packages/asphodelos/package.json` by hand.**
+  `.github/workflows/release-pr.yml` keeps the release pull request open with the next version,
+  and merging it, the owner's call, is what publishes. Never `npm publish`, `bun publish` or push
+  a `v*` tag by hand — `.github/workflows/release.yml` tags, publishes and releases, from one
+  commit.
 
 ## Working order
 
@@ -119,4 +121,8 @@ If you only ran part of it, say which part.
 - One logical change per commit. The subject is an imperative sentence in the shape of the
   existing history (`Generate the client cases before typechecking them`), with no `feat:` /
   `fix:` prefix; the body explains why. A version bump is its own commit, subject the version.
+- A pull request that breaks users of the config, the CLI, the Vite plugin or the generated
+  output carries the `breaking` label: the release pull request reads the bump off it (a minor
+  while the version is `0.x`). So a breaking change goes through a pull request, never a direct
+  commit.
 - Do not commit generated output, secrets or local tooling files.

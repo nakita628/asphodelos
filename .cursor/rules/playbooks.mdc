@@ -84,13 +84,14 @@ Every playbook ends the same way: `bun run fix`, then `bun run check`, all green
    chain needs pinning to the same version.
 4. Report which upstream changes forced code changes; that is what the commit body explains.
 
-## Release (only when asked)
+## Release
 
-1. Confirm `main` is green.
-2. Bump `version` in `packages/asphodelos/package.json` only (semver: a breaking change to the
-   config, the CLI or the generated output is a minor bump while the version is `0.x`).
-3. `bun run check`, then commit with the version as the subject (`0.1.0`) and push to `main`.
-4. Watch Test, then `release`: it tags `v<version>`, publishes to npm and creates the GitHub
+1. `release-pr.yml` keeps the release pull request (branch `release-pr`, titled with the next
+   version) up to date with `main`. Do not bump `version` yourself; label a pull request that
+   breaks the config, the CLI or the generated output `breaking`, so the release pull request
+   makes it a minor bump while the version is `0.x`.
+2. Releasing is merging that pull request, the owner's call, once its Test check is green.
+3. Watch Test, then `release`: it tags `v<version>`, publishes to npm and creates the GitHub
    release from that commit. Never publish or tag by hand.
-5. If a job fails, fix the cause and re-run the failed jobs. To fix a published release, bump
-   again — never reuse a version.
+4. If a job fails, fix the cause and re-run the failed jobs. To fix a published release, let the
+   next release pull request bump again — never reuse a version.
