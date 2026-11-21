@@ -96,3 +96,28 @@ describe('parameters — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('parameters — a referenced schema named like another component kind', () => {
+  const section = {
+    Query: {
+      name: 'q',
+      in: 'query',
+      schema: { $ref: '#/components/schemas/SearchParams' },
+    },
+  } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'parameters.ts', specifier: './schemas' },
+    { mode: 'split', split: true, file: 'parameters/query.ts', specifier: '../schemas' },
+  ])(
+    '$mode: imports SearchParamsSchema from the schemas, not from the parameters themselves',
+    async ({ split, file, specifier }) => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-parameters-'))
+      const output = path.join(tmpDir, 'parameters.ts')
+      await runGenerator(parameters(section, output, split, false))
+      expect(fs.readFileSync(path.join(tmpDir, file), 'utf-8')).toStrictEqual(
+        `import { SearchParamsSchema } from '${specifier}'\n\nexport const QueryParamsSchema = SearchParamsSchema\n`,
+      )
+    },
+  )
+})

@@ -387,24 +387,59 @@ export function refIdent(ref: string): string | undefined {
   return `${pascalCase(decodeURIComponent(m[2]))}${suffix}`
 }
 
-function refKindEntries(value: unknown): readonly (readonly [ident: string, kind: string])[] {
-  if (Array.isArray(value)) return value.flatMap(refKindEntries)
+/** `refIdent`, or nothing for a `$ref` whose name is not valid percent-encoding. */
+function decodedRefIdent(ref: string) {
+  try {
+    return refIdent(ref)
+  } catch {
+    return undefined
+  }
+}
+
+function stringifiedRefEntries(
+  value: unknown,
+): readonly (readonly [ident: string, kind: string])[] {
+  if (Array.isArray(value)) return value.flatMap(stringifiedRefEntries)
   if (typeof value !== 'object' || value === null) return []
   if (isReference(value) && value.$ref) {
     const kind = REF_PATTERN.exec(value.$ref)?.[1]
-    const ident = refIdent(value.$ref)
-    return kind && ident ? [[ident, kind]] : []
+    const ident = decodedRefIdent(value.$ref)
+    if (kind && ident) return [[ident, kind]]
   }
-  return Object.values(value).flatMap(refKindEntries)
+  return Object.values(value).flatMap(stringifiedRefEntries)
 }
 
 /**
- * The component kind of each identifier the `$ref`s in `value` render to, keyed by the identifier.
- * The identifier's suffix cannot tell: `#/components/schemas/ErrorResponse` renders to
- * `ErrorResponseSchema` as `#/components/responses/Error` does.
+ * The identifier `stringifyRefs(value)` renders each `$ref` as, keyed to the kind of component the
+ * `$ref` names. The identifier's suffix cannot tell: `#/components/schemas/ErrorResponse` renders
+ * as `ErrorResponseSchema`, as `#/components/responses/Error` does.
  */
-export function refKinds(value: unknown): ReadonlyMap<string, string> {
-  return new Map(refKindEntries(value))
+export function stringifiedRefKinds(value: unknown): ReadonlyMap<string, string> {
+  return new Map(stringifiedRefEntries(value))
+}
+
+function schemaRefNames(schema: Schema | undefined): readonly string[] {
+  if (schema === undefined) return []
+  try {
+    return [...collectSchemaRefs(schema)]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The identifier `typebox` renders each `$ref` in `schemas` as, keyed to `schemas`: the only kind a
+ * schema refers to. A schema whose `$ref`s cannot be decoded contributes nothing, and its
+ * identifiers are classified by their suffix.
+ */
+export function schemaRefKinds(
+  schemas: readonly (Schema | undefined)[],
+): ReadonlyMap<string, string> {
+  return new Map(
+    schemas
+      .flatMap(schemaRefNames)
+      .map((name) => [`${pascalCase(name)}Schema`, 'schemas'] as const),
+  )
 }
 
 export function stringifyRefs(value: unknown): string {

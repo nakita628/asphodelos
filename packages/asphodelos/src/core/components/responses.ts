@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 
 import { emit } from '../../emit/index.js'
 import { GenerateError } from '../../error/index.js'
-import { responsesCode } from '../../generator/components/index.js'
+import { responsesCode, responsesRefKinds } from '../../generator/components/index.js'
 import { makeImports, makeBarrel } from '../../helper/index.js'
 import type { Components } from '../../openapi/index.js'
 import { uncapitalize } from '../../utils/index.js'
@@ -35,7 +35,7 @@ export function responses(
             const code = responsesCode({ [name]: value }, readonly, exportTypes)
             const filePath = path.join(outDir, `${uncapitalize(name)}.ts`)
             return emit(
-              makeImports(code, filePath, components, split, value),
+              makeImports(code, filePath, components, split, responsesRefKinds({ [name]: value })),
               path.dirname(filePath),
               filePath,
             )
@@ -48,7 +48,7 @@ export function responses(
     }
     const definitions = responsesCode(section, readonly, exportTypes)
     yield* emit(
-      makeImports(definitions, output, components, split, section),
+      makeImports(definitions, output, components, split, responsesRefKinds(section)),
       path.dirname(output),
       output,
     )

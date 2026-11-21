@@ -5,7 +5,7 @@ import { Effect } from 'effect'
 import { emit } from '../../emit/index.js'
 import { GenerateError } from '../../error/index.js'
 import { schemasCode } from '../../generator/components/index.js'
-import { makeImports } from '../../helper/index.js'
+import { makeImports, schemaRefKinds } from '../../helper/index.js'
 import { collectSchemaRefs, sccSchemas } from '../../helper/schema.js'
 import type { Components, Schema } from '../../openapi/index.js'
 import { pascalCase, uncapitalize } from '../../utils/index.js'
@@ -25,7 +25,7 @@ function splitSchemaFiles(
     const fileName = fileNameOf(group)
     const subSection = Object.fromEntries(group.map((g) => [g.name, g.schema]))
     const body = schemasCode(subSection, readonly, exportTypes)
-    if (body === '') return { fileName, code: '', source: subSection }
+    if (body === '') return { fileName, code: '', refKinds: new Map<string, string>() }
     const memberNames = new Set(group.map((g) => g.name))
     const bySibling = new Map<string, Set<string>>()
     for (const { schema } of group) {
@@ -46,7 +46,7 @@ function splitSchemaFiles(
     return {
       fileName,
       code: siblingImports ? `${siblingImports}\n\n${body}` : body,
-      source: subSection,
+      refKinds: schemaRefKinds(group.map((g) => g.schema)),
     }
   })
 }
@@ -82,7 +82,7 @@ export function schemas(
             const code =
               f.code === ''
                 ? ''
-                : makeImports(f.code, filePath, components, true, f.source, exclude)
+                : makeImports(f.code, filePath, components, true, f.refKinds, exclude)
             return emit(code, path.dirname(filePath), filePath)
           }),
           emit(`${barrelLines.join('\n')}\n`, outDir, path.join(outDir, 'index.ts')),
@@ -93,7 +93,11 @@ export function schemas(
     }
     const code = schemasCode(section, readonly, exportTypes)
     if (code === '') return 'No schemas found'
-    yield* emit(makeImports(code, abs, components, false, section), path.dirname(abs), abs)
+    yield* emit(
+      makeImports(code, abs, components, false, schemaRefKinds(Object.values(section))),
+      path.dirname(abs),
+      abs,
+    )
     return `Generated schemas code written to ${output}`
   })
 }

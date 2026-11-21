@@ -85,3 +85,21 @@ describe('examples — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('examples — a referenced schema named like another component kind', () => {
+  const section = {
+    Failure: { value: { error: { $ref: '#/components/schemas/ErrorResponse' } } },
+  } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'examples.ts', specifier: './schemas' },
+    { mode: 'split', split: true, file: 'examples/failure.ts', specifier: '../schemas' },
+  ])('$mode: imports ErrorResponseSchema from the schemas', async ({ split, file, specifier }) => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-examples-'))
+    const output = path.join(tmpDir, 'examples.ts')
+    await runGenerator(examples(section, output, split))
+    const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf-8')
+    expect(emitted).toContain(`import { ErrorResponseSchema } from '${specifier}'`)
+    expect(emitted).not.toContain('responses')
+  })
+})

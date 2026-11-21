@@ -1,7 +1,5 @@
 import path from 'node:path'
 
-import { refKinds } from './schema.js'
-
 export function makeModuleSpec(
   fromFile: string,
   target: { readonly output: string; readonly split?: boolean },
@@ -61,9 +59,8 @@ function classifyRef(name: string) {
 
 /**
  * `code` with the imports it needs prepended: Elysia's `t` and types, TypeBox's `Value`, and each
- * component it references. A component comes from the kind named by the `$ref` in `source` (the
- * part of the document `code` was generated from) that renders to it, and is classified by its
- * suffix otherwise.
+ * component it references. A component comes from the kind `refKinds` gives it (the kind of the
+ * `$ref` it was rendered from), and is classified by its suffix otherwise.
  */
 export function makeImports(
   code: string,
@@ -78,7 +75,7 @@ export function makeImports(
       }
     | undefined,
   split = false,
-  source?: unknown,
+  refKinds: ReadonlyMap<string, string> = new Map(),
   excludeKinds: ReadonlySet<string> = new Set(),
 ) {
   const fallbackPrefix = split ? '..' : '.'
@@ -92,12 +89,11 @@ export function makeImports(
   const definedTypes = new Set(
     Array.from(code.matchAll(EXPORT_TYPE_PATTERN), (m) => m[1]).filter(Boolean),
   )
-  const kinds = refKinds(source)
   const grouped = new Map<string, Set<string>>()
   for (const match of code.matchAll(SCAN)) {
     const name = match[1]
     if (!name || definedConsts.has(name) || definedTypes.has(name)) continue
-    const kind = kinds.get(name) ?? classifyRef(name)
+    const kind = refKinds.get(name) ?? classifyRef(name)
     if (!kind || excludeKinds.has(kind)) continue
     const bucket = grouped.get(kind) ?? new Set()
     bucket.add(name)

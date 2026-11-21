@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 
 import { emit } from '../../emit/index.js'
 import { GenerateError } from '../../error/index.js'
-import { requestBodiesCode } from '../../generator/components/index.js'
+import { requestBodiesCode, requestBodiesRefKinds } from '../../generator/components/index.js'
 import { makeImports, makeBarrel } from '../../helper/index.js'
 import type { Components } from '../../openapi/index.js'
 import { uncapitalize } from '../../utils/index.js'
@@ -35,7 +35,13 @@ export function requestBodies(
             const code = requestBodiesCode({ [name]: value }, readonly, exportTypes)
             const filePath = path.join(outDir, `${uncapitalize(name)}.ts`)
             return emit(
-              makeImports(code, filePath, components, split, value),
+              makeImports(
+                code,
+                filePath,
+                components,
+                split,
+                requestBodiesRefKinds({ [name]: value }),
+              ),
               path.dirname(filePath),
               filePath,
             )
@@ -48,7 +54,7 @@ export function requestBodies(
     }
     const definitions = requestBodiesCode(section, readonly, exportTypes)
     yield* emit(
-      makeImports(definitions, output, components, split, section),
+      makeImports(definitions, output, components, split, requestBodiesRefKinds(section)),
       path.dirname(output),
       output,
     )

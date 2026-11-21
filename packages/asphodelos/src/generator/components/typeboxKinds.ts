@@ -1,5 +1,5 @@
 import { isReference } from '../../guard/index.js'
-import { jsonSchema, refIdent } from '../../helper/schema.js'
+import { jsonSchema, refIdent, schemaRefKinds, stringifiedRefKinds } from '../../helper/schema.js'
 import { readonly } from '../../helper/typebox.js'
 import type { Components, Header, Media, Parameter, Reference } from '../../openapi/index.js'
 import { pascalCase } from '../../utils/index.js'
@@ -43,6 +43,11 @@ export const responsesCode = makeCode<NonNullable<Components['responses']>[strin
     }),
 )
 
+/** What `responsesCode` renders a `$ref` as: the schemas of the JSON content. */
+export function responsesRefKinds(section: Components['responses']) {
+  return schemaRefKinds(Object.values(section ?? {}).map((res) => jsonSchema(res.content)))
+}
+
 export const parametersCode = makeCode<Parameter>('ParamsSchema', (s) =>
   Object.entries(s).map(([name, p]) => {
     if (!p.schema) {
@@ -57,6 +62,11 @@ export const parametersCode = makeCode<Parameter>('ParamsSchema', (s) =>
   }),
 )
 
+/** What `parametersCode` renders a `$ref` as: the schemas of the parameters. */
+export function parametersRefKinds(section: { readonly [k: string]: Parameter } | undefined) {
+  return schemaRefKinds(Object.values(section ?? {}).map((p) => p.schema))
+}
+
 export const requestBodiesCode = makeCode<NonNullable<Components['requestBodies']>[string]>(
   'RequestBodySchema',
   (s) =>
@@ -66,6 +76,11 @@ export const requestBodiesCode = makeCode<NonNullable<Components['requestBodies'
     }),
 )
 
+/** What `requestBodiesCode` renders a `$ref` as: the schemas of the JSON content. */
+export function requestBodiesRefKinds(section: Components['requestBodies']) {
+  return schemaRefKinds(Object.values(section ?? {}).map((body) => jsonSchema(body.content)))
+}
+
 export const headersCode = makeCode<Header | Reference>('HeaderSchema', (s) =>
   Object.entries(s).map(([name, h]) => {
     if (isReference(h) && h.$ref) return [name, refIdent(h.$ref) ?? 't.Unknown()'] as const
@@ -74,6 +89,22 @@ export const headersCode = makeCode<Header | Reference>('HeaderSchema', (s) =>
   }),
 )
 
+/**
+ * What `headersCode` renders a `$ref` as: a header that is a `$ref`, or the schema of one that is
+ * not.
+ */
+export function headersRefKinds(section: { readonly [k: string]: Header | Reference } | undefined) {
+  const entries = Object.values(section ?? {})
+  return new Map([
+    ...schemaRefKinds(
+      entries.map((h) =>
+        isReference(h) && h.$ref ? undefined : 'schema' in h ? h.schema : undefined,
+      ),
+    ),
+    ...stringifiedRefKinds(entries.filter((h) => isReference(h) && h.$ref)),
+  ])
+}
+
 export const mediaTypesCode = makeCode<Media | Reference>('MediaTypeSchema', (s) =>
   Object.entries(s).map(([name, mt]) => {
     if (isReference(mt) && mt.$ref) return [name, refIdent(mt.$ref) ?? 't.Unknown()'] as const
@@ -81,3 +112,19 @@ export const mediaTypesCode = makeCode<Media | Reference>('MediaTypeSchema', (s)
     return [name, schema ? typebox(schema) : 't.Unknown()'] as const
   }),
 )
+
+/**
+ * What `mediaTypesCode` renders a `$ref` as: a media type that is a `$ref`, or the schema of one
+ * that is not.
+ */
+export function mediaTypesRefKinds(
+  section: { readonly [k: string]: Media | Reference } | undefined,
+) {
+  const entries = Object.values(section ?? {})
+  return new Map([
+    ...schemaRefKinds(
+      entries.map((mt) => (!isReference(mt) && 'schema' in mt ? mt.schema : undefined)),
+    ),
+    ...stringifiedRefKinds(entries.filter((mt) => isReference(mt) && mt.$ref)),
+  ])
+}

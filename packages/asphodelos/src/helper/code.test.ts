@@ -126,24 +126,23 @@ describe('makeImports — components classification (longest-suffix)', () => {
   })
 })
 
-describe('makeImports — kinds read off the source the code was generated from', () => {
+describe('makeImports — the kinds of the $refs the code was rendered from', () => {
   it.each([
-    ['#/components/schemas/ErrorResponse', 'ErrorResponseSchema', './schemas'],
-    ['#/components/responses/Error', 'ErrorResponseSchema', './responses'],
-    ['#/components/schemas/SearchParams', 'SearchParamsSchema', './schemas'],
-    ['#/components/parameters/Search', 'SearchParamsSchema', './parameters'],
-  ] as const)('%s renders %s, imported from %s', (ref, ident, specifier) => {
+    ['ErrorResponseSchema', 'schemas', './schemas'],
+    ['ErrorResponseSchema', 'responses', './responses'],
+    ['SearchParamsSchema', 'schemas', './schemas'],
+    ['SearchParamsSchema', 'parameters', './parameters'],
+  ] as const)('%s rendered from a $ref to the %s is imported from %s', (ident, kind, specifier) => {
     const code = `const X = ${ident}`
-    const source = { content: { 'application/json': { schema: { $ref: ref } } } }
-    expect(makeImports(code, '/gen/a.ts', undefined, false, source)).toBe(
+    expect(makeImports(code, '/gen/a.ts', undefined, false, new Map([[ident, kind]]))).toBe(
       `import {${ident}} from '${specifier}'\n\n${code}`,
     )
   })
 
-  it('classifies an identifier no `$ref` in the source renders by its suffix', () => {
+  it('classifies an identifier no $ref was rendered as by its suffix', () => {
     const code = 'const X = NotFoundResponseSchema'
-    const source = { $ref: '#/components/schemas/User' }
-    expect(makeImports(code, '/gen/a.ts', undefined, false, source)).toBe(
+    const refKinds = new Map([['UserSchema', 'schemas']])
+    expect(makeImports(code, '/gen/a.ts', undefined, false, refKinds)).toBe(
       `import {NotFoundResponseSchema} from './responses'\n\n${code}`,
     )
   })

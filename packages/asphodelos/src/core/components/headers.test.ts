@@ -96,3 +96,22 @@ describe('headers — caller ≡ generator contract', () => {
     expect(emittedNames).toStrictEqual(generatedNames)
   })
 })
+
+describe('headers — a referenced schema named like another component kind', () => {
+  const section = { XRate: { schema: { $ref: '#/components/schemas/RateLimitHeader' } } } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'headers.ts', specifier: './schemas' },
+    { mode: 'split', split: true, file: 'headers/xRate.ts', specifier: '../schemas' },
+  ])(
+    '$mode: imports RateLimitHeaderSchema from the schemas',
+    async ({ split, file, specifier }) => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-headers-'))
+      const output = path.join(tmpDir, 'headers.ts')
+      await runGenerator(headers(section, output, split, false))
+      expect(fs.readFileSync(path.join(tmpDir, file), 'utf-8')).toStrictEqual(
+        `import { RateLimitHeaderSchema } from '${specifier}'\n\nexport const XRateHeaderSchema = RateLimitHeaderSchema\n`,
+      )
+    },
+  )
+})
