@@ -1,18 +1,22 @@
 name: release-pr
 
-# Keeps one pull request open that releases what has reached `main` since the last tag: it bumps
-# `version` in packages/asphodelos/package.json and the workspace version bun.lock records.
-# release-merge.yml merges it as soon as Test passes on it, and that merge is the release, which
-# release.yml then tags, publishes and announces. Nothing here publishes.
+# Releases what has reached `main` since the last tag, with no one to click anything. The first job
+# keeps one pull request open that bumps `version` in packages/asphodelos/package.json and the
+# workspace version bun.lock records. The second merges it as soon as Test passes on it, runs Test
+# on the merge commit, and dispatches release.yml with that commit, which tags, publishes and
+# announces it. Nothing here publishes.
 #
 # The bump is mechanical: a patch, or a minor while the version is 0.x (a major from 1.0) when a
 # pull request merged since the tag carries the `breaking` label. A push that changes nothing npm
 # users receive (tests, CI, the lint config, devDependencies, bun.lock) proposes nothing.
 #
-# It runs on the job's own GITHUB_TOKEN, so no secret is stored. Two things follow: the repository
-# has to allow GitHub Actions to create pull requests (Settings > Actions > General > Workflow
-# permissions), and a pull request that token opens starts no `pull_request` workflow, so Test is
-# dispatched on the release branch instead and its check lands on the pull request's head commit.
+# It runs on the job's own GITHUB_TOKEN, so no secret is stored, and the repository has to allow
+# GitHub Actions to create pull requests (Settings > Actions > General > Workflow permissions).
+# Nothing that token does starts a workflow by itself: the pull request it opens only gets
+# `pull_request` runs that wait for a maintainer's approval, which nothing here needs; its merge
+# starts nothing; and a run it dispatches starts no `workflow_run` workflow when it ends. So this
+# workflow dispatches Test itself, on the release branch and then on main, waits for each run, and
+# dispatches release.yml at the end: a dispatch is one of the two events that token may trigger.
 #
 # The commit is written through the REST API, as release.yml writes its tag: no credentials persist
 # on disk, and the branch only moves forward (main becomes a second parent once it has moved on), so
@@ -39,6 +43,9 @@ jobs:
       contents: write # the release branch and its commit
       pull-requests: write # open, edit and close the release pull request
       actions: write # dispatch Test on the release branch
+    outputs:
+      pr: ${{ steps.pull.outputs.pr }}
+      sha: ${{ steps.pull.outputs.sha }}
     steps:
       # Full history and tags: the release is measured from the last `v*` tag.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -144,6 +151,7 @@ jobs:
           fi
 
       - name: Open or update the release pull request
+        id: pull
         if: steps.release.outputs.next != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -221,22 +229,106 @@ jobs:
             printf '## How\n\n'
             printf 'Opened by `.github/workflows/release-pr.yml`, which keeps it up to date with `main`: '
             printf 'a patch, or a minor while the version is 0.x when a pull request merged since the last tag '
-            printf 'carries the `breaking` label. `release-merge.yml` merges it as soon as its Test check passes, '
-            printf 'and `release.yml` then publishes asphodelos@%s to npm once Test passes on `main`.\n' "$NEXT"
+            printf 'carries the `breaking` label. The same workflow merges it as soon as its Test check passes, '
+            printf 'and `release.yml` then publishes asphodelos@%s to npm once Test passes on the merge commit.\n' "$NEXT"
           } > "$BODY"
 
-          NEW_PR=false
           if [ -n "$OPEN" ]; then
             gh pr edit "$OPEN" --title "$NEXT" --body-file "$BODY"
-          elif gh pr create --base main --head release-pr --title "$NEXT" --body-file "$BODY"; then
-            NEW_PR=true
+          elif URL=$(gh pr create --base main --head release-pr --title "$NEXT" --body-file "$BODY"); then
+            OPEN=${URL##*/}
           else
             echo "::error::Could not open the release pull request. Allow GitHub Actions to create pull requests: Settings > Actions > General > Workflow permissions"
             exit 1
           fi
 
-          # A push by this token starts no workflow, so Test is dispatched on the release branch;
-          # its check lands on the pull request's head commit.
-          if [ "$COMMITTED" = true ] || [ "$NEW_PR" = true ]; then
-            gh workflow run test.yml --ref release-pr
+          # Test on the head, for the merge job to wait for. A push by this token starts no
+          # workflow, so it is dispatched; its check lands on the pull request's head commit.
+          if [ "$COMMITTED" = true ]; then HEAD=$COMMIT; else HEAD=$BRANCH_SHA; fi
+          gh workflow run test.yml --ref release-pr
+          {
+            echo "pr=$OPEN"
+            echo "sha=$HEAD"
+          } >> "$GITHUB_OUTPUT"
+
+  merge:
+    needs: release-pr
+    if: needs.release-pr.outputs.sha != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # merge the release pull request and delete its branch
+      pull-requests: write # merge the release pull request
+      actions: write # dispatch Test on main, then release.yml
+    steps:
+      - name: Merge the release pull request once Test passes, then release it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ needs.release-pr.outputs.pr }}
+          SHA: ${{ needs.release-pr.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # How the Test run dispatched on a commit ended, once it has: `missing` when no such run
+          # shows up within three minutes.
+          conclusion() {
+            local id=
+            for _ in $(seq 18); do
+              id=$(gh run list --workflow test.yml --event workflow_dispatch --commit "$1" \
+                --json databaseId --jq '.[0].databaseId // empty')
+              if [ -n "$id" ]; then break; fi
+              sleep 10
+            done
+            if [ -z "$id" ]; then
+              echo missing
+              return
+            fi
+            gh run watch "$id" --interval 20 > /dev/null 2>&1 || true
+            gh run view "$id" --json conclusion --jq .conclusion
+          }
+
+          RESULT=$(conclusion "$SHA")
+          if [ "$RESULT" != success ]; then
+            echo "::error::Test on the release pull request ended in $RESULT at $SHA, so it stays open"
+            exit 1
+          fi
+
+          # Only what the first job writes, still at the commit Test passed on, and nothing in it but
+          # the two version lines: one line out and one in, in each of the two files.
+          PULL=$(gh api "repos/$GH_REPO/pulls/$PR")
+          if [ "$(jq -r '[.state, .user.login, .head.ref, .head.repo.full_name] | join(" ")' <<< "$PULL")" \
+            != "open github-actions[bot] release-pr $GH_REPO" ]; then
+            echo "::error::#$PR is not the open release pull request from release-pr"
+            exit 1
+          fi
+          if [ "$(jq -r .head.sha <<< "$PULL")" != "$SHA" ]; then
+            echo "::notice::#$PR has moved on from $SHA; the run that moved it merges it"
+            exit 0
+          fi
+          FILES=$(gh api "repos/$GH_REPO/pulls/$PR/files" --jq '
+            [.[] | select(.additions == 1 and .deletions == 1
+              and (.patch | test("\\n\\+ *\"version\": \"[0-9]+[.][0-9]+[.][0-9]+\",?\\n"))) | .filename]
+            | sort | join(" ")')
+          if [ "$FILES" != "bun.lock packages/asphodelos/package.json" ]; then
+            echo "::error::#$PR changes more than the version lines of package.json and bun.lock; merge or close it by hand"
+            exit 1
+          fi
+
+          gh pr merge "$PR" --squash --match-head-commit "$SHA"
+          MERGED=$(gh pr view "$PR" --json mergeCommit --jq .mergeCommit.oid)
+          if ! gh api -X DELETE "repos/$GH_REPO/git/refs/heads/release-pr" > /dev/null; then
+            echo "::notice::release-pr was already deleted"
+          fi
+
+          # The merge started no workflow, so Test runs on the merge commit here and release.yml is
+          # dispatched with it. When main has moved on before Test started, the push that moved it
+          # runs Test on main, and release.yml follows that run instead.
+          gh workflow run test.yml --ref main
+          RESULT=$(conclusion "$MERGED")
+          if [ "$RESULT" = success ]; then
+            gh workflow run release.yml --ref main -f sha="$MERGED"
+          elif [ "$RESULT" = missing ]; then
+            echo "::notice::main moved on from $MERGED before Test ran; the push that moved it releases"
+          else
+            echo "::error::Test on main ended in $RESULT at $MERGED, so release.yml was not dispatched"
+            exit 1
           fi
