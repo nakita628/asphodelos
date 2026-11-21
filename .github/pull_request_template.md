@@ -24,7 +24,7 @@ The title is the page's top-level heading, so the body starts at `##`.
 
 ## Who
 
-<!-- Who notices: every user, users of one generator or one client library, contributors only. Breaking for anyone? -->
+<!-- Who notices: every user, users of one generator or one client library, contributors only. Breaking for anyone? Then label the pull request `breaking`: the release pull request bumps the minor version for it. -->
 
 ## When
 
