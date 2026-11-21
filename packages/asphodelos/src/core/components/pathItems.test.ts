@@ -98,27 +98,34 @@ describe('pathItems — caller ≡ generator contract', () => {
 })
 
 describe('pathItems — referenced components named like another kind', () => {
-  it('imports each from the kind its $ref names', async () => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-path-items-'))
-    const output = path.join(tmpDir, 'pathItems.ts')
-    const sample = {
-      Ping: {
-        get: {
-          responses: {
-            '200': {
-              description: 'ok',
-              content: {
-                'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
-              },
+  const sample = {
+    Ping: {
+      get: {
+        responses: {
+          '200': {
+            description: 'ok',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
             },
-            '404': { $ref: '#/components/responses/NotFound' },
           },
+          '404': { $ref: '#/components/responses/NotFound' },
         },
       },
-    } as const
-    await runGenerator(pathItems(sample, output, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
-    expect(emitted).toContain(`import { NotFoundResponseSchema } from './responses'`)
-    expect(emitted).toContain(`import { ErrorResponseSchema } from './schemas'`)
-  })
+    },
+  } as const
+
+  it.each([
+    { mode: 'non-split', split: false, file: 'pathItems.ts', prefix: '.' },
+    { mode: 'split', split: true, file: 'pathItems/ping.ts', prefix: '..' },
+  ])(
+    '$mode: imports each component from the kind its reference names',
+    async ({ split, file, prefix }) => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-path-items-'))
+      const output = path.join(tmpDir, 'pathItems.ts')
+      await runGenerator(pathItems(sample, output, split))
+      const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf-8')
+      expect(emitted).toContain(`import { NotFoundResponseSchema } from '${prefix}/responses'`)
+      expect(emitted).toContain(`import { ErrorResponseSchema } from '${prefix}/schemas'`)
+    },
+  )
 })
