@@ -40,9 +40,9 @@
         "@faker-js/faker": "^10.6.0",
         "@sinclair/typebox": "^0.34.52",
         "@types/bun": "latest",
-        "@typespec/http": "^1.17.0",
-        "@typespec/rest": "^0.87.0",
-        "@typespec/versioning": "^0.87.0",
+        "@typespec/http": "1.18.0",
+        "@typespec/rest": "0.87.0",
+        "@typespec/versioning": "0.87.0",
         "elysia": "^1.4.30",
         "oxlint": "^1.89.0",
         "oxlint-tsgolint": "^7.0.2005",
@@ -756,7 +756,7 @@
 
     "@typespec/compiler": ["@typespec/compiler@1.17.0", "", { "dependencies": { "@babel/code-frame": "^8.0.0", "@inquirer/checkbox": "^5.2.2", "@inquirer/confirm": "^6.2.0", "@inquirer/input": "^5.1.3", "@inquirer/select": "^5.2.2", "ajv": "^8.20.0", "change-case": "^5.4.4", "env-paths": "^4.0.0", "is-unicode-supported": "^2.1.0", "mustache": "^4.2.0", "picocolors": "^1.1.1", "prettier": "^3.9.6", "semver": "^7.8.5", "tar": "^7.5.22", "temporal-polyfill": "^1.0.4", "vscode-languageserver": "^10.1.0", "vscode-languageserver-textdocument": "^1.0.13", "yaml": "^2.9.0", "yargs": "^18.1.0" }, "bin": { "tsp": "cmd/tsp.js", "tsp-server": "cmd/tsp-server.js" } }, "sha512-Prj9o2bjoWNS9wJ6sUk532jGm8h2AtpQ/lCFH6dhcywiP7UTj9cJtNlDAHptAS9Irh3YJM2g5D4/7S/u/vcG8Q=="],
 
-    "@typespec/http": ["@typespec/http@1.17.0", "", { "peerDependencies": { "@typespec/compiler": "^1.17.0", "@typespec/streams": "^0.87.0" }, "optionalPeers": ["@typespec/streams"] }, "sha512-XLwL+NvkQ4hWhnIwZms2CNoxCULFt/jMa+QGaKg4hDwPFLvrXsUm7JWPHi1QOcwzGFG8Z1NglqRPzKl2der2ww=="],
+    "@typespec/http": ["@typespec/http@1.18.0", "", { "peerDependencies": { "@typespec/compiler": "^1.18.0", "@typespec/streams": "^0.88.0" }, "optionalPeers": ["@typespec/streams"] }, "sha512-5RmsHcfJYIEKanRQDNYs4kRQQBtVDW46sCNdpbG1fgORzqjEP/Nkx+jFRHW99RlLwcAzX5VbrzM2TgzNCmcPfg=="],
 
     "@typespec/openapi": ["@typespec/openapi@1.17.0", "", { "peerDependencies": { "@typespec/compiler": "^1.17.0", "@typespec/http": "^1.17.0" } }, "sha512-0ScXsaovyFZWJv0nnokGI25vK5nRvJ8KfxiKokyXyQrwzK51eb61P/yZr/cZDGjk/w/qKHz2Vz1OvVC4ztdQdA=="],
 
