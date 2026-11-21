@@ -12,8 +12,9 @@ on:
     branches:
       - main
   pull_request:
-  # release-pr.yml dispatches this on the release branch: the pull request its GITHUB_TOKEN opens
-  # starts no `pull_request` run, and a dispatch is one of the two events that token may trigger.
+  # release-pr.yml dispatches this on the release branch, and on main after merging it: nothing its
+  # GITHUB_TOKEN does starts a run by itself, and a dispatch is one of the two events that token may
+  # trigger.
   workflow_dispatch:
 
 permissions:
