@@ -46,7 +46,7 @@ export function queryOptionsAssertions() {
   const disabled = useUsers({ query: { enabled: false } })
 
   // `select` binds TData through the slot — without the Omit it could not.
-  const names = useUsers<string[]>({ query: { select: (data) => data.map((u) => u.name) } })
+  const names = useUsers<string[]>({ query: { select: (data) => data.map((user) => user.name) } })
   const selected = useUsers({ query: { select: (users) => users.length } })
   assertType<Equal<typeof selected.data, number | undefined>>(true)
 

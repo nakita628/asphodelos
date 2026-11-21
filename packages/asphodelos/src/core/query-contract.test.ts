@@ -33,7 +33,7 @@ const emitAll = async (openapi: OpenAPI) => {
     generators.map(async ({ name, config }) => {
       const output = path.join(dir, `${name}.ts`)
       await runGenerator(makeQueryHooks(openapi, output, '../client', config, 'client'))
-      return { name, code: fs.readFileSync(output, 'utf-8') }
+      return { name, code: fs.readFileSync(output, 'utf8') }
     }),
   )
 }
@@ -186,7 +186,7 @@ describe('7 query clients — multiple path parameters & basePath contract', () 
       generators.map(async ({ name, config }) => {
         const output = path.join(dir, `${name}.ts`)
         await runGenerator(makeQueryHooks(api, output, '../client', config, 'client', '/api'))
-        return { name, code: fs.readFileSync(output, 'utf-8') }
+        return { name, code: fs.readFileSync(output, 'utf8') }
       }),
     )
     const flags = results.map(({ name, code }) => ({

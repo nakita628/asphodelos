@@ -59,7 +59,7 @@ export function numericFakerExpr(schema: Schema, isInt: boolean) {
  * value (`^abc$`), which then fails the very pattern it was drawn from. The anchors are removed
  * here instead, together with the no-op `\/` escape that faker would copy verbatim as well.
  */
-export function fakerPattern(pattern: string) {
+function fakerPattern(pattern: string) {
   return pattern
     .replace(/^\^+/u, '')
     .replace(/(?<!\\)(?:\\\\)*\$+$/u, (anchor) => anchor.replaceAll('$', ''))
@@ -100,7 +100,7 @@ const NON_EXISTENT_CEIL = 2_147_483_647
 // to a single representative, preferring the first non-null member.
 function primaryType(schema: Schema) {
   const type = schema.type
-  if (Array.isArray(type)) return type.find((t) => t !== 'null') ?? type[0]
+  if (Array.isArray(type)) return type.find((kind) => kind !== 'null') ?? type[0]
   return type
 }
 

@@ -38,6 +38,7 @@ export function appFile(
     ? ''
     : '\n\nif (import.meta.main) {\n' +
       `  app.listen(${port})\n` +
+      // oxlint-disable-next-line no-template-curly-in-string -- emitted source: the `${...}` is the generated template literal
       '  console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`)\n' +
       '}'
   return `import {Elysia} from 'elysia'

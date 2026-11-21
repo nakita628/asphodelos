@@ -1,5 +1,5 @@
 /** `true` only for `any` — `unknown extends T` cannot tell the two apart. */
-export type IsAny<T> = 0 extends 1 & T ? true : false
+type IsAny<T> = 0 extends 1 & T ? true : false
 
 /** `true` when T is anything but `any`. */
 export type NotAny<T> = IsAny<T> extends false ? true : false

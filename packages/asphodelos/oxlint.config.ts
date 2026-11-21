@@ -340,6 +340,205 @@ export default defineConfig({
     // (`components/pathItems.ts`, `components/mediaTypes.ts`), so a file reads as the
     // `components` entry it handles. PascalCase and snake_case are rejected.
     'unicorn/filename-case': ['error', { cases: { kebabCase: true, camelCase: true } }],
+
+    // --- Model-independent hardening ----------------------------------------------------------
+    //
+    // Whoever writes the change — a person or any AI model — `oxlint` holds it to the same shape.
+    // The rules below close the gaps where a style used to depend on the author's habits: naming,
+    // conditions, size, the dependency list. They mirror nakita628/hono-takibi, and every one was
+    // measured against `src` before being turned on: it either held already, or the sites it found
+    // were rewritten in the same change.
+
+    // Naming. A vague name is banned outright, and a one-letter name is kept to the conventional
+    // ones: `k` / `v` for an entry, `s` / `p` / `n` / `m` / `i` for the string, path, name, match
+    // and index of a one-line callback, `a` / `b` for a comparator, and single capitals for type
+    // parameters.
+    'custom/identifier-case': 'error',
+    'id-length': [
+      'error',
+      {
+        min: 2,
+        properties: 'never',
+        exceptions: [
+          '_',
+          'k',
+          'v',
+          's',
+          'p',
+          'n',
+          'm',
+          'i',
+          'a',
+          'b',
+          'T',
+          'K',
+          'A',
+          'B',
+          'E',
+          'R',
+          'M',
+        ],
+      },
+    ],
+    'id-denylist': [
+      'error',
+      'data',
+      'tmp',
+      'temp',
+      'foo',
+      'bar',
+      'cb',
+      'err',
+      'e',
+      'res',
+      'req',
+      'obj',
+      'val',
+      'arr',
+      'str',
+      'fn',
+      'ret',
+      'idx',
+      'cnt',
+      'num',
+      'buf',
+      'ctx',
+      'elem',
+      'el',
+      'cur',
+      'x',
+      'y',
+    ],
+    'func-name-matching': 'error',
+
+    // Dependencies. `custom/no-undeclared-dependency` stands in for
+    // `import/no-extraneous-dependencies`, which oxlint does not implement: a bare specifier in
+    // shipped code must be a `dependency` or `peerDependency` of package.json, since a
+    // `devDependency` reaching `src` breaks the published package.
+    'custom/no-undeclared-dependency': 'error',
+    'import/named': 'error',
+    'import/newline-after-import': 'error',
+    'import/no-amd': 'error',
+    'import/no-dynamic-require': 'error',
+    'import/no-webpack-loader-syntax': 'error',
+    // A type import and a value import of one module stay two statements
+    // (`import/consistent-type-specifier-style`); anything else is one.
+    'no-duplicate-imports': ['error', { allowSeparateTypeImports: true }],
+    // A namespace import hides which names a module takes from another. The modules of
+    // `@effect/platform-node` are the exception: each is named for the service it provides
+    // (`NodeFileSystem.layer`), which is how Effect's own code and documentation spell them.
+    'import/no-namespace': [
+      'error',
+      { ignore: ['@effect/platform-node/*', '@effect/platform-node-shared/*'] },
+    ],
+    'import/max-dependencies': ['error', { max: 13 }],
+
+    // The process is configured by a config file and flags, never by the environment, and only
+    // the CLI entry decides when it ends.
+    'node/no-process-env': 'error',
+    'unicorn/no-process-exit': 'error',
+    // An Effect program reads files through the FileSystem service; a `*Sync` call blocks the
+    // event loop under `concurrency: 'unbounded'`.
+    'node/no-sync': 'error',
+    // A promise is built by `Effect.tryPromise` around an API that returns one, not by hand.
+    'promise/avoid-new': 'error',
+    'no-promise-executor-return': 'error',
+
+    // Size ratchets. The limits are the tightest that hold today, so the deepest nesting in the
+    // codebase is as deep as it gets.
+    'max-depth': ['error', 4],
+    'max-nested-callbacks': ['error', 4],
+    'max-classes-per-file': ['error', 2],
+
+    // Conditions. A condition is a boolean, or a string that is there, or an explicit question:
+    // a number is never a condition (`if (minimum)` loses `0`), and an object is compared, so
+    // `0`, `false` and `null` are never dropped by accident.
+    'typescript/strict-boolean-expressions': [
+      'error',
+      { allowNullableBoolean: true, allowNullableString: true, allowNumber: false },
+    ],
+    // What the types call impossible is not asked.
+    'typescript/no-unnecessary-condition': 'error',
+
+    // Types. A dictionary is an index signature (`{ readonly [k: string]: X }`), which can be
+    // `readonly` where `Record` cannot say so without a wrapper.
+    'typescript/consistent-indexed-object-style': ['error', 'index-signature'],
+    'typescript/adjacent-overload-signatures': 'error',
+    'typescript/unified-signatures': 'error',
+    'typescript/ban-tslint-comment': 'error',
+    'typescript/no-unnecessary-qualifier': 'error',
+    // No enums, namespaces or parameter properties: none of them survives type stripping, and a
+    // union of literals says what an enum says.
+    'typescript/no-namespace': 'error',
+    'typescript/no-mixed-enums': 'error',
+    'typescript/prefer-enum-initializers': 'error',
+    'typescript/prefer-literal-enum-member': 'error',
+    'oxc/no-const-enum': 'error',
+    'typescript/parameter-properties': 'error',
+    'typescript/no-empty-interface': 'error',
+    // The classes of this package are tagged errors; these keep a new one honest.
+    'typescript/class-literal-property-style': 'error',
+    'typescript/prefer-return-this-type': 'error',
+    'typescript/related-getter-setter-pairs': 'error',
+    'accessor-pairs': 'error',
+    'grouped-accessor-pairs': 'error',
+    'class-methods-use-this': 'error',
+    'no-constructor-return': 'error',
+    'unicorn/no-static-only-class': 'error',
+    'unicorn/no-this-assignment': 'error',
+    'unicorn/prefer-class-fields': 'error',
+    'unicorn/custom-error-definition': 'error',
+
+    // Regex and strings.
+    'typescript/prefer-regexp-exec': 'error',
+    'unicorn/no-console-spaces': 'error',
+    'unicorn/require-number-to-fixed-digits-argument': 'error',
+    // A `${...}` inside a single-quoted string is almost always a template literal that lost its
+    // backticks — a real hazard when the product is emitted source.
+    'no-template-curly-in-string': 'error',
+
+    // Control flow.
+    'default-case': 'error',
+    'unicorn/switch-case-braces': ['error', 'avoid'],
+    'unicorn/switch-case-break-position': 'error',
+    'unicorn/prefer-ternary': 'error',
+    'unicorn/no-negation-in-equality-check': 'error',
+    'logical-assignment-operators': 'error',
+    'no-eq-null': 'error',
+    'sort-vars': 'error',
+    'vars-on-top': 'error',
+    'oxc/branches-sharing-code': 'error',
+    'oxc/bad-bitwise-operator': 'error',
+
+    // Objects, arrays and built-ins.
+    'no-proto': 'error',
+    'no-alert': 'error',
+    'unicorn/no-instanceof-array': 'error',
+    'unicorn/no-new-buffer': 'error',
+    'unicorn/no-unnecessary-array-splice-count': 'error',
+    'unicorn/no-useless-iterator-to-array': 'error',
+    'unicorn/prefer-prototype-methods': 'error',
+    'unicorn/prefer-reflect-apply': 'error',
+    'unicorn/prefer-date-now': 'error',
+    'unicorn/consistent-date-clone': 'error',
+    'unicorn/prefer-event-target': 'error',
+    'unicorn/prefer-bigint-literals': 'error',
+    'unicorn/text-encoding-identifier-case': 'error',
+    'unicorn/explicit-timer-delay': 'error',
+    'unicorn/consistent-assert': 'error',
+    'unicorn/prefer-top-level-await': 'error',
+    'unicorn/require-module-attributes': 'error',
+
+    // JSDoc: a tag that is written says something.
+    'jsdoc/no-blank-blocks': 'error',
+    'jsdoc/check-property-names': 'error',
+    'jsdoc/implements-on-classes': 'error',
+    'jsdoc/no-defaults': 'error',
+    'jsdoc/require-property': 'error',
+    'jsdoc/require-property-description': 'error',
+    'jsdoc/require-property-name': 'error',
+    'jsdoc/require-throws-description': 'error',
+    'jsdoc/require-yields-description': 'error',
   },
 
   // --- Dependency direction ----------------------------------------------------------------
@@ -549,6 +748,8 @@ export default defineConfig({
         'typescript/no-unsafe-call': 'off',
         'typescript/no-unsafe-member-access': 'off',
         'typescript/no-unsafe-return': 'off',
+        'typescript/strict-boolean-expressions': 'off',
+        'typescript/no-unnecessary-condition': 'off',
       },
     },
     {
@@ -623,6 +824,7 @@ export default defineConfig({
         'jest/prefer-hooks-on-top': 'error',
         'jest/prefer-hooks-in-order': 'error',
         // One spelling: `it`, inside a `describe` or not.
+        // oxlint-disable-next-line id-denylist -- `fn` is the option name the jest rule defines
         'jest/consistent-test-it': ['error', { fn: 'it', withinDescribe: 'it' }],
         'jest/no-alias-methods': 'error',
         'jest/prefer-equality-matcher': 'error',
@@ -634,6 +836,24 @@ export default defineConfig({
         'jest/no-mocks-import': 'error',
         'jest/no-interpolation-in-snapshots': 'error',
         'jest/no-large-snapshots': 'error',
+        // Equality is strict, a primitive is compared with `toBe`, and nothing is a snapshot: the
+        // expected text is in the test, where a reviewer reads it.
+        'jest/prefer-to-be': 'error',
+        'jest/prefer-to-have-length': 'error',
+        'jest/prefer-comparison-matcher': 'error',
+        'jest/prefer-todo': 'error',
+        'jest/no-done-callback': 'error',
+        'jest/no-export': 'error',
+        'jest/no-restricted-matchers': [
+          'error',
+          {
+            toMatchSnapshot: 'Write the expected value out with toBe / toStrictEqual.',
+            toMatchInlineSnapshot: 'Write the expected value out with toBe / toStrictEqual.',
+            toThrowErrorMatchingSnapshot: 'Name the error the call throws.',
+            toThrowErrorMatchingInlineSnapshot: 'Name the error the call throws.',
+            toEqual: 'Use toStrictEqual: toEqual passes on undefined properties and other classes.',
+          },
+        ],
         // A test captures or silences the console the code under test writes to.
         'no-console': 'off',
         // The layering describes `src`; a test reaches for whatever fixture or helper spells the
@@ -669,6 +889,26 @@ export default defineConfig({
         'unicorn/no-await-expression-member': 'off',
         // Steps in a scenario run in order on purpose; `Promise.all` would race them.
         'no-await-in-loop': 'off',
+        // The suite drives real files and subprocesses: it reads and writes synchronously, waits
+        // on hand-built promises and nests `describe` callbacks.
+        'node/no-sync': 'off',
+        'promise/avoid-new': 'off',
+        'no-promise-executor-return': 'off',
+        'max-nested-callbacks': 'off',
+        // A fixture names its throwaway values as briefly as it likes.
+        'id-length': 'off',
+        'id-denylist': 'off',
+        'custom/identifier-case': 'off',
+        // A test imports the devDependencies it exercises against (`elysia`, `@sinclair/typebox`).
+        'custom/no-undeclared-dependency': 'off',
+        // A test sets the environment of the subprocess it spawns, and imports one fixture per
+        // case it covers.
+        'node/no-process-env': 'off',
+        'import/max-dependencies': 'off',
+        // Assertions read possibly-absent fixture values directly: a thrown `TypeError` is the
+        // failure signal there.
+        'typescript/strict-boolean-expressions': 'off',
+        'typescript/no-unnecessary-condition': 'off',
       },
     },
   ],

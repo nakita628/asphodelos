@@ -206,7 +206,7 @@ describe('bodyInfo', () => {
   it('returns multipart/form-data ctx for inline body schema (without mutating it)', () => {
     // Elysia requires `t.Form({...})` instead of `t.Object({...})` for
     // multipart bodies (FormData→Object coerce). The downstream emitter
-    // dispatches on `ctx.mediaType` returned alongside the schema —
+    // dispatches on `context.mediaType` returned alongside the schema —
     // the schema itself is left untouched so it remains a faithful
     // OpenAPI value.
     expect(
@@ -229,7 +229,7 @@ describe('bodyInfo', () => {
         required: ['file'],
         properties: { file: { type: 'string', format: 'binary' } },
       },
-      ctx: { mediaType: 'multipart/form-data' },
+      context: { mediaType: 'multipart/form-data' },
     })
   })
 
@@ -256,7 +256,7 @@ describe('bodyInfo', () => {
       ),
     ).toStrictEqual({
       inline: components.schemas.Item,
-      ctx: { mediaType: 'application/x-www-form-urlencoded' },
+      context: { mediaType: 'application/x-www-form-urlencoded' },
     })
     expect(
       bodyInfo(
@@ -283,7 +283,7 @@ describe('bodyInfo', () => {
 
   it('returns application/x-www-form-urlencoded ctx for an inline form body schema', () => {
     // A urlencoded body reaches Elysia as an object of strings, like a query: the emitter reads
-    // the media type off `ctx` and picks the factories that read text.
+    // the media type off `context` and picks the factories that read text.
     expect(
       bodyInfo(
         op({
@@ -296,7 +296,7 @@ describe('bodyInfo', () => {
       ),
     ).toStrictEqual({
       inline: { type: 'object', properties: { age: { type: 'integer' } } },
-      ctx: { mediaType: 'application/x-www-form-urlencoded' },
+      context: { mediaType: 'application/x-www-form-urlencoded' },
     })
   })
 
@@ -316,7 +316,7 @@ describe('bodyInfo', () => {
       ),
     ).toStrictEqual({
       inline: { type: 'object', properties: { file: { type: 'string' } } },
-      ctx: { mediaType: 'multipart/form-data' },
+      context: { mediaType: 'multipart/form-data' },
     })
   })
 
@@ -333,7 +333,7 @@ describe('bodyInfo', () => {
       ),
     ).toStrictEqual({
       inline: { type: 'string', format: 'binary' },
-      ctx: { mediaType: 'application/octet-stream' },
+      context: { mediaType: 'application/octet-stream' },
     })
   })
 
@@ -394,7 +394,7 @@ describe('bodyInfo', () => {
         type: 'object',
         properties: { file: { type: 'string' } },
       },
-      ctx: { mediaType: 'multipart/form-data' },
+      context: { mediaType: 'multipart/form-data' },
     })
   })
 })
@@ -419,7 +419,7 @@ describe('makeParamsSchema', () => {
         type: 'object',
         properties: { page: { type: 'integer' } },
       },
-      ctx: { parameterLocation: 'query' },
+      context: { parameterLocation: 'query' },
     })
   })
 
@@ -436,7 +436,7 @@ describe('makeParamsSchema', () => {
         properties: { page: { type: 'integer' } },
         required: ['page'],
       },
-      ctx: { parameterLocation: 'query' },
+      context: { parameterLocation: 'query' },
     })
   })
 
@@ -454,7 +454,7 @@ describe('makeParamsSchema', () => {
         required: ['flag'],
         'x-required-message': 'flag is required',
       },
-      ctx: { parameterLocation: 'query' },
+      context: { parameterLocation: 'query' },
     })
   })
 
@@ -473,7 +473,7 @@ describe('makeParamsSchema', () => {
         required: ['flag'],
         'x-required-message': 'flag is required',
       },
-      ctx: { parameterLocation: 'query' },
+      context: { parameterLocation: 'query' },
     })
   })
 
@@ -500,7 +500,7 @@ describe('makeParamsSchema', () => {
         required: ['a', 'b'],
         'x-required-message': 'first',
       },
-      ctx: { parameterLocation: 'query' },
+      context: { parameterLocation: 'query' },
     })
   })
 
@@ -517,7 +517,7 @@ describe('makeParamsSchema', () => {
         properties: { flag: { type: 'string', 'x-required-message': 'inner' } },
         'x-required-message': 'outer',
       },
-      ctx: { parameterLocation: 'query' },
+      context: { parameterLocation: 'query' },
     })
   })
 
@@ -529,7 +529,7 @@ describe('makeParamsSchema', () => {
         type: 'object',
         properties: { a: { type: 'string' } },
       },
-      ctx: { parameterLocation: 'query' },
+      context: { parameterLocation: 'query' },
     })
   })
 
@@ -556,7 +556,7 @@ describe('makeParamsSchema', () => {
           },
         },
       },
-      ctx: { parameterLocation: 'query' },
+      context: { parameterLocation: 'query' },
     })
   })
 
@@ -573,7 +573,7 @@ describe('makeParamsSchema', () => {
           filter: { type: 'object', properties: { kind: { type: 'string' } } },
         },
       },
-      ctx: { parameterLocation: 'path' },
+      context: { parameterLocation: 'path' },
     })
     const inHeader: Parameter = { name: 'a', in: 'header', schema: { type: 'string' } }
     expect(makeParamsSchema([inHeader], 'header')).toStrictEqual({
@@ -581,7 +581,7 @@ describe('makeParamsSchema', () => {
         type: 'object',
         properties: { a: { type: 'string' } },
       },
-      ctx: { parameterLocation: 'header' },
+      context: { parameterLocation: 'header' },
     })
   })
 
@@ -598,7 +598,7 @@ describe('makeParamsSchema', () => {
         type: 'object',
         properties: { session: { type: 'string' } },
       },
-      ctx: { parameterLocation: 'cookie', elysiaKind: 'cookie' },
+      context: { parameterLocation: 'cookie', elysiaKind: 'cookie' },
     })
   })
 
@@ -636,7 +636,7 @@ describe('makeParamsSchema', () => {
           page: { type: 'integer' },
         },
       },
-      ctx: { parameterLocation: 'query', jsonProperties: ['filter', 'ids'] },
+      context: { parameterLocation: 'query', jsonProperties: ['filter', 'ids'] },
     })
   })
 
@@ -660,7 +660,7 @@ describe('makeParamsSchema', () => {
       style: 'pipeDelimited',
       schema: { type: 'integer' },
     }
-    expect(makeParamsSchema([pipes, spaces, scalar], 'query')?.ctx).toStrictEqual({
+    expect(makeParamsSchema([pipes, spaces, scalar], 'query')?.context).toStrictEqual({
       parameterLocation: 'query',
       delimitedProperties: { pipes: '|', spaces: ' ' },
     })
@@ -716,7 +716,7 @@ describe('makeParamsSchema', () => {
         },
         required: ['x-request-id'],
       },
-      ctx: { parameterLocation: 'header' },
+      context: { parameterLocation: 'header' },
     })
   })
 
@@ -1368,7 +1368,7 @@ describe('inlineScalarRefs', () => {
         type: 'object',
         properties: { flag: { type: 'boolean' }, item: { $ref: '#/components/schemas/Item' } },
       },
-      ctx: { mediaType: 'application/x-www-form-urlencoded' },
+      context: { mediaType: 'application/x-www-form-urlencoded' },
     })
   })
 })

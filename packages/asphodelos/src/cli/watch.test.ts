@@ -381,7 +381,7 @@ describe('asphodelos --watch', () => {
 
       expect(
         await writeUntil(shared, 'type: object\nproperties:\n  renamed: { type: number }\n', () =>
-          readFileSync(path.join(dir, 'src/schemas.ts'), 'utf-8').includes('renamed'),
+          readFileSync(path.join(dir, 'src/schemas.ts'), 'utf8').includes('renamed'),
         ),
         watch.output(),
       ).toBe(true)

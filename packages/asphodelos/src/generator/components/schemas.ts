@@ -52,7 +52,7 @@ export function schemasCode(
 type Member = { readonly name: string; readonly schema: Schema }
 
 function refsWithin(schema: Schema, memberNames: ReadonlySet<string>) {
-  return new Set([...collectSchemaRefs(schema)].filter((r) => memberNames.has(r)))
+  return new Set([...collectSchemaRefs(schema)].filter((ref) => memberNames.has(ref)))
 }
 
 // A mutually-recursive SCC is "star-shaped" when one hub member is referenced by every other
@@ -67,15 +67,17 @@ function findStar(
 ): { hub: Member; spokes: readonly Member[] } | null {
   // The collapse rewrites refs by `${pascalCase(name)}Schema`, which only matches the emitted
   // const when no name needed a uniqueness suffix — otherwise fall back to t.Module.
-  if (group.some((g) => exportedName(g.name) !== pascalCase(g.name))) return null
-  const memberNames = new Set(group.map((g) => g.name))
-  const refs = new Map(group.map((g) => [g.name, refsWithin(g.schema, memberNames)] as const))
+  if (group.some((member) => exportedName(member.name) !== pascalCase(member.name))) return null
+  const memberNames = new Set(group.map((member) => member.name))
+  const refs = new Map(
+    group.map((member) => [member.name, refsWithin(member.schema, memberNames)] as const),
+  )
   const candidates = group.filter((hub) => {
-    const spokes = group.filter((g) => g.name !== hub.name)
+    const spokes = group.filter((member) => member.name !== hub.name)
     const hubRefs = refs.get(hub.name) ?? new Set<string>()
     const spokesRefOnlyHub = spokes.every((s) => {
-      const r = refs.get(s.name) ?? new Set<string>()
-      return r.size === 1 && r.has(hub.name)
+      const spokeRefs = refs.get(s.name) ?? new Set<string>()
+      return spokeRefs.size === 1 && spokeRefs.has(hub.name)
     })
     return spokesRefOnlyHub && spokes.every((s) => hubRefs.has(s.name))
   })
@@ -88,7 +90,7 @@ function findStar(
     if (rb < ra) return a
     return b.name < a.name ? b : a
   })
-  return { hub, spokes: group.filter((g) => g.name !== hub.name) }
+  return { hub, spokes: group.filter((member) => member.name !== hub.name) }
 }
 
 function emitStar(
@@ -109,8 +111,10 @@ function emitStar(
   const hubExpr = `t.Recursive((Self)=>${sub(hubBody, hubRef, 'Self')})`
   const decl = (name: string, expr: string) => {
     const ident = `${pascalCase(name)}Schema`
-    const d = `${exportKw}const ${ident}=${readonly(expr, readonlyMode)}`
-    return exportTypes ? `${d}\n\nexport type ${pascalCase(name)}=Static<typeof ${ident}>` : d
+    const declaration = `${exportKw}const ${ident}=${readonly(expr, readonlyMode)}`
+    return exportTypes
+      ? `${declaration}\n\nexport type ${pascalCase(name)}=Static<typeof ${ident}>`
+      : declaration
   }
   // Hub first — the spokes reference its const.
   return [decl(hub.name, hubExpr), ...spokes.map((s) => decl(s.name, typebox(s.schema)))].join(
@@ -144,7 +148,7 @@ function emitGroup(
   }
   const star = findStar(group, exportedName)
   if (star) return emitStar(star, exportKw, readonlyMode, exportTypes)
-  const memberNames = new Set(group.map((g) => g.name))
+  const memberNames = new Set(group.map((member) => member.name))
   const moduleEntries = group
     .map(({ name, schema }) => {
       const inner = typebox(schema)

@@ -11,7 +11,7 @@ import type { Components, Schema } from '../../openapi/index.js'
 import { pascalCase, uncapitalize } from '../../utils/index.js'
 
 function fileNameOf(group: readonly { name: string; schema: Schema }[]) {
-  return uncapitalize(group.map((g) => g.name).toSorted()[0] ?? 'schema')
+  return uncapitalize(group.map((member) => member.name).toSorted()[0] ?? 'schema')
 }
 
 function splitSchemaFiles(
@@ -20,13 +20,15 @@ function splitSchemaFiles(
   exportTypes?: boolean,
 ) {
   const groups = sccSchemas(Object.entries(section).map(([name, schema]) => ({ name, schema })))
-  const nameToFile = new Map(groups.flatMap((g) => g.map((s) => [s.name, fileNameOf(g)] as const)))
+  const nameToFile = new Map(
+    groups.flatMap((group) => group.map((s) => [s.name, fileNameOf(group)] as const)),
+  )
   return groups.map((group) => {
     const fileName = fileNameOf(group)
-    const subSection = Object.fromEntries(group.map((g) => [g.name, g.schema]))
+    const subSection = Object.fromEntries(group.map((member) => [member.name, member.schema]))
     const body = schemasCode(subSection, readonly, exportTypes)
     if (body === '') return { fileName, code: '', refKinds: new Map<string, string>() }
-    const memberNames = new Set(group.map((g) => g.name))
+    const memberNames = new Set(group.map((member) => member.name))
     const bySibling = new Map<string, Set<string>>()
     for (const { schema } of group) {
       for (const refName of collectSchemaRefs(schema)) {
@@ -46,7 +48,7 @@ function splitSchemaFiles(
     return {
       fileName,
       code: siblingImports ? `${siblingImports}\n\n${body}` : body,
-      refKinds: schemaRefKinds(group.map((g) => g.schema)),
+      refKinds: schemaRefKinds(group.map((member) => member.schema)),
     }
   })
 }
@@ -74,15 +76,15 @@ export function schemas(
       const exclude = new Set(['schemas'])
       const outDir = path.join(path.dirname(abs), path.basename(abs, '.ts'))
       const files = splitSchemaFiles(section, readonly, exportTypes)
-      const barrelLines = files.map((f) => `export * from './${f.fileName}'`).toSorted()
+      const barrelLines = files.map((file) => `export * from './${file.fileName}'`).toSorted()
       yield* Effect.all(
         [
-          ...files.map((f) => {
-            const filePath = path.join(outDir, `${f.fileName}.ts`)
+          ...files.map((file) => {
+            const filePath = path.join(outDir, `${file.fileName}.ts`)
             const code =
-              f.code === ''
+              file.code === ''
                 ? ''
-                : makeImports(f.code, filePath, components, true, f.refKinds, exclude)
+                : makeImports(file.code, filePath, components, true, file.refKinds, exclude)
             return emit(code, path.dirname(filePath), filePath)
           }),
           emit(`${barrelLines.join('\n')}\n`, outDir, path.join(outDir, 'index.ts')),

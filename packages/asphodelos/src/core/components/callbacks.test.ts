@@ -84,7 +84,7 @@ describe('callbacks — caller ≡ generator contract', () => {
       },
     }
     await runGenerator(callbacks(sample, output, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = callbacksCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Callback\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -102,7 +102,7 @@ describe('callbacks — caller ≡ generator contract', () => {
       },
     }
     await runGenerator(callbacks(sample, output, true))
-    const emitted = fs.readFileSync(path.join(dir, 'callbacks', 'cb1.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(dir, 'callbacks', 'cb1.ts'), 'utf8')
     const generated = callbacksCode({ Cb1: sample.Cb1 })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Callback\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -136,7 +136,7 @@ describe('callbacks — a referenced schema named like another component kind', 
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-callbacks-'))
       const output = path.join(tmpDir, 'callbacks.ts')
       await runGenerator(callbacks(section, output, split))
-      const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf-8')
+      const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
       expect(emitted).toContain(`import { EventRequestBodySchema } from '${specifier}'`)
       expect(emitted).not.toContain('requestBodies')
     },

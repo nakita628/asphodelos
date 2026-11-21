@@ -69,7 +69,7 @@ describe('schemas — caller ≡ generator contract', () => {
       Post: { type: 'object', properties: { title: { type: 'string' } } },
     } as const
     await runGenerator(schemas(sample, output, false, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = schemasCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Schema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -84,7 +84,7 @@ describe('schemas — caller ≡ generator contract', () => {
       User: { type: 'object', properties: { id: { type: 'string' } } },
     } as const
     await runGenerator(schemas(sample, output, true, false))
-    const emitted = fs.readFileSync(path.join(tmpDir, 'schemas', 'user.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(tmpDir, 'schemas', 'user.ts'), 'utf8')
     const generated = schemasCode({ User: sample.User })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Schema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -105,7 +105,7 @@ describe('schemas — split mode, a sibling named like another component kind', 
       ErrorResponse: { type: 'object', properties: { message: { type: 'string' } } },
     } as const
     await runGenerator(schemas(sample, output, true, false))
-    const emitted = fs.readFileSync(path.join(tmpDir, 'schemas', 'wrapper.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(tmpDir, 'schemas', 'wrapper.ts'), 'utf8')
     expect(emitted).toStrictEqual(
       `import { t } from 'elysia'\nimport { ErrorResponseSchema } from './errorResponse'\n\nexport const WrapperSchema = t.Object({ error: t.Optional(ErrorResponseSchema) })\n`,
     )

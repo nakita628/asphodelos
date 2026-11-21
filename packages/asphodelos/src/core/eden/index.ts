@@ -32,7 +32,7 @@ export function eden(
   return Effect.gen(function* () {
     const prefix = basePath && basePath !== '/' ? basePath : ''
     const operations: string[] = []
-    for (const [pathStr, pathItem] of Object.entries(openAPI.paths)) {
+    for (const [pathStr, pathItem] of Object.entries(openAPI.paths ?? {})) {
       if (!pathItem) continue
       for (const method of HTTP_METHODS) {
         const operation = pathItem[method]

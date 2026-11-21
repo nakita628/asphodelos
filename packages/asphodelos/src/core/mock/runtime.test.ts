@@ -283,7 +283,7 @@ describe('generated mock server — options', () => {
 
   it('imports the locale build of faker when one is configured', async () => {
     const server = await mountMock(SECURED_SPEC, { locale: 'ja' })
-    const source = await readFile(server.output, 'utf-8')
+    const source = await readFile(server.output, 'utf8')
     expect(source).toContain("from '@faker-js/faker/locale/ja'")
   })
 

@@ -113,12 +113,12 @@ function patternOf(schema: Schema) {
   return pattern === undefined ? formatPattern : bothPatterns(formatPattern, pattern)
 }
 
-export function string(schema: Schema, ctx: TypeboxCtx = {}) {
+export function string(schema: Schema, context: TypeboxCtx = {}) {
   if (schema.format === 'date' || schema.format === 'date-time') {
     return `t.Date(${options([...commonOpts(schema)])})`
   }
   if (schema.format === 'binary') {
-    if (ctx.mediaType === 'application/octet-stream') {
+    if (context.mediaType === 'application/octet-stream') {
       return `t.Uint8Array(${options([
         ['minByteLength', schema.minLength],
         ['maxByteLength', schema.maxLength],

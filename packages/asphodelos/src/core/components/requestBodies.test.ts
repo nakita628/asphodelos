@@ -120,7 +120,7 @@ describe('requestBodies — caller ≡ generator contract', () => {
       },
     } as const
     await runGenerator(requestBodies(sample, output, false, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = requestBodiesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)RequestBodySchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -146,7 +146,7 @@ describe('requestBodies — caller ≡ generator contract', () => {
       },
     } as const
     await runGenerator(requestBodies(sample, output, true, false))
-    const emitted = fs.readFileSync(path.join(dir, 'requestBodies', 'createUser.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(dir, 'requestBodies', 'createUser.ts'), 'utf8')
     const generated = requestBodiesCode({ CreateUser: sample.CreateUser })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)RequestBodySchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -173,7 +173,7 @@ describe('requestBodies — a referenced schema named like another component kin
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-request-bodies-'))
       const output = path.join(tmpDir, 'requestBodies.ts')
       await runGenerator(requestBodies(section, output, split, false))
-      expect(fs.readFileSync(path.join(tmpDir, file), 'utf-8')).toStrictEqual(
+      expect(fs.readFileSync(path.join(tmpDir, file), 'utf8')).toStrictEqual(
         `import { CreateUserRequestBodySchema } from '${specifier}'\n\nexport const NewUserRequestBodySchema = CreateUserRequestBodySchema\n`,
       )
     },

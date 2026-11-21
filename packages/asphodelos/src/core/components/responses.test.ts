@@ -60,7 +60,7 @@ describe('responses — caller ≡ generator contract', () => {
     const output = path.join(tmpDir, 'responses.ts')
     const sample = { NotFound: { description: 'Not Found' }, Ok: { description: 'OK' } }
     await runGenerator(responses(sample, output, false, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = responsesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ResponseSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -73,7 +73,7 @@ describe('responses — caller ≡ generator contract', () => {
     const output = path.join(tmpDir, 'responses.ts')
     const sample = { NotFound: { description: 'Not Found' } }
     await runGenerator(responses(sample, output, true, false))
-    const emitted = fs.readFileSync(path.join(tmpDir, 'responses', 'notFound.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(tmpDir, 'responses', 'notFound.ts'), 'utf8')
     const generated = responsesCode({ NotFound: sample.NotFound })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ResponseSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -104,7 +104,7 @@ describe('responses — a referenced schema named like another component kind', 
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
     const output = path.join(tmpDir, 'responses.ts')
     await runGenerator(responses(sectionFor(name), output, false, false))
-    expect(fs.readFileSync(output, 'utf-8')).toStrictEqual(
+    expect(fs.readFileSync(output, 'utf8')).toStrictEqual(
       `import { ${name}Schema } from './schemas'\n\nexport const ClientErrorResponseSchema = ${name}Schema\n`,
     )
   })
@@ -122,7 +122,7 @@ describe('responses — a referenced schema named like another component kind', 
       },
     }
     await runGenerator(responses(section, output, false, false))
-    expect(fs.readFileSync(output, 'utf-8')).toStrictEqual(
+    expect(fs.readFileSync(output, 'utf8')).toStrictEqual(
       `import { RateLimitHeaderSchema } from './schemas'\n\nexport const TooManyRequestsResponseSchema = RateLimitHeaderSchema\n`,
     )
   })
@@ -140,7 +140,7 @@ describe('responses — a referenced schema named like another component kind', 
       },
     }
     await runGenerator(responses(section, output, false, false))
-    expect(fs.readFileSync(output, 'utf-8')).toStrictEqual(
+    expect(fs.readFileSync(output, 'utf8')).toStrictEqual(
       `import { ErrorResponseSchema } from './schemas'\n\nexport const TooManyRequestsResponseSchema = ErrorResponseSchema\n`,
     )
   })
@@ -149,7 +149,7 @@ describe('responses — a referenced schema named like another component kind', 
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
     const output = path.join(tmpDir, 'responses.ts')
     await runGenerator(responses(sectionFor('ErrorResponse'), output, true, false))
-    const emitted = fs.readFileSync(path.join(tmpDir, 'responses', 'clientError.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(tmpDir, 'responses', 'clientError.ts'), 'utf8')
     expect(emitted).toStrictEqual(
       `import { ErrorResponseSchema } from '../schemas'\n\nexport const ClientErrorResponseSchema = ErrorResponseSchema\n`,
     )

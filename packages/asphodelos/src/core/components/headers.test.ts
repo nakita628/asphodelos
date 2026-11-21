@@ -72,7 +72,7 @@ describe('headers — caller ≡ generator contract', () => {
       RateLimitHeader: { schema: { type: 'integer' } },
     } as const
     await runGenerator(headers(sample, output, false, false))
-    const emitted = fs.readFileSync(output, 'utf-8')
+    const emitted = fs.readFileSync(output, 'utf8')
     const generated = headersCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)HeaderSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -88,7 +88,7 @@ describe('headers — caller ≡ generator contract', () => {
       AuthHeader: { schema: { type: 'string' } },
     } as const
     await runGenerator(headers(sample, output, true, false))
-    const emitted = fs.readFileSync(path.join(dir, 'headers', 'authHeader.ts'), 'utf-8')
+    const emitted = fs.readFileSync(path.join(dir, 'headers', 'authHeader.ts'), 'utf8')
     const generated = headersCode({ AuthHeader: sample.AuthHeader })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)HeaderSchema\s*=/gu
     const emittedNames = new Set([...emitted.matchAll(re)].map((m) => m[1]))
@@ -109,7 +109,7 @@ describe('headers — a referenced schema named like another component kind', ()
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-headers-'))
       const output = path.join(tmpDir, 'headers.ts')
       await runGenerator(headers(section, output, split, false))
-      expect(fs.readFileSync(path.join(tmpDir, file), 'utf-8')).toStrictEqual(
+      expect(fs.readFileSync(path.join(tmpDir, file), 'utf8')).toStrictEqual(
         `import { RateLimitHeaderSchema } from '${specifier}'\n\nexport const XRateHeaderSchema = RateLimitHeaderSchema\n`,
       )
     },

@@ -14,7 +14,7 @@ const ENTRY = path.resolve(import.meta.dir, 'index.ts')
 const SPAWN_TIMEOUT_MS = 30_000
 
 function run(args: readonly string[], cwd?: string) {
-  const result = spawnSync('bun', ['run', ENTRY, ...args], { encoding: 'utf-8', cwd })
+  const result = spawnSync('bun', ['run', ENTRY, ...args], { encoding: 'utf8', cwd })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
 

@@ -96,7 +96,7 @@ describe('modelFile', () => {
             type: 'object',
             properties: { ids: { type: 'array', items: { type: 'integer' } } },
           },
-          ctx: { parameterLocation: 'query', delimitedProperties: { ids: '|' } },
+          context: { parameterLocation: 'query', delimitedProperties: { ids: '|' } },
         },
       ]),
     ).toContain(`import {Value} from '@sinclair/typebox/value'`)

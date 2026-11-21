@@ -434,9 +434,12 @@ const ConfigSchema = Schema.Struct({
     }),
   ),
   format: Schema.optionalKey(
-    Schema.declare<FormatConfig>((u): u is FormatConfig => typeof u === 'object' && u !== null, {
-      message: 'must be an oxfmt config object',
-    }).annotate({
+    Schema.declare<FormatConfig>(
+      (value): value is FormatConfig => typeof value === 'object' && value !== null,
+      {
+        message: 'must be an oxfmt config object',
+      },
+    ).annotate({
       title: 'Formatter options',
       description:
         'oxfmt `FormatConfig` applied to every generated file. Defaults to printWidth 100, single quotes, no semicolons.',

@@ -28,7 +28,7 @@ import { headerParamsApp } from './app.js'
 beforeAll(suspendHappyDom)
 afterAll(resumeHappyDom)
 
-async function get(path: string, headers: Record<string, string> = {}) {
+async function get(path: string, headers: { [key: string]: string } = {}) {
   const res = await headerParamsApp.handle(new Request(`http://localhost${path}`, { headers }))
   const body: unknown = await res.json()
   return { status: res.status, body }
