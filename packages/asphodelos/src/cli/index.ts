@@ -8,8 +8,11 @@ const COMMAND_NAME = 'asphodelos'
 /** Config file `asphodelos` picks up from the working directory when `--config` is omitted. */
 const DEFAULT_CONFIG_FILE = 'asphodelos.config.ts'
 
-/** Extensions a change has to carry to be worth regenerating for. */
-const INPUT_EXTENSIONS = ['.yaml', '.json', '.tsp'] as const
+/**
+ * Extensions a change has to carry to be worth regenerating for: `INPUT_EXTENSIONS` in the
+ * config module, restated so the command line does not load that module before it needs it.
+ */
+const INPUT_EXTENSIONS = ['.yaml', '.yml', '.json', '.tsp'] as const
 
 /**
  * The command line itself: what `asphodelos` accepts, what each piece means, and the schema every

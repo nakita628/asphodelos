@@ -1,8 +1,12 @@
 import path from 'node:path'
 
+/**
+ * Uses `bundle()` to resolve external $refs while preserving internal ones, so a split document
+ * folds into one whose components are still referenced by name.
+ *
+ * @see https://apitools.dev/swagger-parser/docs/
+ */
 import SwaggerParser from '@apidevtools/swagger-parser'
-import { compile, NodeHost } from '@typespec/compiler'
-import { getOpenAPI3 } from '@typespec/openapi3'
 import { Data, Effect } from 'effect'
 
 import type { VendorExtensions } from './vendor-ext.js'
@@ -12,10 +16,24 @@ class OpenAPIError extends Data.TaggedError('OpenAPIError')<{
   readonly message: string
 }> {}
 
-export function parseOpenAPI(input: `${string}.tsp` | `${string}.yaml` | `${string}.json`) {
+export function parseOpenAPI(
+  input:
+    | `${string}.yaml`
+    | `${string}.yml`
+    | `${string}.json`
+    | `${string}.tsp`
+    | `http://${string}`
+    | `https://${string}`,
+) {
   return Effect.tryPromise({
     try: async () => {
       if (!input.endsWith('.tsp')) return (await SwaggerParser.bundle(input)) as OpenAPI
+      // The TypeSpec compiler and emitter are loaded only for a `.tsp` document: together
+      // they take longer to import than the whole generation of a yaml or json one.
+      const [{ compile, NodeHost }, { getOpenAPI3 }] = await Promise.all([
+        import('@typespec/compiler'),
+        import('@typespec/openapi3'),
+      ])
       const program = await compile(NodeHost, path.resolve(input), { noEmit: true })
       if (program.diagnostics.length > 0) {
         throw new Error(
@@ -28,8 +46,19 @@ export function parseOpenAPI(input: `${string}.tsp` | `${string}.yaml` | `${stri
       if (!document) throw new Error(`TypeSpec emitted no OpenAPI document: ${input}`)
       return document as OpenAPI
     },
-    catch: (error) =>
-      new OpenAPIError({ message: error instanceof Error ? error.message : String(error) }),
+    catch: (error) => {
+      if (!(error instanceof Error)) return new OpenAPIError({ message: String(error) })
+      // A failed download can end its message at the colon with no reason after it; the
+      // resolver's `ioErrorCode` (`ETIMEDOUT`, …) is then the only reason there is.
+      const code = 'ioErrorCode' in error ? error.ioErrorCode : undefined
+      const missingReason = !error.message.trim() || error.message.trimEnd().endsWith(':')
+      return new OpenAPIError({
+        message:
+          missingReason && typeof code === 'string' && code
+            ? `${error.message}${code}`
+            : error.message,
+      })
+    },
   })
 }
 

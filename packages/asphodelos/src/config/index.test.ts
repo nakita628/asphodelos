@@ -39,11 +39,21 @@ describe('parseConfig', () => {
   it('rejects when input lacks a recognized extension', () => {
     const result = decodeError({ input: 'openapi.txt' })
     expect(result._tag).toBe('ConfigError')
-    expect(result.message).toBe('Invalid config: input: must be .yaml | .json | .tsp')
+    expect(result.message).toBe(
+      'Invalid config: input: must be .yaml | .yml | .json | .tsp, or an http(s) URL',
+    )
   })
 
   it('accepts .json input', () => {
     expect(() => decode({ input: 'openapi.json' })).not.toThrow()
+  })
+
+  it('accepts .yml input', () => {
+    expect(() => decode({ input: 'openapi.yml' })).not.toThrow()
+  })
+
+  it('accepts an http(s) URL input without an extension', () => {
+    expect(() => decode({ input: 'https://example.com/openapi' })).not.toThrow()
   })
 
   it('accepts .tsp input', () => {

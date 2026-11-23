@@ -4,7 +4,7 @@ import path from 'node:path'
 import { Effect, FileSystem, Result } from 'effect'
 
 import type { Config } from '../config/index.js'
-import { parseConfig } from '../config/index.js'
+import { INPUT_EXTENSIONS, parseConfig } from '../config/index.js'
 import { FormatOptions } from '../format/index.js'
 import { fileSystemLayer } from '../fsp/index.js'
 import { parseOpenAPI } from '../openapi/index.js'
@@ -36,9 +36,6 @@ type Job = ReturnType<typeof makeJob>[number]
 
 /** The config file the plugin reads, from the directory Vite was started in. */
 const CONFIG_FILE = 'asphodelos.config.ts'
-
-/** Extensions a change has to carry to be worth regenerating for — the set `--watch` reacts to. */
-const INPUT_EXTENSIONS = ['.yaml', '.json', '.tsp'] as const
 
 /**
  * How long a burst of filesystem events is let settle before a pass runs.

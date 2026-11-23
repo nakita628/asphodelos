@@ -35,6 +35,9 @@ export default defineConfig({
 })
 ```
 
+`input` takes a `.yaml` / `.yml` / `.json` OpenAPI document, a `.tsp` TypeSpec entry, or an
+`http(s)` URL that serves an OpenAPI document.
+
 ```bash
 bunx asphodelos
 ```
@@ -185,7 +188,7 @@ export default defineConfig({
 })
 ```
 
-- **What it watches**: `asphodelos.config.ts`, every `.yaml` / `.json` / `.tsp` in the directory
+- **What it watches**: `asphodelos.config.ts`, every `.yaml` / `.yml` / `.json` / `.tsp` in the directory
   of `input` — a `$ref` or a TypeSpec import can reach a sibling file — and every file the document
   reads from outside that directory.
 - **When it regenerates**: a config save always regenerates. A document save regenerates only when

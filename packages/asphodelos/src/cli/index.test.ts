@@ -201,7 +201,9 @@ describe('asphodelos — config mode', () => {
     const result = await run([])
 
     expect(result.ok).toBe(false)
-    expect(result.stderr).toContain('Invalid config: input: must be .yaml | .json | .tsp')
+    expect(result.stderr).toContain(
+      'Invalid config: input: must be .yaml | .yml | .json | .tsp, or an http(s) URL',
+    )
     // A config that is present and wrong names the field; the usage block would only bury it.
     expect(result.stdout).not.toContain('USAGE')
     expect(existsSync(path.join(dir, 'src'))).toBe(false)
