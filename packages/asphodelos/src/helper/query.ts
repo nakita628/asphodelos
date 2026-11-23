@@ -129,7 +129,7 @@ type Target = {
     bodyExpr: string,
     optionsExpr: string,
   ) => string
-  /** The response component a `fetch` fallback types its data by, to import. */
+  /** The schema const of the response component a `fetch` fallback types its data by, to import. */
   readonly fetchType?: string
 }
 
@@ -150,8 +150,9 @@ function pathParamNames(pathStr: string): readonly string[] {
 }
 
 // The data type for a fetch fallback comes from its 2xx response schema — the Eden chain that
-// normally yields it is untypeable here. A component `$ref` resolves to its exported alias from the
-// schemas module; inline and empty responses degrade to a safe wide type.
+// normally yields it is untypeable here. A component `$ref` resolves to `Static` of its schema const,
+// which the schemas module always exports — the `Static` alias it emits only with `exportTypes`;
+// inline and empty responses degrade to a safe wide type.
 function successType(operation: Operation): {
   readonly dataT: string
   readonly importName?: string
@@ -159,7 +160,10 @@ function successType(operation: Operation): {
   const ok = Object.entries(operation.responses ?? {}).find(([status]) => status.startsWith('2'))
   if (!ok) return { dataT: 'void' }
   const info = responseInfo(ok[1])
-  if (info.ref) return { dataT: pascalCase(info.ref), importName: pascalCase(info.ref) }
+  if (info.ref) {
+    const ident = `${pascalCase(info.ref)}Schema`
+    return { dataT: `Static<typeof ${ident}>`, importName: ident }
+  }
   if (info.void) return { dataT: 'void' }
   return { dataT: 'unknown' }
 }
@@ -805,7 +809,10 @@ function headerCode(
     if (names('MaybeRefOrGetter')) lines.push("import type { MaybeRefOrGetter } from 'vue'")
   }
   if (fetchTypes.length > 0) {
-    lines.push(`import type { ${fetchTypes.join(', ')} } from '${schemasImport}'`)
+    lines.push(
+      "import type { Static } from 'elysia'",
+      `import type { ${fetchTypes.join(', ')} } from '${schemasImport}'`,
+    )
   }
   lines.push(`import { ${client} } from '${importPath}'`)
   return `${lines.join('\n')}\n\n`
