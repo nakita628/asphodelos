@@ -37,7 +37,7 @@ describe('client generator', () => {
     expect(code).toBe(`import { treaty } from '@elysiajs/eden'
 import type { app } from './index'
 
-const origin = process.env.API_URL!
+export const origin = process.env.API_URL!
 
 export const client = treaty<typeof app>(origin)
 `)
@@ -53,7 +53,7 @@ export const client = treaty<typeof app>(origin)
   it('sameOrigin: the browser uses its own origin and everything else the environment', async () => {
     const code = await generateAndRead({ sameOrigin: true })
     expect(code).toContain(
-      "const origin = typeof window === 'undefined' ? process.env.API_URL! : window.location.origin",
+      "export const origin = typeof window === 'undefined' ? process.env.API_URL! : window.location.origin",
     )
     expect(code).toContain('export const client = treaty<typeof app>(origin)')
   })
@@ -62,7 +62,7 @@ export const client = treaty<typeof app>(origin)
     const code = await generateAndRead({
       baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
     })
-    expect(code).toContain('const origin = import.meta.env.VITE_API_URL!')
+    expect(code).toContain('export const origin = import.meta.env.VITE_API_URL!')
   })
 
   // A module that exports the value answers for it: the export is imported and the value used
@@ -71,11 +71,11 @@ export const client = treaty<typeof app>(origin)
     const code = await generateAndRead({ baseUrl: { import: '@/env', value: 'env.API_URL' } })
     expect(code).toContain("import { treaty } from '@elysiajs/eden'\nimport { env } from '@/env'")
     expect(code).toContain(
-      'const origin = env.API_URL\n\nexport const client = treaty<typeof app>(origin)',
+      'export const origin = env.API_URL\n\nexport const client = treaty<typeof app>(origin)',
     )
     expect(code).not.toContain('!')
     const bare = await generateAndRead({ baseUrl: { import: '../env', value: 'apiUrl' } })
     expect(bare).toContain("import { apiUrl } from '../env'")
-    expect(bare).toContain('const origin = apiUrl')
+    expect(bare).toContain('export const origin = apiUrl')
   })
 })

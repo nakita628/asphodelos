@@ -24,8 +24,8 @@ function baseUrlCode(baseUrl: BaseUrl, sameOrigin: boolean) {
         ]
       : [[], `${baseUrl.source}.${baseUrl.env}!`]
   const origin = sameOrigin
-    ? `const origin = typeof window === 'undefined' ? ${expression} : window.location.origin`
-    : `const origin = ${expression}`
+    ? `export const origin = typeof window === 'undefined' ? ${expression} : window.location.origin`
+    : `export const origin = ${expression}`
   return { imports, origin }
 }
 
@@ -37,7 +37,8 @@ function baseUrlCode(baseUrl: BaseUrl, sameOrigin: boolean) {
  * browser bundle could pull the server in. `treaty` wants an origin — a relative path is read as
  * a host — so with `sameOrigin` the browser is given its own, `window.location.origin`, and
  * `baseUrl` serves the code that runs without a window. Either way the origin is a `const` of
- * its own, so what the client is created with is read off one line.
+ * its own, so what the client is created with is read off one line, and it is exported beside
+ * the client: the hooks of a path Eden cannot type call `fetch` with it.
  */
 export function client(
   output: string,

@@ -131,6 +131,8 @@ type Target = {
   ) => string
   /** The response component a `fetch` fallback types its data by, to import. */
   readonly fetchType?: string
+  /** Whether the requests are a `fetch` fallback's, whose URL starts at the client's origin. */
+  readonly usesFetch: boolean
 }
 
 // Eden treaty projects a path onto a property/function tree, so a segment it cannot turn into a
@@ -212,11 +214,16 @@ function edenTarget(
       `const{data,error}=await ${call(exprs)}(${signal ? `{...${options},fetch:{...${options}${access}fetch,signal}}` : options});if(error)throw error;return data`,
     mutationBody: (exprs, body, options) =>
       `const{data,error}=await ${call(exprs)}(${withBody ? `${body},${options}` : options});if(error)throw error;return data`,
+    usesFetch: false,
   }
 }
 
+/** The origin the client module exports beside the client, which a `fetch` fallback's URL starts at. */
+const ORIGIN = 'origin'
+
 // A literal-path `fetch` for an operation Eden cannot type: path parameters are strings in a URL,
-// the query is spread into the search string, and the body is JSON.
+// the query is spread into the search string, and the body is JSON. The URL starts at the
+// client's origin, so the request goes where the client's do.
 function fetchTarget(fullPath: string, method: string, operation: Operation): Target {
   const names = pathParamNames(fullPath)
   const hasQuery = (operation.parameters ?? []).some((p) => 'in' in p && p.in === 'query')
@@ -230,7 +237,9 @@ function fetchTarget(fullPath: string, method: string, operation: Operation): Ta
       const index = names.indexOf(n)
       return `\${encodeURIComponent(${exprs[index] ?? n})}`
     })
-    return hasQuery ? `\`${inner}\${search.size ? \`?\${search}\` : ''}\`` : `\`${inner}\``
+    return hasQuery
+      ? `\`\${${ORIGIN}}${inner}\${search.size ? \`?\${search}\` : ''}\``
+      : `\`\${${ORIGIN}}${inner}\``
   }
   const search = (options: string) =>
     hasQuery
@@ -253,6 +262,7 @@ function fetchTarget(fullPath: string, method: string, operation: Operation): Ta
     mutationBody: (exprs, body, options) =>
       `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});if(!res.ok)throw await res.json();return JSON.parse(await res.text())`,
     ...(importName ? { fetchType: importName } : {}),
+    usesFetch: true,
   }
 }
 
@@ -726,14 +736,15 @@ function operationCode(
           ...(paginated ? infiniteCode(config, names, target, prefix, fullPath) : []),
         ]
       : mutationCode(config, method, pathStr, target, prefix, fullPath)
-  return { code: code.join('\n\n'), fetchType: target.fetchType }
+  return { code: code.join('\n\n'), fetchType: target.fetchType, usesFetch: target.usesFetch }
 }
 
 /**
  * The imports of a hooks file, read off the code it holds: a value and a type import from the
  * library, Vue's helpers when a ref is read, the response components the fetch fallbacks type
- * their data by, and the client. A name is imported only when the file uses it, so a document
- * with no mutation imports nothing a mutation would.
+ * their data by, and the client, with its origin when a fetch fallback builds a URL from it. A
+ * name is imported only when the file uses it, so a document with no mutation imports nothing a
+ * mutation would.
  */
 function headerCode(
   config: QueryHookConfig,
@@ -742,6 +753,7 @@ function headerCode(
   body: string,
   fetchTypes: readonly string[],
   schemasImport: string,
+  usesFetch: boolean,
 ) {
   // A value is used where it is called or given type arguments; the hooks' local variables
   // (`queryOptions`, `mutationOptions`) are not that.
@@ -807,7 +819,8 @@ function headerCode(
   if (fetchTypes.length > 0) {
     lines.push(`import type { ${fetchTypes.join(', ')} } from '${schemasImport}'`)
   }
-  lines.push(`import { ${client} } from '${importPath}'`)
+  const clientImports = usesFetch ? [client, ORIGIN] : [client]
+  lines.push(`import { ${clientImports.join(', ')} } from '${importPath}'`)
   return `${lines.join('\n')}\n\n`
 }
 
@@ -841,7 +854,15 @@ export function makeQueryHooks(
     // A fetch hook types its data by the component the response names, which lives in the
     // generated schemas module rather than behind the Eden client.
     const fetchTypes = [...new Set(filterDefined(operations.map((op) => op.fetchType)))].toSorted()
-    const header = headerCode(config, client, importPath, body, fetchTypes, schemasImport)
+    const header = headerCode(
+      config,
+      client,
+      importPath,
+      body,
+      fetchTypes,
+      schemasImport,
+      operations.some((op) => op.usesFetch),
+    )
     yield* emit(`${header}${body}`, path.dirname(output), output)
     return `Generated ${config.label} code written to ${output}`
   })
