@@ -656,7 +656,8 @@ const ConfigSchema = Schema.Struct({
   'angular-query': Schema.optionalKey(
     HooksSchema.annotate({
       title: 'Angular Query hooks output',
-      description: 'Generates `@tanstack/angular-query-experimental` hooks per operation.',
+      description:
+        'Generates `@tanstack/angular-query` hooks per operation (Angular 20.1 or later).',
       examples: [{ output: './src/angular-query.ts' }],
     }),
   ),

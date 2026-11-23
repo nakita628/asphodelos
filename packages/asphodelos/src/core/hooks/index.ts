@@ -30,13 +30,6 @@ const QUERY_CLIENT_ACCESSOR_TAIL = {
   mutation: '() => QueryClient',
   imports: ['QueryClient'],
 } as const
-const INJECT_OPTIONS_TAIL = {
-  name: 'injectOptions',
-  query: 'InjectQueryOptions',
-  infinite: 'InjectInfiniteQueryOptions',
-  mutation: 'InjectMutationOptions',
-  imports: ['InjectQueryOptions', 'InjectInfiniteQueryOptions', 'InjectMutationOptions'],
-} as const
 
 const TANSTACK: QueryHookConfig = {
   label: 'tanstack-query',
@@ -121,10 +114,13 @@ export const HOOK_CONFIGS = {
     infiniteOptionsType: 'CreateInfiniteQueryOptions',
     hookTail: QUERY_CLIENT_ACCESSOR_TAIL,
   },
-  // Angular replaces suspense with signal-based reactivity, so there are no suspense hooks.
+  // Angular replaces suspense with signal-based reactivity, so there are no suspense hooks. Its
+  // `inject*` functions take only the options function, with no trailing argument: outside an
+  // injection context, the caller wraps the hook in `runInInjectionContext`.
+  // @see https://tanstack.com/query/latest/docs/framework/angular/guides/migrating-from-experimental
   'angular-query': {
     label: 'angular-query',
-    packageName: '@tanstack/angular-query-experimental',
+    packageName: '@tanstack/angular-query',
     hookPrefix: 'inject',
     queryFn: 'injectQuery',
     mutationFn: 'injectMutation',
@@ -133,7 +129,6 @@ export const HOOK_CONFIGS = {
     queryOptionsType: 'CreateQueryOptions',
     mutationOptionsType: 'CreateMutationOptions',
     infiniteOptionsType: 'CreateInfiniteQueryOptions',
-    hookTail: INJECT_OPTIONS_TAIL,
   },
 } as const satisfies { readonly [K in HookLibrary]: QueryHookConfig }
 
