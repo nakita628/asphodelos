@@ -3428,7 +3428,8 @@ export function injectPostItems<
 
 // A path Eden cannot type falls back to `fetch`. Its URL starts at the origin the client module
 // exports, so the request goes where the client's do — not to the page's origin, and not to a
-// bare path that a runtime without a page rejects.
+// bare path that a runtime without a page rejects. Its path parameters are named the way the
+// Eden hooks name theirs, so one the document calls `clientOrigin` or `search` hides nothing.
 describe('fetch fallback', () => {
   const api: OpenAPI = {
     openapi: '3.1.0',
@@ -3438,11 +3439,12 @@ describe('fetch fallback', () => {
         get: { operationId: 'getWidget', responses: { '200': { description: 'OK' } } },
         post: { operationId: 'postWidget', responses: { '200': { description: 'OK' } } },
       },
-      '/files/{name}.txt': {
+      '/files/{clientOrigin}/{search}.txt': {
         get: {
           operationId: 'getFile',
           parameters: [
-            { name: 'name', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'clientOrigin', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'search', in: 'path', required: true, schema: { type: 'string' } },
             { name: 'raw', in: 'query', schema: { type: 'boolean' } },
           ],
           responses: { '200': { description: 'OK' } },
@@ -3470,11 +3472,12 @@ describe('fetch fallback', () => {
     '%s: queries and mutations fetch from the origin the client module exports',
     async (library) => {
       const code = await generateAndRead(library)
-      expect(code).toContain("import { client, origin } from './lib'")
-      expect(code).toContain('await fetch(`${origin}/widget.json`, {')
+      expect(code).toContain("import { client, clientOrigin } from './lib'")
+      expect(code).toContain('await fetch(`${clientOrigin}/widget.json`, {')
       expect(code).toMatch(
-        /await fetch\(\s*`\$\{origin\}\/files\/\$\{encodeURIComponent\(name\)\}\.txt\$\{search\.size/u,
+        /await fetch\(\s*`\$\{clientOrigin\}\/files\/\$\{encodeURIComponent\(params\)\}\/\$\{encodeURIComponent\(params2\)\}\.txt\$\{search\.size/u,
       )
+      expect(code).toContain('params: string,\n  params2: string,')
       expect(code).not.toMatch(/fetch\(`\//u)
     },
   )
@@ -3489,6 +3492,6 @@ describe('fetch fallback', () => {
       },
     })
     expect(code).toContain("import { client } from './lib'")
-    expect(code).not.toContain('origin')
+    expect(code).not.toContain('clientOrigin')
   })
 })

@@ -301,7 +301,7 @@ const ClientOutputSchema = Schema.Struct({
     ImportSchema.annotate({
       title: 'Package name',
       description:
-        "The name the generated files in other packages import the client by — the package it is published as, whose entry is the client or its barrel. Files in the client's own package import it relatively or through the alias. Left out, a file outside that package is refused.",
+        "The name the generated files in other packages import the client by — the package it is published as, whose entry is the client or its barrel, exporting `client` and `clientOrigin`. Files in the client's own package import it relatively or through the alias. Left out, a file outside that package is refused.",
       examples: ['@packages/client'],
     }),
   ),

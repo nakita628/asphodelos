@@ -233,16 +233,23 @@ import { treaty } from '@elysiajs/eden'
 
 import type { app } from '../index'
 
-export const origin = import.meta.env.VITE_API_URL!
+function normalizeOrigin(origin: string) {
+  const url = origin.includes('://')
+    ? origin
+    : `${['localhost', '127.0.0.1', '0.0.0.0'].some((host) => origin.includes(host)) ? 'http' : 'https'}://${origin}`
+  return url.endsWith('/') ? url.slice(0, -1) : url
+}
 
-export const client = treaty<typeof app>(origin)
+export const clientOrigin = normalizeOrigin(import.meta.env.VITE_API_URL!)
+
+export const client = treaty<typeof app>(clientOrigin)
 ```
 
 `source: 'process.env'` reads `process.env` instead, for code Node.js or Bun runs:
 
 ```ts
 client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } }
-// export const origin = process.env.API_URL!
+// export const clientOrigin = normalizeOrigin(process.env.API_URL!)
 ```
 
 A value a module exports is used as written — `value` is the export followed by what is read
@@ -251,7 +258,7 @@ from it, and the module answers for it being there:
 ```ts
 client: { output: 'src/lib/client.ts', baseUrl: { import: '@/env', value: 'env.API_URL' } }
 // import { env } from '@/env'
-// export const origin = env.API_URL
+// export const clientOrigin = normalizeOrigin(env.API_URL)
 ```
 
 `sameOrigin: true` is for an app a host framework such as TanStack Start or Next.js serves beside
@@ -261,12 +268,16 @@ DOM lib.
 
 ```ts
 client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' }, sameOrigin: true }
-// export const origin = typeof window === 'undefined' ? process.env.API_URL! : window.location.origin
+// export const clientOrigin = normalizeOrigin(
+//   typeof window === 'undefined' ? process.env.API_URL! : window.location.origin,
+// )
 ```
 
-`origin` is exported beside the client: the hooks of a path Eden cannot type — a segment with a
-`.` or a partial parameter, such as `/widget.json` — call `fetch` with it, so they send where the
-client does.
+`normalizeOrigin` reads the origin the way treaty does: it adds `http://` for a local host or
+`https://` otherwise when there is no scheme, and drops a trailing `/`. The result is exported as
+`clientOrigin`: the hooks of a path Eden cannot type — a segment with a `.` or a partial parameter,
+such as `/widget.json` — call `fetch` with it, so they send where the client does. A package
+entry that `client.package` names exports `clientOrigin` beside `client`.
 
 The `index.ts` beside the client re-exports it, so it is imported as `./lib` — by `eden`, by the
 hooks, and by your own code:

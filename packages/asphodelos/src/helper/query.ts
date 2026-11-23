@@ -219,13 +219,16 @@ function edenTarget(
 }
 
 /** The origin the client module exports beside the client, which a `fetch` fallback's URL starts at. */
-const ORIGIN = 'origin'
+const ORIGIN = 'clientOrigin'
 
 // A literal-path `fetch` for an operation Eden cannot type: path parameters are strings in a URL,
 // the query is spread into the search string, and the body is JSON. The URL starts at the
-// client's origin, so the request goes where the client's do.
+// client's origin, so the request goes where the client's do. The path parameters are named the
+// way the Eden hooks name theirs, `params`, `params2`, …, so a parameter the document calls
+// `search`, `res` or `clientOrigin` cannot hide what the body reads by that name.
 function fetchTarget(fullPath: string, method: string, operation: Operation): Target {
   const names = pathParamNames(fullPath)
+  const params = names.map((_, index) => (index === 0 ? 'params' : `params${index + 1}`))
   const hasQuery = (operation.parameters ?? []).some((p) => 'in' in p && p.in === 'query')
   const optionsType = hasQuery
     ? '{ headers?: Record<string, string>; query?: Record<string, unknown> }'
@@ -235,7 +238,7 @@ function fetchTarget(fullPath: string, method: string, operation: Operation): Ta
   const url = (exprs: readonly string[]) => {
     const inner = fullPath.replaceAll(/\{([^}]+)\}/gu, (_, n: string) => {
       const index = names.indexOf(n)
-      return `\${encodeURIComponent(${exprs[index] ?? n})}`
+      return `\${encodeURIComponent(${exprs[index] ?? params[index]})}`
     })
     return hasQuery
       ? `\`\${${ORIGIN}}${inner}\${search.size ? \`?\${search}\` : ''}\``
@@ -248,7 +251,7 @@ function fetchTarget(fullPath: string, method: string, operation: Operation): Ta
   // `res.json()` types as `unknown`, which the annotated return type rejects; `JSON.parse` of the
   // text is `any`, which it takes without a cast.
   return {
-    params: names.map((name) => ({ name, type: 'string' })),
+    params: params.map((name) => ({ name, type: 'string' })),
     optionsType,
     requiredOptions: false,
     hasKeyArgs: hasQuery,
