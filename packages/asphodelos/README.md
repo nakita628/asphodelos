@@ -337,8 +337,8 @@ with them.
 Every operation is named by its method and path: a GET on `/users/{id}` becomes `useUsersId`, with
 `getUsersIdQueryKey` and `getUsersIdQueryOptions` beside it; a POST on `/users` becomes
 `usePostUsers`, with `getPostUsersMutationKey` and `getPostUsersMutationOptions`. Path parameters
-come first, then one `options` object, then the library's own trailing argument (a `QueryClient`;
-Angular Query takes none):
+come first, then one `options` object, then the library's own trailing argument (a `QueryClient`,
+or an accessor of one in Solid and Svelte; SWR and Angular Query take none):
 
 ```ts
 const user = useUsersId(
