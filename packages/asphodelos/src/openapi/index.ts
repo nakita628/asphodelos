@@ -16,6 +16,30 @@ class OpenAPIError extends Data.TaggedError('OpenAPIError')<{
   readonly message: string
 }> {}
 
+/**
+ * The document without its path keys that carry a query string right after a `{param}` segment,
+ * such as `/jobs/{id}?beta=true`.
+ *
+ * The path key becomes the Elysia route path, where `:id?` is an optional parameter: the route
+ * tree Eden types then loses the routes beside it (`/jobs/{id}/cancel`), and the hooks calling
+ * them fail to typecheck. Each key left out is named in a warning.
+ */
+function withoutQueryAfterParameter(document: OpenAPI): OpenAPI {
+  const paths = document.paths
+  if (paths === undefined) return document
+  const left = Object.keys(paths).filter((key) => /\{[^/{}]+\}\?/u.test(key))
+  if (left.length === 0) return document
+  for (const key of left) {
+    console.warn(
+      `[asphodelos] path '${key}' has a query string after a path parameter, which Elysia reads as an optional parameter; it is left out`,
+    )
+  }
+  return {
+    ...document,
+    paths: Object.fromEntries(Object.entries(paths).filter(([key]) => !left.includes(key))),
+  }
+}
+
 export function parseOpenAPI(
   input:
     | `${string}.yaml`
@@ -27,7 +51,9 @@ export function parseOpenAPI(
 ) {
   return Effect.tryPromise({
     try: async () => {
-      if (!input.endsWith('.tsp')) return (await SwaggerParser.bundle(input)) as OpenAPI
+      if (!input.endsWith('.tsp')) {
+        return withoutQueryAfterParameter((await SwaggerParser.bundle(input)) as OpenAPI)
+      }
       // The TypeSpec compiler and emitter are loaded only for a `.tsp` document: together
       // they take longer to import than the whole generation of a yaml or json one.
       const [{ compile, NodeHost }, { getOpenAPI3 }] = await Promise.all([
@@ -44,7 +70,7 @@ export function parseOpenAPI(
       const document =
         record && ('document' in record ? record.document : record.versions[0]?.document)
       if (!document) throw new Error(`TypeSpec emitted no OpenAPI document: ${input}`)
-      return document as OpenAPI
+      return withoutQueryAfterParameter(document as OpenAPI)
     },
     catch: (error) => {
       if (!(error instanceof Error)) return new OpenAPIError({ message: String(error) })

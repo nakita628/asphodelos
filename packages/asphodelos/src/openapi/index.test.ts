@@ -80,6 +80,37 @@ describe('parseOpenAPI', () => {
     }
   })
 
+  it('leaves out a path key with a query string after a path parameter, with a warning', async () => {
+    const response = { '204': { description: 'No content' } }
+    const bundle = spyOn(SwaggerParser, 'bundle').mockResolvedValueOnce({
+      openapi: '3.1.0',
+      info: { title: 'Jobs', version: '1' },
+      paths: {
+        '/jobs/{id}': { get: { responses: response } },
+        '/jobs/{id}?beta=true': { get: { responses: response } },
+        '/jobs/{id}/cancel': { post: { responses: response } },
+        '/jobs/{id}/cancel?beta=true': { post: { responses: response } },
+      },
+    })
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const document = await runGenerator(parseOpenAPI('openapi.yaml'))
+      expect(Object.keys(document.paths ?? {})).toStrictEqual([
+        '/jobs/{id}',
+        '/jobs/{id}/cancel',
+        '/jobs/{id}/cancel?beta=true',
+      ])
+      expect(warn.mock.calls).toStrictEqual([
+        [
+          "[asphodelos] path '/jobs/{id}?beta=true' has a query string after a path parameter, which Elysia reads as an optional parameter; it is left out",
+        ],
+      ])
+    } finally {
+      bundle.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
   it('includes the resolver error code when a download has no reason text', async () => {
     const url = 'https://example.com:81/openapi.yaml'
     const failure = Object.assign(new Error(`Error downloading ${url}: `), {
