@@ -295,8 +295,8 @@ function collectRefs(openAPI: OpenAPI) {
     }
     if ('schema' in p) enqueue(parameterSchema(p))
   }
-  for (const [, pathItem] of Object.entries(openAPI.paths ?? {})) {
-    if (!pathItem) continue
+  for (const [pathStr, pathItem] of Object.entries(openAPI.paths ?? {})) {
+    if (!pathItem || !isElysiaRoutePath(pathStr)) continue
     for (const method of HTTP_METHODS) {
       const op = pathItem[method]
       if (!op) continue

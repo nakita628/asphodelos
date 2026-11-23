@@ -150,6 +150,28 @@ describe('operationsByResource', () => {
     }
   })
 
+  it('keeps canonicalizing the parameter names beside a left-out path key', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const response = { responses: { '204': { description: 'ok' } } }
+    try {
+      const result = operationsByResource({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/jobs/{id}': { get: response },
+          '/jobs/{id}?expand={field}': { get: response },
+          '/jobs/{job_id}/cancel': { post: response },
+        },
+      })
+      expect(result.get('jobs')?.map(({ route }) => route.path)).toStrictEqual([
+        '/jobs/{job_id}',
+        '/jobs/{job_id}/cancel',
+      ])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('keeps nested sub-resources under the parent (URL hierarchy root)', () => {
     const api = {
       openapi: '3.1.0',

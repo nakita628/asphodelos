@@ -274,7 +274,7 @@ function walk(
 
 export function operationsByResource(api: OpenAPI) {
   const canonical = canonicalParamNames([
-    ...Object.keys(api.paths ?? {}),
+    ...Object.keys(api.paths ?? {}).filter(isElysiaRoutePath),
     ...Object.keys(api.webhooks ?? {}).map((event) => `/webhooks/${event}`),
   ])
   const grouped = new Map<
