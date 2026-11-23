@@ -1,6 +1,6 @@
 // angular-query: the hook's generics must reach the caller, not degrade to `any` or the library
 // default.
-import type { InjectQueryOptions } from '@tanstack/angular-query-experimental'
+import type { CreateQueryResult } from '@tanstack/angular-query'
 
 import {
   injectInfiniteItems,
@@ -105,13 +105,19 @@ export function mutationOptionsAssertions() {
 }
 
 // The hooks default TError to the client's own error shape for the operation, `{ status, value }`,
-// and forward the
-// library's trailing argument — the inject options, in Angular.
+// and take no trailing argument: `@tanstack/angular-query`'s inject functions take only the options
+// function.
 export function tailAssertions() {
   const query = injectUsers()
   type DefaultError = NonNullable<ReturnType<typeof query.error>>
   assertType<Equal<HasKey<DefaultError, 'status'>, true>>(true)
   assertType<Equal<HasKey<DefaultError, 'value'>, true>>(true)
-  assertType<Equal<Parameters<typeof injectUsers>[1], InjectQueryOptions | undefined>>(true)
+  assertType<Equal<Parameters<typeof injectUsers>['length'], 0 | 1>>(true)
+  assertType<Equal<Parameters<typeof injectInfiniteItems>['length'], 2>>(true)
+  assertType<Equal<Parameters<typeof injectPostUsers>['length'], 0 | 1>>(true)
+  // What the hook returns is the library's own result, typed by the caller's generics.
+  assertType<
+    Equal<ReturnType<typeof injectUsers<string[], ApiError>>, CreateQueryResult<string[], ApiError>>
+  >(true)
   return { query }
 }

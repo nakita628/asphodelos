@@ -17,8 +17,8 @@ import { responseInfo } from './schema.js'
 
 /**
  * The trailing argument a library's hooks take after their options: a `QueryClient` (an accessor
- * of one in Solid and Svelte), or Angular's inject options. The hooks forward it, so a caller can
- * target a client other than the provided one, or run outside an injection context.
+ * of one in Solid and Svelte). The hooks forward it, so a caller can target a client other than
+ * the provided one. SWR and Angular take none.
  */
 type HookTail = {
   readonly name: string
