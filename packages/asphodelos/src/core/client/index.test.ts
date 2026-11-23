@@ -38,6 +38,7 @@ describe('client generator', () => {
 import type { app } from './index'
 
 function normalizeOrigin(origin: string) {
+  if (!origin) return origin
   const url = origin.includes('://')
     ? origin
     : \`\${['localhost', '127.0.0.1', '0.0.0.0'].some((host) => origin.includes(host)) ? 'http' : 'https'}://\${origin}\`
@@ -108,5 +109,18 @@ export const client = treaty<typeof app>(clientOrigin)
     expect(normalizeOrigin('api.example.com')).toBe('https://api.example.com')
     expect(normalizeOrigin('https://api.example.com/')).toBe('https://api.example.com')
     expect(normalizeOrigin('http://api.example.com/v1')).toBe('http://api.example.com/v1')
+    // An unset variable reaches treaty as it did before: importing the client does not throw.
+    expect(normalizeOrigin(undefined as unknown as string)).toBeUndefined()
+  })
+
+  // The file declares `treaty`, `client`, `clientOrigin` and `normalizeOrigin` itself, so an export
+  // of one of those names is imported under an alias and does not declare it twice.
+  it('baseUrl from a module: an export named like a declaration of the file is aliased', async () => {
+    const code = await generateAndRead({ baseUrl: { import: './env', value: 'clientOrigin.url' } })
+    expect(code).toContain("import { clientOrigin as baseUrl } from './env'")
+    expect(code).toContain('export const clientOrigin = normalizeOrigin(baseUrl.url)')
+    const plain = await generateAndRead({ baseUrl: { import: './env', value: 'normalizeOrigin' } })
+    expect(plain).toContain("import { normalizeOrigin as baseUrl } from './env'")
+    expect(plain).toContain('export const clientOrigin = normalizeOrigin(baseUrl)')
   })
 })

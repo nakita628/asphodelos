@@ -234,6 +234,7 @@ import { treaty } from '@elysiajs/eden'
 import type { app } from '../index'
 
 function normalizeOrigin(origin: string) {
+  if (!origin) return origin
   const url = origin.includes('://')
     ? origin
     : `${['localhost', '127.0.0.1', '0.0.0.0'].some((host) => origin.includes(host)) ? 'http' : 'https'}://${origin}`
@@ -252,8 +253,8 @@ client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'proce
 // export const clientOrigin = normalizeOrigin(process.env.API_URL!)
 ```
 
-A value a module exports is used as written — `value` is the export followed by what is read
-from it, and the module answers for it being there:
+A URL a module exports is read as written — `value` is the export followed by what is read from
+it, a string, and the module answers for it being there:
 
 ```ts
 client: { output: 'src/lib/client.ts', baseUrl: { import: '@/env', value: 'env.API_URL' } }

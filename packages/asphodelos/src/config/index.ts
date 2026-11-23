@@ -254,7 +254,7 @@ const BaseUrlSchema = Schema.Union([
     ).annotate({
       title: 'Value',
       description:
-        'The expression the client is created with, as it is written: the export of `import` followed by the property read from it. `env.API_URL` imports `env` and reads `env.API_URL`; `apiUrl` imports and uses `apiUrl` itself.',
+        'The expression the client is created with, as it is written: the export of `import` followed by the property read from it, a URL string. `env.API_URL` imports `env` and reads `env.API_URL`; `apiUrl` imports and uses `apiUrl` itself.',
       examples: ['env.API_URL', 'apiUrl'],
     }),
   }),
