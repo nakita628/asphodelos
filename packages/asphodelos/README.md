@@ -344,7 +344,7 @@ Every operation is named by its method and path: a GET on `/users/{id}` becomes 
 `getUsersIdQueryKey` and `getUsersIdQueryOptions` beside it; a POST on `/users` becomes
 `usePostUsers`, with `getPostUsersMutationKey` and `getPostUsersMutationOptions`. Path parameters
 come first, then one `options` object, then the library's own trailing argument (a `QueryClient`,
-or Angular's inject options):
+or an accessor of one in Solid and Svelte; SWR and Angular Query take none):
 
 ```ts
 const user = useUsersId(
@@ -363,6 +363,11 @@ A query's `options` are part of its key, headers excluded; a mutation honors a `
 your own over the generated one. SWR hooks take `{ swr, options }` instead, where `swr` adds
 `swrKey` (replaces the generated key) and `enabled` (a `false` turns the key into `null`), and
 return the key they used beside SWR's result.
+
+Angular Query hooks import `@tanstack/angular-query`, which needs Angular 20.1 or later. Projects
+on the deprecated `@tanstack/angular-query-experimental` install `@tanstack/angular-query` in its
+place before regenerating. The hooks take no `{ injector }` argument: outside an injection context,
+wrap the call in Angular's `runInInjectionContext(injector, () => injectUsersId(...))`.
 
 ### Infinite Query (`x-pagination`)
 

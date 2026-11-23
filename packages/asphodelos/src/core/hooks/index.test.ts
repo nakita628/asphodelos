@@ -634,8 +634,9 @@ export function useDeleteItemsId<
   })
 
   // Eden cannot type a segment that mixes a parameter with static text, so the hook falls back
-  // to `fetch` and names its data by the response's component — which has to be imported from
-  // the schemas module the config writes.
+  // to `fetch` and types its data by the response's component — whose schema const has to be
+  // imported from the schemas module the config writes. Only the const is exported by default
+  // (its type alias, `Account`, needs `exportTypes`), so the data is `Static` of it.
   it('imports the response component a fetch fallback hook is typed by', async () => {
     const cwd = process.cwd()
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-fetch-'))
@@ -677,8 +678,9 @@ export function useDeleteItemsId<
         ),
       )
       const code = readFileSync(path.join(dir, 'src/hooks/swr.ts'), 'utf8')
-      expect(code).toContain("import type { Account } from '../components/schemas'")
-      expect(code).toContain('useSWR<Account, TError>')
+      expect(code).toContain("import type { Static } from 'elysia'")
+      expect(code).toContain("import type { AccountSchema } from '../components/schemas'")
+      expect(code).toContain('useSWR<Static<typeof AccountSchema>, TError>')
     } finally {
       process.chdir(cwd)
       rmSync(dir, { recursive: true, force: true })
@@ -3028,8 +3030,8 @@ describe('angular-query generator', () => {
         },
       },
     })
-    const expected = `import { injectQuery, queryOptions } from '@tanstack/angular-query-experimental'
-import type { CreateQueryOptions, InjectQueryOptions } from '@tanstack/angular-query-experimental'
+    const expected = `import { injectQuery, queryOptions } from '@tanstack/angular-query'
+import type { CreateQueryOptions } from '@tanstack/angular-query'
 import { client } from './lib'
 
 export function getItemsKey() {
@@ -3078,12 +3080,11 @@ export function injectItems<
     >
     options?: Parameters<typeof client.items.get>[0]
   },
-  injectOptions?: InjectQueryOptions,
 ) {
   return injectQuery(() => {
     const { query, options: clientOptions } = options?.() ?? {}
     return { ...getItemsQueryOptions<TData, TError>(clientOptions), ...query }
-  }, injectOptions)
+  })
 }
 `
     expect(code).toBe(expected)
@@ -3110,8 +3111,8 @@ export function injectItems<
         },
       },
     })
-    const expected = `import { injectQuery, queryOptions } from '@tanstack/angular-query-experimental'
-import type { CreateQueryOptions, InjectQueryOptions } from '@tanstack/angular-query-experimental'
+    const expected = `import { injectQuery, queryOptions } from '@tanstack/angular-query'
+import type { CreateQueryOptions } from '@tanstack/angular-query'
 import { client } from './lib'
 
 export function getItemsKey() {
@@ -3172,12 +3173,11 @@ export function injectItemsId<
     >
     options?: Parameters<ReturnType<typeof client.items>['get']>[0]
   },
-  injectOptions?: InjectQueryOptions,
 ) {
   return injectQuery(() => {
     const { query, options: clientOptions } = options?.() ?? {}
     return { ...getItemsIdQueryOptions<TData, TError>(params(), clientOptions), ...query }
-  }, injectOptions)
+  })
 }
 `
     expect(code).toBe(expected)
@@ -3202,15 +3202,13 @@ export function injectItemsId<
   injectInfiniteQuery,
   queryOptions,
   infiniteQueryOptions,
-} from '@tanstack/angular-query-experimental'
+} from '@tanstack/angular-query'
 import type {
   CreateQueryOptions,
   QueryFunctionContext,
   CreateInfiniteQueryOptions,
   InfiniteData,
-  InjectQueryOptions,
-  InjectInfiniteQueryOptions,
-} from '@tanstack/angular-query-experimental'
+} from '@tanstack/angular-query'
 import { client } from './lib'
 
 export function getItemsKey() {
@@ -3259,12 +3257,11 @@ export function injectItems<
     >
     options?: Parameters<typeof client.items.get>[0]
   },
-  injectOptions?: InjectQueryOptions,
 ) {
   return injectQuery(() => {
     const { query, options: clientOptions } = options?.() ?? {}
     return { ...getItemsQueryOptions<TData, TError>(clientOptions), ...query }
-  }, injectOptions)
+  })
 }
 
 export function getItemsInfiniteQueryKey() {
@@ -3350,7 +3347,6 @@ export function injectInfiniteItems<
     >
     options?: Parameters<typeof client.items.get>[0]
   },
-  injectOptions?: InjectInfiniteQueryOptions,
 ) {
   return injectInfiniteQuery(() => {
     const { query, options: clientOptions } = options?.() ?? {}
@@ -3358,7 +3354,7 @@ export function injectInfiniteItems<
       ...getItemsInfiniteQueryOptions<TPageParam, TData, TError>(pagination, clientOptions),
       ...query,
     }
-  }, injectOptions)
+  })
 }
 `
     expect(code).toBe(expected)
@@ -3374,11 +3370,8 @@ export function injectInfiniteItems<
         },
       },
     })
-    const expected = `import { injectMutation, mutationOptions } from '@tanstack/angular-query-experimental'
-import type {
-  CreateMutationOptions,
-  InjectMutationOptions,
-} from '@tanstack/angular-query-experimental'
+    const expected = `import { injectMutation, mutationOptions } from '@tanstack/angular-query'
+import type { CreateMutationOptions } from '@tanstack/angular-query'
 import { client } from './lib'
 
 export function getItemsKey() {
@@ -3429,7 +3422,6 @@ export function injectPostItems<
       'mutationFn'
     >
   },
-  injectOptions?: InjectMutationOptions,
 ) {
   return injectMutation(() => {
     const { mutation } = options?.() ?? {}
@@ -3439,7 +3431,7 @@ export function injectPostItems<
       ...mutationDefaults,
       mutationKey: mutation?.mutationKey ?? mutationDefaults.mutationKey,
     }
-  }, injectOptions)
+  })
 }
 `
     expect(code).toBe(expected)
