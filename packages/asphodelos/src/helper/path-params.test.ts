@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 
 import type { Operation } from '../openapi/index.js'
-import { canonicalParamNames, normalizePath, renameOperationParams } from './path-params.js'
+import {
+  canonicalParamNames,
+  isElysiaRoutePath,
+  normalizePath,
+  renameOperationParams,
+} from './path-params.js'
 
 describe('canonicalParamNames', () => {
   it('returns no entries when every position spells its param consistently', () => {
@@ -88,5 +93,27 @@ describe('renameOperationParams', () => {
       responses: {},
     }
     expect(renameOperationParams(operation, new Map())).toBe(operation)
+  })
+})
+
+describe('isElysiaRoutePath', () => {
+  it('accepts a path key with no query string after a path parameter', () => {
+    expect(isElysiaRoutePath('/jobs/{id}')).toBe(true)
+    expect(isElysiaRoutePath('/jobs/{id}/cancel?beta=true')).toBe(true)
+  })
+
+  it('refuses a query string after a path parameter, warning once per key', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(isElysiaRoutePath('/tasks/{task_id}?beta=true')).toBe(false)
+      expect(isElysiaRoutePath('/tasks/{task_id}?beta=true')).toBe(false)
+      expect(warn.mock.calls).toStrictEqual([
+        [
+          "[asphodelos] path '/tasks/{task_id}?beta=true' has a query string after a path parameter, which Elysia reads as an optional parameter; it is left out of the app, its types, the mock and the Eden wrappers",
+        ],
+      ])
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

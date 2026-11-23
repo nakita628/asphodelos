@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -256,5 +256,32 @@ describe('eden generator — empty input', () => {
       ),
     )
     expect(result).toStrictEqual('No operations found')
+  })
+})
+
+describe('eden generator — a query string after a path parameter', () => {
+  it('leaves the path key out', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const code = await generateAndRead({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/jobs/{id}': {
+            get: { operationId: 'getJob', responses: { '204': { description: 'ok' } } },
+          },
+          '/jobs/{id}?beta=true': {
+            get: { operationId: 'getJobBeta', responses: { '204': { description: 'ok' } } },
+          },
+          '/jobs/{id}/cancel': {
+            post: { operationId: 'cancelJob', responses: { '204': { description: 'ok' } } },
+          },
+        },
+      })
+      expect(code).toContain('export async function cancelJob(')
+      expect(code).not.toContain('getJobBeta')
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

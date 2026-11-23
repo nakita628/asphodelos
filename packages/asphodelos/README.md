@@ -277,8 +277,9 @@ The app is imported for its type only, so a browser bundle never pulls the serve
 needs `@elysiajs/eden`, with `elysia` resolving to one copy.
 
 A path key with a query string right after a path parameter, such as `/jobs/{id}?beta=true`, is
-left out with a warning: Elysia reads `:id?` as an optional parameter, which would hide the routes
-beside it (`/jobs/{id}/cancel`) from the client.
+left out of the app, its types, the mock and the Eden wrappers, with a warning: Elysia reads `:id?`
+as an optional parameter, which would hide the routes beside it (`/jobs/{id}/cancel`) from the
+client. The hooks still reach it, with `fetch`.
 
 ### Imports Between Generated Files
 

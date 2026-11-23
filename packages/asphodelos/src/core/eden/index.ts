@@ -4,6 +4,7 @@ import { Effect } from 'effect'
 
 import { emit } from '../../emit/index.js'
 import { edenChain, HTTP_METHODS, resolveOperationId } from '../../helper/index.js'
+import { isElysiaRoutePath } from '../../helper/path-params.js'
 import type { OpenAPI, Operation } from '../../openapi/index.js'
 import { toSafeIdentifier } from '../../utils/index.js'
 
@@ -33,7 +34,7 @@ export function eden(
     const prefix = basePath && basePath !== '/' ? basePath : ''
     const operations: string[] = []
     for (const [pathStr, pathItem] of Object.entries(openAPI.paths ?? {})) {
-      if (!pathItem) continue
+      if (!pathItem || !isElysiaRoutePath(pathStr)) continue
       for (const method of HTTP_METHODS) {
         const operation = pathItem[method]
         if (!operation) continue

@@ -12,7 +12,12 @@ import type {
   Schema,
 } from '../openapi/index.js'
 import { pascalCase, resourcePrefix, toSafeIdentifier } from '../utils/index.js'
-import { canonicalParamNames, normalizePath, renameOperationParams } from './path-params.js'
+import {
+  canonicalParamNames,
+  isElysiaRoutePath,
+  normalizePath,
+  renameOperationParams,
+} from './path-params.js'
 import { bodyInfo, makeParamsSchema, responseInfo } from './schema.js'
 
 /**
@@ -285,7 +290,7 @@ export function operationsByResource(api: OpenAPI) {
     grouped.set(resource, bucket)
   }
   for (const [path, pathItem] of Object.entries(api.paths ?? {})) {
-    if (!pathItem) continue
+    if (!pathItem || !isElysiaRoutePath(path)) continue
     for (const [resource, route] of walk(path, resourceName(path), pathItem, api, canonical)) {
       collect(resource, route)
     }

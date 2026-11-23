@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 
 import type { OpenAPI } from '../../openapi/index.js'
 import { makeMock } from './index.js'
@@ -531,5 +531,32 @@ if (import.meta.main) {
   console.log(\`🦊 Elysia is running at \${app.server?.hostname}:\${app.server?.port}\`)
 }
 `)
+  })
+})
+
+describe('makeMock — a query string after a path parameter', () => {
+  it('leaves the path key out of the routes', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const code = makeMock({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/jobs/{id}': {
+            get: { operationId: 'getJob', responses: { '204': { description: 'ok' } } },
+          },
+          '/jobs/{id}?beta=true': {
+            get: { operationId: 'getJobBeta', responses: { '204': { description: 'ok' } } },
+          },
+          '/jobs/{id}/cancel': {
+            post: { operationId: 'cancelJob', responses: { '204': { description: 'ok' } } },
+          },
+        },
+      })
+      expect(code).toContain("'/jobs/:id/cancel'")
+      expect(code).not.toContain('beta')
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
