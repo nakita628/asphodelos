@@ -254,7 +254,7 @@ const BaseUrlSchema = Schema.Union([
     ).annotate({
       title: 'Value',
       description:
-        'The expression the client is created with, as it is written: the export of `import` followed by the property read from it. `env.API_URL` imports `env` and reads `env.API_URL`; `apiUrl` imports and uses `apiUrl` itself.',
+        'The expression the client is created with, as it is written: the export of `import` followed by the property read from it, a URL string. `env.API_URL` imports `env` and reads `env.API_URL`; `apiUrl` imports and uses `apiUrl` itself.',
       examples: ['env.API_URL', 'apiUrl'],
     }),
   }),
@@ -301,7 +301,7 @@ const ClientOutputSchema = Schema.Struct({
     ImportSchema.annotate({
       title: 'Package name',
       description:
-        "The name the generated files in other packages import the client by — the package it is published as, whose entry is the client or its barrel. Files in the client's own package import it relatively or through the alias. Left out, a file outside that package is refused.",
+        "The name the generated files in other packages import the client by — the package it is published as, whose entry is the client or its barrel, exporting `client` and `clientOrigin`. Files in the client's own package import it relatively or through the alias. Left out, a file outside that package is refused.",
       examples: ['@packages/client'],
     }),
   ),

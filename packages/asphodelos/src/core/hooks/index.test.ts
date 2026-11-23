@@ -3437,3 +3437,73 @@ export function injectPostItems<
     expect(code).toBe(expected)
   })
 })
+
+// A path Eden cannot type falls back to `fetch`. Its URL starts at the origin the client module
+// exports, so the request goes where the client's do — not to the page's origin, and not to a
+// bare path that a runtime without a page rejects. Its path parameters are named the way the
+// Eden hooks name theirs, so one the document calls `clientOrigin` or `search` hides nothing.
+describe('fetch fallback', () => {
+  const api: OpenAPI = {
+    openapi: '3.1.0',
+    info: { title: 'Widget', version: '1' },
+    paths: {
+      '/widget.json': {
+        get: { operationId: 'getWidget', responses: { '200': { description: 'OK' } } },
+        post: { operationId: 'postWidget', responses: { '200': { description: 'OK' } } },
+      },
+      '/files/{clientOrigin}/{search}.txt': {
+        get: {
+          operationId: 'getFile',
+          parameters: [
+            { name: 'clientOrigin', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'search', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'raw', in: 'query', schema: { type: 'boolean' } },
+          ],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    },
+  }
+
+  const generateAndRead = async (library: keyof typeof HOOK_CONFIGS, openAPI = api) => {
+    const cwd = process.cwd()
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-'))
+    process.chdir(dir)
+    try {
+      await runGenerator(
+        makeQueryHooks(openAPI, 'src/hooks.ts', './lib', HOOK_CONFIGS[library], 'client'),
+      )
+      return readFileSync(path.join(dir, 'src/hooks.ts'), 'utf8')
+    } finally {
+      process.chdir(cwd)
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it.each(['tanstack-query', 'swr'] as const)(
+    '%s: queries and mutations fetch from the origin the client module exports',
+    async (library) => {
+      const code = await generateAndRead(library)
+      expect(code).toContain("import { client, clientOrigin } from './lib'")
+      expect(code).toContain('await fetch(`${clientOrigin}/widget.json`, {')
+      expect(code).toMatch(
+        /await fetch\(\s*`\$\{clientOrigin\}\/files\/\$\{encodeURIComponent\(params\)\}\/\$\{encodeURIComponent\(params2\)\}\.txt\$\{search\.size/u,
+      )
+      expect(code).toContain('params: string,\n  params2: string,')
+      expect(code).not.toMatch(/fetch\(`\//u)
+    },
+  )
+
+  it('a document Eden types throughout imports the client alone', async () => {
+    const code = await generateAndRead('tanstack-query', {
+      ...api,
+      paths: {
+        '/widgets': {
+          get: { operationId: 'listWidgets', responses: { '200': { description: 'OK' } } },
+        },
+      },
+    })
+    expect(code).toContain("import { client } from './lib'")
+    expect(code).not.toContain('clientOrigin')
+  })
+})
