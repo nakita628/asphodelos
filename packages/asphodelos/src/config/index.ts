@@ -67,13 +67,40 @@ const TypeScriptPathSchema = Schema.declare<`${string}.ts`>(
   { message: 'must be .ts file' },
 )
 
-const InputSchema = Schema.declare<`${string}.yaml` | `${string}.json` | `${string}.tsp`>(
-  Schema.is(Schema.TemplateLiteral([Schema.String, Schema.Literals(['.yaml', '.json', '.tsp'])])),
-  { message: 'must be .yaml | .json | .tsp' },
-).annotate({
+/** Extensions an input document is recognized by, and that a change has to carry to be worth regenerating for. */
+export const INPUT_EXTENSIONS = ['.yaml', '.yml', '.json', '.tsp'] as const
+
+/**
+ * An input document: a path by its extension, or an `http(s)` URL whatever its path (a
+ * document served without an extension is OpenAPI by content).
+ */
+function isInputPath(
+  v: unknown,
+): v is
+  | `${string}.yaml`
+  | `${string}.yml`
+  | `${string}.json`
+  | `${string}.tsp`
+  | `http://${string}`
+  | `https://${string}` {
+  return (
+    typeof v === 'string' &&
+    (INPUT_EXTENSIONS.some((extension) => v.endsWith(extension)) || /^https?:\/\//u.test(v))
+  )
+}
+
+const InputSchema = Schema.declare(isInputPath, {
+  message: 'must be .yaml | .yml | .json | .tsp, or an http(s) URL',
+}).annotate({
   title: 'Input document',
-  description: 'OpenAPI or TypeSpec entry document that every generator reads.',
-  examples: ['openapi.yaml', './spec/openapi.json', './spec/main.tsp'],
+  description:
+    'OpenAPI or TypeSpec entry document that every generator reads: a file by its extension, or an http(s) URL.',
+  examples: [
+    'openapi.yaml',
+    './spec/openapi.json',
+    './spec/main.tsp',
+    'https://example.com/openapi',
+  ],
 })
 
 /** Milliseconds, bounded so a mock cannot be configured to hang a request. */
