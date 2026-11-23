@@ -113,6 +113,8 @@ export function tailAssertions() {
   assertType<Equal<HasKey<DefaultError, 'status'>, true>>(true)
   assertType<Equal<HasKey<DefaultError, 'value'>, true>>(true)
   assertType<Equal<Parameters<typeof injectUsers>['length'], 0 | 1>>(true)
+  assertType<Equal<Parameters<typeof injectInfiniteItems>['length'], 2>>(true)
+  assertType<Equal<Parameters<typeof injectPostUsers>['length'], 0 | 1>>(true)
   // What the hook returns is the library's own result, typed by the caller's generics.
   assertType<
     Equal<ReturnType<typeof injectUsers<string[], ApiError>>, CreateQueryResult<string[], ApiError>>

@@ -358,6 +358,11 @@ your own over the generated one. SWR hooks take `{ swr, options }` instead, wher
 `swrKey` (replaces the generated key) and `enabled` (a `false` turns the key into `null`), and
 return the key they used beside SWR's result.
 
+Angular Query hooks import `@tanstack/angular-query`, which needs Angular 20.1 or later. Projects
+on the deprecated `@tanstack/angular-query-experimental` install `@tanstack/angular-query` in its
+place before regenerating. The hooks take no `{ injector }` argument: outside an injection context,
+wrap the call in Angular's `runInInjectionContext(injector, () => injectUsersId(...))`.
+
 ### Infinite Query (`x-pagination`)
 
 Set `x-pagination: true` on a GET operation to generate infinite query hooks.
