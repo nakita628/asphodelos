@@ -151,7 +151,7 @@ function pathParamNames(pathStr: string): readonly string[] {
 
 // The data type for a fetch fallback comes from its 2xx response schema — the Eden chain that
 // normally yields it is untypeable here. A component `$ref` resolves to `Static` of its schema const,
-// which the schemas module always exports — the `Static` alias it emits only with `exportTypes`;
+// which the schemas module always exports — its type alias (`Account`) only with `exportTypes`;
 // inline and empty responses degrade to a safe wide type.
 function successType(operation: Operation): {
   readonly dataT: string

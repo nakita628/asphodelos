@@ -616,7 +616,7 @@ export function useDeleteItemsId<
   // Eden cannot type a segment that mixes a parameter with static text, so the hook falls back
   // to `fetch` and types its data by the response's component — whose schema const has to be
   // imported from the schemas module the config writes. Only the const is exported by default
-  // (the `Static` alias needs `exportTypes`), so the data is `Static` of it.
+  // (its type alias, `Account`, needs `exportTypes`), so the data is `Static` of it.
   it('imports the response component a fetch fallback hook is typed by', async () => {
     const cwd = process.cwd()
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-fetch-'))
