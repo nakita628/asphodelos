@@ -614,8 +614,9 @@ export function useDeleteItemsId<
   })
 
   // Eden cannot type a segment that mixes a parameter with static text, so the hook falls back
-  // to `fetch` and names its data by the response's component — which has to be imported from
-  // the schemas module the config writes.
+  // to `fetch` and types its data by the response's component — whose schema const has to be
+  // imported from the schemas module the config writes. Only the const is exported by default
+  // (its type alias, `Account`, needs `exportTypes`), so the data is `Static` of it.
   it('imports the response component a fetch fallback hook is typed by', async () => {
     const cwd = process.cwd()
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-fetch-'))
@@ -657,8 +658,9 @@ export function useDeleteItemsId<
         ),
       )
       const code = readFileSync(path.join(dir, 'src/hooks/swr.ts'), 'utf8')
-      expect(code).toContain("import type { Account } from '../components/schemas'")
-      expect(code).toContain('useSWR<Account, TError>')
+      expect(code).toContain("import type { Static } from 'elysia'")
+      expect(code).toContain("import type { AccountSchema } from '../components/schemas'")
+      expect(code).toContain('useSWR<Static<typeof AccountSchema>, TError>')
     } finally {
       process.chdir(cwd)
       rmSync(dir, { recursive: true, force: true })
