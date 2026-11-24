@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 
 import type { OpenAPI, Operation } from '../openapi/index.js'
 import {
@@ -121,6 +121,55 @@ describe('operationsByResource', () => {
     expect([...result.keys()]).toStrictEqual(['users', 'orders'])
     expect(result.get('users')?.length).toBe(2)
     expect(result.get('orders')?.length).toBe(1)
+  })
+
+  it('leaves out a path key with a query string after a path parameter', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const result = operationsByResource({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/jobs/{id}': {
+            get: { operationId: 'getJob', responses: { '204': { description: 'ok' } } },
+          },
+          '/jobs/{id}?beta=true': {
+            get: { operationId: 'getJobBeta', responses: { '204': { description: 'ok' } } },
+          },
+          '/jobs/{id}/cancel': {
+            post: { operationId: 'cancelJob', responses: { '204': { description: 'ok' } } },
+          },
+        },
+      })
+      expect(result.get('jobs')?.map(({ route }) => route.path)).toStrictEqual([
+        '/jobs/{id}',
+        '/jobs/{id}/cancel',
+      ])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('keeps canonicalizing the parameter names beside a left-out path key', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const response = { responses: { '204': { description: 'ok' } } }
+    try {
+      const result = operationsByResource({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/jobs/{id}': { get: response },
+          '/jobs/{id}?expand={field}': { get: response },
+          '/jobs/{job_id}/cancel': { post: response },
+        },
+      })
+      expect(result.get('jobs')?.map(({ route }) => route.path)).toStrictEqual([
+        '/jobs/{job_id}',
+        '/jobs/{job_id}/cancel',
+      ])
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('keeps nested sub-resources under the parent (URL hierarchy root)', () => {

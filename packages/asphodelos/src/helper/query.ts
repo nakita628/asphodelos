@@ -272,8 +272,10 @@ function fetchTarget(
       const index = names.indexOf(n)
       return `\${encodeURIComponent(${exprs[index] ?? params[index]})}`
     })
+    // A path key that carries its own query string (`/jobs/{id}?beta=true`) is followed by `&`.
+    const separator = inner.includes('?') ? '&' : '?'
     return hasQuery
-      ? `\`\${${ORIGIN}}${inner}\${search.size ? \`?\${search}\` : ''}\``
+      ? `\`\${${ORIGIN}}${inner}\${search.size ? \`${separator}\${search}\` : ''}\``
       : `\`\${${ORIGIN}}${inner}\``
   }
   const search = (options: string) =>

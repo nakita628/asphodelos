@@ -302,6 +302,12 @@ const { data, error } = await client.users({ id: '1' }).get()
 The app is imported for its type only, so a browser bundle never pulls the server in. The project
 needs `@elysiajs/eden`, with `elysia` resolving to one copy.
 
+A path key with a query string right after a path parameter, such as `/jobs/{id}?beta=true`, is
+left out of the app, its types, the mock and the Eden wrappers, with a warning: Elysia reads `:id?`
+as an optional parameter, which would hide the routes beside it (`/jobs/{id}/cancel`) from the
+client. The hooks still reach it, with `fetch`. A module generated before keeps its handlers on
+regeneration, so remove such a route from it by hand.
+
 ### Imports Between Generated Files
 
 Nothing is configured per file: how one generated file imports another follows from where the two
