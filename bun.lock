@@ -22,7 +22,7 @@
     },
     "packages/asphodelos": {
       "name": "asphodelos",
-      "version": "0.5.3",
+      "version": "0.5.4",
       "bin": {
         "asphodelos": "dist/cli.mjs",
       },
