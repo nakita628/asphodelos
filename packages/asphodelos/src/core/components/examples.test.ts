@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { examplesCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { examples } from './examples.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,16 @@ afterEach(() => {
 
 describe('examples — no-op paths', () => {
   it('returns error when examples is undefined', async () => {
-    const result = await runGeneratorError(examples(undefined, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      examples(undefined, '/ignored.ts', false).pipe(Effect.provide(fileSystemLayer), Effect.flip),
+    )
     expect(result.message).toStrictEqual('No examples found')
   })
 
   it('returns success message when examples is empty', async () => {
-    const result = await runGenerator(examples({}, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      examples({}, '/ignored.ts', false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No examples found')
   })
 })
@@ -33,7 +39,9 @@ describe('examples — non-split mode', () => {
     const dir = tmpDir
     const output = path.join(dir, 'examples.ts')
     const sample = { Hello: { value: 'hi' }, World: { value: 'wat' } }
-    const result = await runGenerator(examples(sample, output, false))
+    const result = await Effect.runPromise(
+      examples(sample, output, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated examples code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -45,7 +53,9 @@ describe('examples — split mode', () => {
     const dir = tmpDir
     const output = path.join(dir, 'examples.ts')
     const sample = { Hello: { value: 'hi' }, World: { value: 'wat' } }
-    const result = await runGenerator(examples(sample, output, true))
+    const result = await Effect.runPromise(
+      examples(sample, output, true).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(dir, 'examples')
     expect(result).toStrictEqual(
       `Generated examples code written to ${outDir}/*.ts (index.ts included)`,
@@ -62,7 +72,7 @@ describe('examples — caller ≡ generator contract', () => {
     const dir = tmpDir
     const output = path.join(dir, 'examples.ts')
     const sample = { Hello: { value: 'hi' }, World: { value: 'wat' } }
-    await runGenerator(examples(sample, output, false))
+    await Effect.runPromise(examples(sample, output, false).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = examplesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Example\s*=/gu
@@ -76,7 +86,7 @@ describe('examples — caller ≡ generator contract', () => {
     const dir = tmpDir
     const output = path.join(dir, 'examples.ts')
     const sample = { Hello: { value: 'hi' } }
-    await runGenerator(examples(sample, output, true))
+    await Effect.runPromise(examples(sample, output, true).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(path.join(dir, 'examples', 'hello.ts'), 'utf8')
     const generated = examplesCode({ Hello: sample.Hello })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Example\s*=/gu
@@ -97,7 +107,7 @@ describe('examples — a referenced schema named like another component kind', (
   ])('$mode: imports ErrorResponseSchema from the schemas', async ({ split, file, specifier }) => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-examples-'))
     const output = path.join(tmpDir, 'examples.ts')
-    await runGenerator(examples(section, output, split))
+    await Effect.runPromise(examples(section, output, split).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
     expect(emitted).toContain(`import { ErrorResponseSchema } from '${specifier}'`)
     expect(emitted).not.toContain('responses')

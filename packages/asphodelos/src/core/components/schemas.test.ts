@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { schemasCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { schemas } from './schemas.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,19 @@ afterEach(() => {
 
 describe('schemas — no-op paths', () => {
   it('returns error when schemas is undefined', async () => {
-    const result = await runGeneratorError(schemas(undefined, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      schemas(undefined, '/ignored.ts', false, false).pipe(
+        Effect.provide(fileSystemLayer),
+        Effect.flip,
+      ),
+    )
     expect(result.message).toStrictEqual('No schemas found')
   })
 
   it('returns success message when schemas is empty', async () => {
-    const result = await runGenerator(schemas({}, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      schemas({}, '/ignored.ts', false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No schemas found')
   })
 })
@@ -35,7 +44,9 @@ describe('schemas — non-split mode', () => {
       User: { type: 'object', properties: { id: { type: 'string' } } },
       Post: { type: 'object', properties: { title: { type: 'string' } } },
     } as const
-    const result = await runGenerator(schemas(sample, output, false, false))
+    const result = await Effect.runPromise(
+      schemas(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated schemas code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -49,7 +60,9 @@ describe('schemas — split mode', () => {
       User: { type: 'object', properties: { id: { type: 'string' } } },
       Post: { type: 'object', properties: { title: { type: 'string' } } },
     } as const
-    const result = await runGenerator(schemas(sample, output, true, false))
+    const result = await Effect.runPromise(
+      schemas(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(tmpDir, 'schemas')
     expect(result).toStrictEqual(
       `Generated schemas code written to ${outDir}/*.ts (index.ts included)`,
@@ -68,7 +81,9 @@ describe('schemas — caller ≡ generator contract', () => {
       User: { type: 'object', properties: { id: { type: 'string' } } },
       Post: { type: 'object', properties: { title: { type: 'string' } } },
     } as const
-    await runGenerator(schemas(sample, output, false, false))
+    await Effect.runPromise(
+      schemas(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = schemasCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Schema\s*=/gu
@@ -83,7 +98,9 @@ describe('schemas — caller ≡ generator contract', () => {
     const sample = {
       User: { type: 'object', properties: { id: { type: 'string' } } },
     } as const
-    await runGenerator(schemas(sample, output, true, false))
+    await Effect.runPromise(
+      schemas(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(path.join(tmpDir, 'schemas', 'user.ts'), 'utf8')
     const generated = schemasCode({ User: sample.User })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Schema\s*=/gu
@@ -104,7 +121,9 @@ describe('schemas — split mode, a sibling named like another component kind', 
       },
       ErrorResponse: { type: 'object', properties: { message: { type: 'string' } } },
     } as const
-    await runGenerator(schemas(sample, output, true, false))
+    await Effect.runPromise(
+      schemas(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(path.join(tmpDir, 'schemas', 'wrapper.ts'), 'utf8')
     expect(emitted).toStrictEqual(
       `import { t } from 'elysia'\nimport { ErrorResponseSchema } from './errorResponse'\n\nexport const WrapperSchema = t.Object({ error: t.Optional(ErrorResponseSchema) })\n`,

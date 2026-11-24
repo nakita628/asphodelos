@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
-import { makeBarrel, makeImports, makeModuleSpec } from './code.js'
+import { makeBarrel, makeImportPath, makeImports, makeModuleSpec } from './code.js'
 
 describe('makeModuleSpec', () => {
   it('emits `./sibling` for a same-directory target', () => {
@@ -36,6 +36,66 @@ describe('makeModuleSpec', () => {
     expect(
       makeModuleSpec('/gen/src/modules/_/index.ts', { output: '/gen/src/lib/components.ts' }),
     ).toBe('../../lib/components')
+  })
+})
+
+describe('makeImportPath', () => {
+  const alias = { prefix: '@', directory: 'src' }
+
+  it.each([
+    { name: 'a sibling file', from: 'src/hooks.ts', target: 'src/client.ts', expected: './client' },
+    {
+      name: 'a file in a parent directory',
+      from: 'src/hooks/index.ts',
+      target: 'src/client.ts',
+      expected: '../client',
+    },
+    {
+      name: 'a file keeps its index',
+      from: 'src/hooks.ts',
+      target: 'src/client/index.ts',
+      expected: './client/index',
+    },
+    {
+      name: 'an unnormalized target',
+      from: './src/hooks.ts',
+      target: './src/lib/../client.ts',
+      expected: './client',
+    },
+  ])('relative: $name', ({ from, target, expected }) => {
+    expect(makeImportPath(from, target, undefined)).toBe(expected)
+  })
+
+  it('barrel: an index.ts is imported by its directory', () => {
+    expect(makeImportPath('src/hooks.ts', 'src/client/index.ts', undefined, 'barrel')).toBe(
+      './client',
+    )
+  })
+
+  it('barrel: a file that is not an index keeps its name', () => {
+    expect(makeImportPath('src/hooks.ts', 'src/schemas.ts', undefined, 'barrel')).toBe('./schemas')
+  })
+
+  it('alias: a target under the alias directory goes through the alias', () => {
+    expect(makeImportPath('src/hooks/swr.ts', 'src/lib/client.ts', alias)).toBe('@/lib/client')
+  })
+
+  it('alias: a barrel under the alias directory is imported by its directory', () => {
+    expect(makeImportPath('src/hooks.ts', 'src/components/index.ts', alias, 'barrel')).toBe(
+      '@/components',
+    )
+  })
+
+  it('alias: a target outside the alias directory is imported relatively', () => {
+    expect(makeImportPath('src/hooks.ts', 'packages/api/client.ts', alias)).toBe(
+      '../packages/api/client',
+    )
+  })
+
+  // `src/index.ts` as a barrel collapses to the alias directory itself, which the alias has no
+  // spelling for.
+  it('alias: the alias directory itself is imported relatively', () => {
+    expect(makeImportPath('src/hooks/swr.ts', 'src/index.ts', alias, 'barrel')).toBe('..')
   })
 })
 

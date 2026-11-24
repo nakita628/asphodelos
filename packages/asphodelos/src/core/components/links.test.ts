@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { linksCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { links } from './links.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,16 @@ afterEach(() => {
 
 describe('links — no-op paths', () => {
   it('returns error when links is undefined', async () => {
-    const result = await runGeneratorError(links(undefined, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      links(undefined, '/ignored.ts', false).pipe(Effect.provide(fileSystemLayer), Effect.flip),
+    )
     expect(result.message).toStrictEqual('No links found')
   })
 
   it('returns success message when links is empty', async () => {
-    const result = await runGenerator(links({}, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      links({}, '/ignored.ts', false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No links found')
   })
 })
@@ -36,7 +42,9 @@ describe('links — non-split mode', () => {
       GetUser: { operationId: 'getUser' },
       GetPost: { operationId: 'getPost' },
     }
-    const result = await runGenerator(links(sample, output, false))
+    const result = await Effect.runPromise(
+      links(sample, output, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated links code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -51,7 +59,9 @@ describe('links — split mode', () => {
       GetUser: { operationId: 'getUser' },
       GetPost: { operationId: 'getPost' },
     }
-    const result = await runGenerator(links(sample, output, true))
+    const result = await Effect.runPromise(
+      links(sample, output, true).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(dir, 'links')
     expect(result).toStrictEqual(
       `Generated links code written to ${outDir}/*.ts (index.ts included)`,
@@ -71,7 +81,7 @@ describe('links — caller ≡ generator contract', () => {
       GetUser: { operationId: 'getUser' },
       GetPost: { operationId: 'getPost' },
     }
-    await runGenerator(links(sample, output, false))
+    await Effect.runPromise(links(sample, output, false).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = linksCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Link\s*=/gu
@@ -85,7 +95,7 @@ describe('links — caller ≡ generator contract', () => {
     const dir = tmpDir
     const output = path.join(dir, 'links.ts')
     const sample = { GetUser: { operationId: 'getUser' } }
-    await runGenerator(links(sample, output, true))
+    await Effect.runPromise(links(sample, output, true).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(path.join(dir, 'links', 'getUser.ts'), 'utf8')
     const generated = linksCode({ GetUser: sample.GetUser })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Link\s*=/gu
@@ -106,7 +116,7 @@ describe('links — a referenced schema named like another component kind', () =
   ])('$mode: imports SearchParamsSchema from the schemas', async ({ split, file, specifier }) => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-links-'))
     const output = path.join(tmpDir, 'links.ts')
-    await runGenerator(links(section, output, split))
+    await Effect.runPromise(links(section, output, split).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
     expect(emitted).toContain(`import { SearchParamsSchema } from '${specifier}'`)
     expect(emitted).not.toContain('parameters')

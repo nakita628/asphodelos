@@ -3,21 +3,29 @@ import { describe, expect, it } from 'bun:test'
 import { Effect } from 'effect'
 import type { FormatConfig } from 'oxfmt'
 
-import { runGenerator, runGeneratorError } from '../testing/index.js'
+import { fileSystemLayer } from '../fsp/index.js'
 import { fmt, FormatOptions } from './index.js'
 
 /** Formats with an explicit option set, the way a config file's `format` block does. */
 const fmtWith = (options: FormatConfig, input: string) =>
-  runGenerator(fmt(input).pipe(Effect.provideService(FormatOptions, options)))
+  Effect.runPromise(
+    fmt(input)
+      .pipe(Effect.provideService(FormatOptions, options))
+      .pipe(Effect.provide(fileSystemLayer)),
+  )
 
 describe('fmt', () => {
   it.concurrent('returns formatted code', async () => {
-    const result = await runGenerator(fmt("const takibi = 'asphodelos';"))
+    const result = await Effect.runPromise(
+      fmt("const takibi = 'asphodelos';").pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual("const takibi = 'asphodelos'\n")
   })
 
   it.concurrent('fails with the parser message for invalid code', async () => {
-    const result = await runGeneratorError(fmt('const = ;'))
+    const result = await Effect.runPromise(
+      fmt('const = ;').pipe(Effect.provide(fileSystemLayer), Effect.flip),
+    )
     expect(result._tag).toBe('FormatError')
     expect(result.message).toStrictEqual('Unexpected token')
   })
@@ -25,7 +33,9 @@ describe('fmt', () => {
 
 describe('FormatOptions', () => {
   it.concurrent('uses the defaults when nothing is provided', async () => {
-    const result = await runGenerator(fmt("const x = 'hello';"))
+    const result = await Effect.runPromise(
+      fmt("const x = 'hello';").pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual("const x = 'hello'\n")
   })
 
@@ -101,6 +111,8 @@ describe('FormatOptions', () => {
   it.concurrent('one run cannot leak its options into another', async () => {
     // The Reference is per-program, so this is what keeps two configs in one process apart.
     expect(await fmtWith({ semi: true }, "const x = 'hello'")).toStrictEqual("const x = 'hello';\n")
-    expect(await runGenerator(fmt("const x = 'hello'"))).toStrictEqual("const x = 'hello'\n")
+    expect(
+      await Effect.runPromise(fmt("const x = 'hello'").pipe(Effect.provide(fileSystemLayer))),
+    ).toStrictEqual("const x = 'hello'\n")
   })
 })

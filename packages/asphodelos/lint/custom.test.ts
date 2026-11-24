@@ -256,7 +256,7 @@ check('no-effect-run', {
 }`,
     // The runner is not an `Effect.*` member here, so the rule does not match it.
     'NodeRuntime.runMain(program)',
-    // The rule itself skips test files; the two boundary directories are exempted by the
+    // The rule itself skips test files; the boundary directory is exempted by the
     // project config instead, which the `overrides` case at the bottom checks.
     ['Effect.runPromise(program)', SPEC],
   ],
@@ -375,11 +375,7 @@ check('predicate-is-name', {
 describe('oxlint.config.ts — the boundary exemption', () => {
   const PKG = path.resolve(import.meta.dir, '..')
 
-  const PROBES = [
-    'src/core/tmp-runner-probe.ts',
-    'src/vite-plugin/tmp-runner-probe.ts',
-    'src/testing/tmp-runner-probe.ts',
-  ]
+  const PROBES = ['src/core/tmp-runner-probe.ts', 'src/vite-plugin/tmp-runner-probe.ts']
 
   /**
    * Lints every probe in one oxlint run and answers with the rule codes reported per file.
@@ -412,7 +408,7 @@ describe('oxlint.config.ts — the boundary exemption', () => {
   }
 
   it(
-    'runs an Effect only inside the vite plugin and the test helpers',
+    'runs an Effect only inside the vite plugin',
     () => {
       const reported = lintProbes('Effect.runPromise(program)\n')
 
@@ -420,7 +416,6 @@ describe('oxlint.config.ts — the boundary exemption', () => {
       expect(reported.get('src/vite-plugin/tmp-runner-probe.ts')).not.toContain(
         'custom(no-effect-run)',
       )
-      expect(reported.get('src/testing/tmp-runner-probe.ts')).not.toContain('custom(no-effect-run)')
     },
     SPAWN_TIMEOUT_MS,
   )

@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { responsesCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { responses } from './responses.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,19 @@ afterEach(() => {
 
 describe('responses — no-op paths', () => {
   it('returns error when responses is undefined', async () => {
-    const result = await runGeneratorError(responses(undefined, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      responses(undefined, '/ignored.ts', false, false).pipe(
+        Effect.provide(fileSystemLayer),
+        Effect.flip,
+      ),
+    )
     expect(result.message).toStrictEqual('No responses found')
   })
 
   it('returns success message when responses is empty', async () => {
-    const result = await runGenerator(responses({}, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      responses({}, '/ignored.ts', false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No responses found')
   })
 })
@@ -32,7 +41,9 @@ describe('responses — non-split mode', () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
     const output = path.join(tmpDir, 'responses.ts')
     const sample = { NotFound: { description: 'Not Found' }, Ok: { description: 'OK' } }
-    const result = await runGenerator(responses(sample, output, false, false))
+    const result = await Effect.runPromise(
+      responses(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated responses code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -43,7 +54,9 @@ describe('responses — split mode', () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
     const output = path.join(tmpDir, 'responses.ts')
     const sample = { NotFound: { description: 'Not Found' }, Ok: { description: 'OK' } }
-    const result = await runGenerator(responses(sample, output, true, false))
+    const result = await Effect.runPromise(
+      responses(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(tmpDir, 'responses')
     expect(result).toStrictEqual(
       `Generated responses code written to ${outDir}/*.ts (index.ts included)`,
@@ -59,7 +72,9 @@ describe('responses — caller ≡ generator contract', () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
     const output = path.join(tmpDir, 'responses.ts')
     const sample = { NotFound: { description: 'Not Found' }, Ok: { description: 'OK' } }
-    await runGenerator(responses(sample, output, false, false))
+    await Effect.runPromise(
+      responses(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = responsesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ResponseSchema\s*=/gu
@@ -72,7 +87,9 @@ describe('responses — caller ≡ generator contract', () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
     const output = path.join(tmpDir, 'responses.ts')
     const sample = { NotFound: { description: 'Not Found' } }
-    await runGenerator(responses(sample, output, true, false))
+    await Effect.runPromise(
+      responses(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(path.join(tmpDir, 'responses', 'notFound.ts'), 'utf8')
     const generated = responsesCode({ NotFound: sample.NotFound })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ResponseSchema\s*=/gu
@@ -103,7 +120,9 @@ describe('responses — a referenced schema named like another component kind', 
   ] as const)('imports %sSchema from the schemas', async (name) => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
     const output = path.join(tmpDir, 'responses.ts')
-    await runGenerator(responses(sectionFor(name), output, false, false))
+    await Effect.runPromise(
+      responses(sectionFor(name), output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(fs.readFileSync(output, 'utf8')).toStrictEqual(
       `import { ${name}Schema } from './schemas'\n\nexport const ClientErrorResponseSchema = ${name}Schema\n`,
     )
@@ -121,7 +140,9 @@ describe('responses — a referenced schema named like another component kind', 
         headers: { 'X-RateLimit': { $ref: '#/components/headers/RateLimit' as const } },
       },
     }
-    await runGenerator(responses(section, output, false, false))
+    await Effect.runPromise(
+      responses(section, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(fs.readFileSync(output, 'utf8')).toStrictEqual(
       `import { RateLimitHeaderSchema } from './schemas'\n\nexport const TooManyRequestsResponseSchema = RateLimitHeaderSchema\n`,
     )
@@ -139,7 +160,9 @@ describe('responses — a referenced schema named like another component kind', 
         headers: { 'X-RateLimit': { $ref: '#/components/headers/Rate%Limit' as const } },
       },
     }
-    await runGenerator(responses(section, output, false, false))
+    await Effect.runPromise(
+      responses(section, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(fs.readFileSync(output, 'utf8')).toStrictEqual(
       `import { ErrorResponseSchema } from './schemas'\n\nexport const TooManyRequestsResponseSchema = ErrorResponseSchema\n`,
     )
@@ -148,7 +171,11 @@ describe('responses — a referenced schema named like another component kind', 
   it('imports it from the schemas in split mode too', async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-responses-'))
     const output = path.join(tmpDir, 'responses.ts')
-    await runGenerator(responses(sectionFor('ErrorResponse'), output, true, false))
+    await Effect.runPromise(
+      responses(sectionFor('ErrorResponse'), output, true, false).pipe(
+        Effect.provide(fileSystemLayer),
+      ),
+    )
     const emitted = fs.readFileSync(path.join(tmpDir, 'responses', 'clientError.ts'), 'utf8')
     expect(emitted).toStrictEqual(
       `import { ErrorResponseSchema } from '../schemas'\n\nexport const ClientErrorResponseSchema = ErrorResponseSchema\n`,

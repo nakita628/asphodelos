@@ -5,10 +5,11 @@ import path from 'node:path'
 
 import type { TSchema } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
+import { Effect } from 'effect'
 import type { Elysia } from 'elysia'
 
+import { fileSystemLayer } from '../../fsp/index.js'
 import type { OpenAPI } from '../../openapi/index.js'
-import { runGenerator } from '../../testing/index.js'
 import { schemas } from '../components/index.js'
 import { mock } from './index.js'
 
@@ -36,7 +37,7 @@ async function mountMock(spec: OpenAPI, options: Parameters<typeof mock>[2] = {}
   const dir = mkdtempSync(path.join(PKG_ROOT, 'tmp-mock-'))
   workdirs.push(dir)
   const output = path.join(dir, 'mock.ts')
-  await runGenerator(mock(spec, output, options))
+  await Effect.runPromise(mock(spec, output, options).pipe(Effect.provide(fileSystemLayer)))
   const mod = (await import(output)) as { readonly app: Elysia }
   return {
     output,
@@ -474,7 +475,11 @@ async function generateModels(spec: OpenAPI) {
   workdirs.push(dir)
   const output = path.join(dir, 'schemas.ts')
   const components = { schemas: { output, split: false } }
-  await runGenerator(schemas(spec.components?.schemas, output, false, false, components))
+  await Effect.runPromise(
+    schemas(spec.components?.schemas, output, false, false, components).pipe(
+      Effect.provide(fileSystemLayer),
+    ),
+  )
   const mod: { readonly [k: string]: TSchema } = await import(output)
   return mod
 }

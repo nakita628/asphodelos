@@ -552,9 +552,8 @@ export default defineConfig({
   //   layer 1  guard -> openapi              emit -> format, fsp
   //   layer 2  generator <-> helper -> utils, guard, openapi, emit
   //   layer 3  core -> everything below it
-  //   layer 4  shared -> config, core, format, fsp, openapi
+  //   layer 4  shared -> config, core, format, fsp, helper, openapi
   //   layer 5  cli, vite-plugin -> config, core, format, openapi, shared
-  //   testing  -> fsp   (test-only helpers; nothing in dist imports it)
   //
   // A change that needs a new edge is a change to this list first, and to the code second.
   overrides: [
@@ -679,9 +678,8 @@ export default defineConfig({
           {
             patterns: [
               {
-                regex:
-                  '^(\\.\\./)+(cli|emit|generator|guard|helper|merge|utils|vite-plugin)(/.*)?$',
-                message: 'shared may only import config, core, format, fsp, openapi',
+                regex: '^(\\.\\./)+(cli|emit|generator|guard|merge|utils|vite-plugin)(/.*)?$',
+                message: 'shared may only import config, core, format, fsp, helper, openapi',
               },
             ],
           },
@@ -730,10 +728,9 @@ export default defineConfig({
       },
     },
     {
-      // The two places an Effect meets something that is not one: the Vite plugin's hooks are
-      // Vite's own Promise/callback API, and the test helpers hand a result back to a test.
-      // Everywhere else an Effect is returned, not run.
-      files: ['src/vite-plugin/**', 'src/testing/**'],
+      // The one place an Effect meets something that is not one: the Vite plugin's hooks are
+      // Vite's own Promise/callback API. Everywhere else an Effect is returned, not run.
+      files: ['src/vite-plugin/**'],
       rules: { 'custom/no-effect-run': 'off' },
     },
     {

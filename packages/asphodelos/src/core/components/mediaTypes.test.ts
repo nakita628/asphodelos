@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { mediaTypesCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { mediaTypes } from './mediaTypes.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,19 @@ afterEach(() => {
 
 describe('mediaTypes — no-op paths', () => {
   it('returns error when mediaTypes is undefined', async () => {
-    const result = await runGeneratorError(mediaTypes(undefined, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      mediaTypes(undefined, '/ignored.ts', false, false).pipe(
+        Effect.provide(fileSystemLayer),
+        Effect.flip,
+      ),
+    )
     expect(result.message).toStrictEqual('No mediaTypes found')
   })
 
   it('returns success message when mediaTypes is empty', async () => {
-    const result = await runGenerator(mediaTypes({}, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      mediaTypes({}, '/ignored.ts', false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No mediaTypes found')
   })
 })
@@ -36,7 +45,9 @@ describe('mediaTypes — non-split mode', () => {
       Json: { schema: { type: 'string' } },
       Xml: { schema: { type: 'string' } },
     } as const
-    const result = await runGenerator(mediaTypes(sample, output, false, false))
+    const result = await Effect.runPromise(
+      mediaTypes(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated mediaTypes code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -51,7 +62,9 @@ describe('mediaTypes — split mode', () => {
       Json: { schema: { type: 'string' } },
       Xml: { schema: { type: 'string' } },
     } as const
-    const result = await runGenerator(mediaTypes(sample, output, true, false))
+    const result = await Effect.runPromise(
+      mediaTypes(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(dir, 'mediaTypes')
     expect(result).toStrictEqual(
       `Generated mediaTypes code written to ${outDir}/*.ts (index.ts included)`,
@@ -71,7 +84,9 @@ describe('mediaTypes — caller ≡ generator contract', () => {
       Json: { schema: { type: 'string' } },
       Xml: { schema: { type: 'string' } },
     } as const
-    await runGenerator(mediaTypes(sample, output, false, false))
+    await Effect.runPromise(
+      mediaTypes(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = mediaTypesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)MediaTypeSchema\s*=/gu
@@ -87,7 +102,9 @@ describe('mediaTypes — caller ≡ generator contract', () => {
     const sample = {
       Json: { schema: { type: 'string' } },
     } as const
-    await runGenerator(mediaTypes(sample, output, true, false))
+    await Effect.runPromise(
+      mediaTypes(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(path.join(dir, 'mediaTypes', 'json.ts'), 'utf8')
     const generated = mediaTypesCode({ Json: sample.Json })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)MediaTypeSchema\s*=/gu
@@ -108,7 +125,9 @@ describe('mediaTypes — a referenced schema named like another component kind',
     async ({ split, file, specifier }) => {
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-media-types-'))
       const output = path.join(tmpDir, 'mediaTypes.ts')
-      await runGenerator(mediaTypes(section, output, split, false))
+      await Effect.runPromise(
+        mediaTypes(section, output, split, false).pipe(Effect.provide(fileSystemLayer)),
+      )
       expect(fs.readFileSync(path.join(tmpDir, file), 'utf8')).toStrictEqual(
         `import { PayloadMediaTypeSchema } from '${specifier}'\n\nexport const JsonMediaTypeSchema = PayloadMediaTypeSchema\n`,
       )

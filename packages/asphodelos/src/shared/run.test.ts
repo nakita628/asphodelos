@@ -5,8 +5,8 @@ import path from 'node:path'
 import { Effect, Result } from 'effect'
 
 import { parseConfig } from '../config/index.js'
+import { fileSystemLayer } from '../fsp/index.js'
 import type { OpenAPI } from '../openapi/index.js'
-import { runGenerator } from '../testing/index.js'
 import { makeJob } from './index.js'
 
 /**
@@ -87,11 +87,11 @@ async function runJobs(
     const jobs = makeJob(OPENAPI, decoded)
     // Every job runs to its end before a failure is reported: the jobs write relative to the
     // working directory, and one still writing after it is restored would land in the package.
-    const results = await runGenerator(
+    const results = await Effect.runPromise(
       Effect.all(
         jobs.map((job) => job.run(job.output)),
         { concurrency: 'unbounded', mode: 'result' },
-      ),
+      ).pipe(Effect.provide(fileSystemLayer)),
     )
     const failed = results.find((result) => Result.isFailure(result))
     if (failed) throw failed.failure
