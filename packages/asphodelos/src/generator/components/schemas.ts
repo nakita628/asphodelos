@@ -52,16 +52,39 @@ export function schemaConstNames(
 // What a schema carries as data rather than as schemas: a `$ref` member in there is a value.
 const DATA_KEYS = new Set(['example', 'examples', 'default', 'enum', 'const'])
 
-function renameRefs<T>(value: T, renamed: ReadonlyMap<string, string>): T
-function renameRefs(value: unknown, renamed: ReadonlyMap<string, string>): unknown {
+// The members of a schema that map a name to a schema: their keys are names, whatever they spell —
+// a property called `default` or `$ref` is a schema like any other.
+const NAMED_KEYS = new Set([
+  'properties',
+  'patternProperties',
+  'dependentSchemas',
+  '$defs',
+  'definitions',
+])
+
+// The key a `$ref` names in `components.schemas`. A `$ref` that does not decode names none.
+function refKey($ref: string) {
+  const m = /^#\/components\/schemas\/([^/]+)$/u.exec($ref)
+  if (!m?.[1]) return undefined
+  try {
+    return decodeURIComponent(m[1])
+  } catch {
+    return undefined
+  }
+}
+
+function renameRefs<T>(value: T, renamed: ReadonlyMap<string, string>, named?: boolean): T
+function renameRefs(value: unknown, renamed: ReadonlyMap<string, string>, named = false): unknown {
   if (Array.isArray(value)) return value.map((item: unknown) => renameRefs(item, renamed))
   if (typeof value !== 'object' || value === null) return value
   return Object.fromEntries(
     Object.entries(value).map(([key, member]: readonly [string, unknown]) => {
+      if (named) return [key, renameRefs(member, renamed)]
       if (DATA_KEYS.has(key)) return [key, member]
-      if (key !== '$ref' || typeof member !== 'string') return [key, renameRefs(member, renamed)]
-      const m = /^#\/components\/schemas\/([^/]+)$/u.exec(member)
-      const to = m?.[1] ? renamed.get(decodeURIComponent(m[1])) : undefined
+      if (key !== '$ref' || typeof member !== 'string') {
+        return [key, renameRefs(member, renamed, NAMED_KEYS.has(key))]
+      }
+      const to = renamed.get(refKey(member) ?? '')
       return [key, to ? `#/components/schemas/${to}` : member]
     }),
   )

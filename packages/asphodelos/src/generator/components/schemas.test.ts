@@ -223,6 +223,31 @@ describe('schemaConstNames', () => {
     })
   })
 
+  // Under `properties` a key is a property's name: one called `default` or `example` holds a
+  // schema, not a value.
+  it('follows a $ref under a property named like a data keyword', () => {
+    const ref = { $ref: '#/components/schemas/user' } as const
+    const to = { $ref: '#/components/schemas/User2' } as const
+    const unique = uniqueSchemas({
+      User: { type: 'string' },
+      user: { type: 'number' },
+      Settings: { type: 'object', properties: { default: ref, example: ref, $ref: ref } },
+    })
+    expect(unique.Settings).toStrictEqual({
+      type: 'object',
+      properties: { default: to, example: to, $ref: to },
+    })
+  })
+
+  it('leaves a $ref that does not decode as it is', () => {
+    const broken = { $ref: '#/components/schemas/100%' } as const
+    const unique = uniqueSchemas({
+      User: { type: 'string' },
+      user: { type: 'object', properties: { rate: broken } },
+    })
+    expect(unique.User2).toStrictEqual({ type: 'object', properties: { rate: broken } })
+  })
+
   it('returns a document without colliding keys as it is', () => {
     const plain = { User: { type: 'string' }, user_profile: { type: 'string' } } as const
     expect(uniqueSchemas(plain)).toBe(plain)
