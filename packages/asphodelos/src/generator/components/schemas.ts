@@ -1,6 +1,6 @@
 import { collectSchemaRefs, sccSchemas } from '../../helper/schema.js'
 import { readonly } from '../../helper/typebox.js'
-import type { Schema } from '../../openapi/index.js'
+import type { OpenAPI, Schema } from '../../openapi/index.js'
 import { pascalCase } from '../../utils/index.js'
 import { typebox } from '../typebox/index.js'
 
@@ -52,14 +52,29 @@ export function schemaConstNames(
 // What a schema carries as data rather than as schemas: a `$ref` member in there is a value.
 const DATA_KEYS = new Set(['example', 'examples', 'default', 'enum', 'const'])
 
-// The members of a schema that map a name to a schema: their keys are names, whatever they spell —
-// a property called `default` or `$ref` is a schema like any other.
+// The members that map a name to an object — a schema's (`properties`), an operation's
+// (`responses`, `content`), the document's (`paths`, the sections of `components`): their keys are
+// names, whatever they spell — a property called `default` or `$ref` is a schema like any other.
 const NAMED_KEYS = new Set([
   'properties',
   'patternProperties',
   'dependentSchemas',
   '$defs',
   'definitions',
+  'paths',
+  'webhooks',
+  'callbacks',
+  'responses',
+  'content',
+  'encoding',
+  'headers',
+  'links',
+  'schemas',
+  'parameters',
+  'requestBodies',
+  'securitySchemes',
+  'pathItems',
+  'mediaTypes',
 ])
 
 // The key a `$ref` names in `components.schemas`. A `$ref` that does not decode names none.
@@ -73,6 +88,17 @@ function refKey($ref: string) {
   }
 }
 
+// A discriminator's `mapping` names a schema by a `$ref` string or by its bare key.
+function renameMapping(mapping: object, renamed: ReadonlyMap<string, string>) {
+  return Object.fromEntries(
+    Object.entries(mapping).map(([value, target]: readonly [string, unknown]) => {
+      if (typeof target !== 'string') return [value, target]
+      const to = renamed.get(refKey(target) ?? '')
+      return [value, to ? `#/components/schemas/${to}` : (renamed.get(target) ?? target)]
+    }),
+  )
+}
+
 function renameRefs<T>(value: T, renamed: ReadonlyMap<string, string>, named?: boolean): T
 function renameRefs(value: unknown, renamed: ReadonlyMap<string, string>, named = false): unknown {
   if (Array.isArray(value)) return value.map((item: unknown) => renameRefs(item, renamed))
@@ -81,6 +107,9 @@ function renameRefs(value: unknown, renamed: ReadonlyMap<string, string>, named 
     Object.entries(value).map(([key, member]: readonly [string, unknown]) => {
       if (named) return [key, renameRefs(member, renamed)]
       if (DATA_KEYS.has(key)) return [key, member]
+      if (key === 'mapping' && typeof member === 'object' && member !== null) {
+        return [key, renameMapping(member, renamed)]
+      }
       if (key !== '$ref' || typeof member !== 'string') {
         return [key, renameRefs(member, renamed, NAMED_KEYS.has(key))]
       }
@@ -88,6 +117,42 @@ function renameRefs(value: unknown, renamed: ReadonlyMap<string, string>, named 
       return [key, to ? `#/components/schemas/${to}` : member]
     }),
   )
+}
+
+// The keys that need a suffix to stay unique, each with the unique name it is renamed to.
+function renamedKeys(schemas: { readonly [k: string]: Schema }): ReadonlyMap<string, string> {
+  return new Map(
+    [...resolveUniqueNames(Object.keys(schemas))].filter(
+      ([key, unique]) => pascalCase(key) !== unique,
+    ),
+  )
+}
+
+/**
+ * `openAPI` with every schema key that needs a suffix to stay unique (`user` beside `User`)
+ * renamed to its unique name (`User2`), and every `$ref` to it — in a schema, a response, a
+ * request body, a parameter, a discriminator's mapping — pointed at the new key. Every generator
+ * names a schema by its key, each in its own place: the const and the type, a rendered `$ref`,
+ * an import, a model, a mock. Made once over the document they all read, the rename has them
+ * name the same schema by the same name. A document without colliding keys is returned as it is.
+ */
+export function uniqueSchemaKeys(openAPI: OpenAPI): OpenAPI {
+  const schemas = openAPI.components?.schemas
+  const renamed = schemas ? renamedKeys(schemas) : new Map<string, string>()
+  if (!schemas || renamed.size === 0) return openAPI
+  const { components, ...rest } = renameRefs(openAPI, renamed)
+  return {
+    ...rest,
+    components: {
+      ...components,
+      schemas: Object.fromEntries(
+        Object.entries(components?.schemas ?? {}).map(([key, schema]) => [
+          renamed.get(key) ?? key,
+          schema,
+        ]),
+      ),
+    },
+  }
 }
 
 /**
@@ -101,11 +166,7 @@ function renameRefs(value: unknown, renamed: ReadonlyMap<string, string>, named 
 export function uniqueSchemas(schemas: { readonly [k: string]: Schema }): {
   readonly [k: string]: Schema
 } {
-  const renamed = new Map(
-    [...resolveUniqueNames(Object.keys(schemas))].filter(
-      ([key, unique]) => pascalCase(key) !== unique,
-    ),
-  )
+  const renamed = renamedKeys(schemas)
   if (renamed.size === 0) return schemas
   return Object.fromEntries(
     Object.entries(schemas).map(([key, schema]) => [

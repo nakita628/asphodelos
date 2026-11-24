@@ -3,7 +3,8 @@ import { describe, expect, it } from 'bun:test'
 import { Type as t } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
 
-import { schemaConstNames, schemasCode, uniqueSchemas } from './schemas.js'
+import type { OpenAPI } from '../../openapi/index.js'
+import { schemaConstNames, schemasCode, uniqueSchemaKeys, uniqueSchemas } from './schemas.js'
 
 describe('schemasCode — empty / single', () => {
   it('returns empty string for undefined', () => {
@@ -262,5 +263,77 @@ describe('schemaConstNames', () => {
     expect([...names.values()].toSorted()).toStrictEqual(['Node2Schema', 'NodeSchema'])
     const code = schemasCode(cycle)
     for (const ident of names.values()) expect(code).toContain(`export const ${ident}=`)
+  })
+})
+
+// Every generator names a schema by its key, so the rename is made once over the whole document:
+// the key in `components.schemas`, and every `$ref` to it wherever the document holds one.
+describe('uniqueSchemaKeys', () => {
+  const ref = { $ref: '#/components/schemas/user' } as const
+  const to = { $ref: '#/components/schemas/User2' } as const
+  const document = (schema: object, example: object) =>
+    ({
+      openapi: '3.1.0',
+      info: { title: 'Collide', version: '1' },
+      paths: {
+        '/users': {
+          get: {
+            parameters: [{ name: 'filter', in: 'query', schema }],
+            requestBody: { content: { 'application/json': { schema, example } } },
+            responses: {
+              default: { description: 'any', content: { 'application/json': { schema } } },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          User: { type: 'string' },
+          user: { type: 'object', properties: { self: schema } },
+          Pet: {
+            oneOf: [schema],
+            discriminator: {
+              propertyName: 'kind',
+              mapping: { a: '#/components/schemas/user', b: 'user', c: 'User', d: 'other' },
+            },
+          },
+        },
+        responses: { Missing: { description: 'missing', content: { 'text/plain': { schema } } } },
+        examples: { Sample: { value: example } },
+      },
+    }) as unknown as OpenAPI
+
+  it('renames the key and every $ref to it, and leaves examples as the data they are', () => {
+    const renamed = uniqueSchemaKeys(document(ref, ref))
+    const expected = document(to, ref)
+    expect(renamed).toStrictEqual({
+      ...expected,
+      components: {
+        ...expected.components,
+        schemas: {
+          User: { type: 'string' },
+          User2: { type: 'object', properties: { self: to } },
+          Pet: {
+            oneOf: [to],
+            discriminator: {
+              propertyName: 'kind',
+              mapping: { a: '#/components/schemas/User2', b: 'User2', c: 'User', d: 'other' },
+            },
+          },
+        },
+      },
+    })
+  })
+
+  it('returns a document without colliding keys, or without schemas, as it is', () => {
+    const plain = {
+      openapi: '3.1.0',
+      info: { title: 'Plain', version: '1' },
+      paths: {},
+      components: { schemas: { User: { type: 'string' }, user_profile: { type: 'string' } } },
+    } as unknown as OpenAPI
+    expect(uniqueSchemaKeys(plain)).toBe(plain)
+    const bare = { openapi: '3.1.0', info: { title: 'Bare', version: '1' }, paths: {} } as OpenAPI
+    expect(uniqueSchemaKeys(bare)).toBe(bare)
   })
 })
