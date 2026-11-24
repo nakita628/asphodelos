@@ -3591,7 +3591,7 @@ describe('fetch fallback', () => {
   it('a Date in the query is sent as its ISO string', async () => {
     const { toSearch } = await importHelpers()
     const at = new Date('2026-11-24T03:10:22.000Z')
-    const search = toSearch({ at, between: [at, 'now'], raw: true, limit: 3, skip: undefined })
+    const search = toSearch({ at, between: [at, 'now'], raw: true, limit: 3 })
     expect([...search]).toStrictEqual([
       ['at', '2026-11-24T03:10:22.000Z'],
       ['between', '2026-11-24T03:10:22.000Z'],
@@ -3601,6 +3601,38 @@ describe('fetch fallback', () => {
     ])
     expect([...toSearch(undefined)]).toStrictEqual([])
   })
+
+  // The rest of what Eden Treaty does with a query value: `null` and `undefined` are left out,
+  // as a value and as an item, and an object goes out as its JSON.
+  it('the query leaves out null and undefined and sends an object as its JSON', async () => {
+    const { toSearch } = await importHelpers()
+    const search = toSearch({
+      skip: undefined,
+      cursor: null,
+      ids: [1, undefined, null, 2],
+      filter: { name: 'a' },
+    })
+    expect([...search]).toStrictEqual([
+      ['ids', '1'],
+      ['ids', '2'],
+      ['filter', '{"name":"a"}'],
+    ])
+  })
+
+  it.each(['tanstack-query', 'swr'] as const)(
+    '%s: a HEAD operation is sent as HEAD',
+    async (library) => {
+      const code = await generateAndRead(library, {
+        ...api,
+        paths: {
+          '/widget.json': {
+            head: { operationId: 'headWidget', responses: { '200': { description: 'OK' } } },
+          },
+        },
+      })
+      expect(code).toMatch(/await fetch\(`\$\{clientOrigin\}\/widget\.json`, \{\s*method: 'HEAD',/u)
+    },
+  )
 
   it('a document whose fallbacks take no query carries no search helper', async () => {
     const code = await generateAndRead('tanstack-query', {

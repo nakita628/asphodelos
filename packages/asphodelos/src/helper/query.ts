@@ -267,9 +267,11 @@ const READER_CODE = `async function ${READER}(res:Response){const text=await res
 /** What builds a `fetch` fallback's search string from the options' query. */
 const SEARCH = 'toSearch'
 
-// Eden Treaty sends a `Date` in the query as its ISO string, which is what a `format: date-time`
-// parameter reads; `String(date)` is the `Tue Nov 24 2026 …` form. An array repeats its key.
-const SEARCH_CODE = `function ${SEARCH}(query:Record<string,unknown>|undefined){const search=new URLSearchParams();for(const[key,value]of Object.entries(query??{})){if(value===undefined)continue;for(const item of Array.isArray(value)?value:[value]){search.append(key,item instanceof Date?item.toISOString():String(item))}}return search}`
+// The search string is built the way Eden Treaty builds its own: a `Date` goes out as its ISO
+// string, which is what a `format: date-time` parameter reads (`String(date)` is the
+// `Tue Nov 24 2026 …` form), an object as its JSON, an array repeats its key, and `null` and
+// `undefined` — as a value or as an item — are left out.
+const SEARCH_CODE = `function ${SEARCH}(query:Record<string,unknown>|undefined){const search=new URLSearchParams();for(const[key,value]of Object.entries(query??{})){for(const item of Array.isArray(value)?value:[value]){if(item===undefined||item===null)continue;search.append(key,item instanceof Date?item.toISOString():typeof item==='object'?JSON.stringify(item):String(item))}}return search}`
 
 // A literal-path `fetch` for an operation Eden cannot type: path parameters are strings in a URL,
 // the query is spread into the search string, and the body is JSON. The URL starts at the
@@ -313,7 +315,7 @@ function fetchTarget(
     ...(withBody ? { bodyType: 'unknown' } : {}),
     bodyRequired: false,
     queryBody: (exprs, options, signal) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{headers:${options}?.headers${signal ? ',signal' : ''}});return ${READER}(res)`,
+      `${search(options)}const res=await fetch(${url(exprs)},{${method === 'head' ? "method:'HEAD'," : ''}headers:${options}?.headers${signal ? ',signal' : ''}});return ${READER}(res)`,
     mutationBody: (exprs, body, options) =>
       `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});return ${READER}(res)`,
     ...(importName ? { fetchType: importName } : {}),
