@@ -38,7 +38,8 @@ function resolveUniqueNames(keys: readonly string[]): ReadonlyMap<string, string
  * The schema const the schemas generator writes for each `components.schemas` key, so a generator
  * that names a component from outside (a hook typing its data by one) names the const that was
  * actually written. A split output resolves the unique names per file — one file per group of
- * mutually-recursive schemas — the way {@link schemasCode} is called for each.
+ * mutually-recursive schemas — the way {@link schemasCode} is called for each, so two keys that
+ * collide across files keep one name there, as they do in what the split generator writes.
  */
 export function schemaConstNames(
   schemas: { readonly [k: string]: Schema } | undefined,

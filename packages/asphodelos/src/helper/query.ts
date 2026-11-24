@@ -238,7 +238,9 @@ const REVIVER = 'reviveDate'
 // component promises a `Date`. A fetch fallback parses the same way, with the patterns Eden tests
 // a string by (ISO 8601, `Date.prototype.toString()` and a short `2026-01-02` / `01/02/2026`
 // form), so both kinds of hook hand over the same value for the same schema. Eden does not export
-// its reviver, so the hooks file carries its own. What JSON cannot carry otherwise (`t.Uint8Array`,
+// its reviver, so the hooks file carries its own. Like Eden's, it goes by the value and not by the
+// schema: a plain string that looks like a date is revived too, and a date the patterns miss (no
+// offset, a year outside 1900–2099) is not. What JSON cannot carry otherwise (`t.Uint8Array`,
 // `t.File`, a `t.Transform`) stays as the wire sent it.
 const REVIVER_CODE = String.raw`const ISO8601=/(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d\.\d+([+-][0-2]\d:[0-5]\d|Z))|(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d([+-][0-2]\d:[0-5]\d|Z))|(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d([+-][0-2]\d:[0-5]\d|Z))/u
 
@@ -246,7 +248,7 @@ const FORMAL_DATE=/(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s(?:Jan|Feb|Mar|Apr|May|Jun|J
 
 const SHORTENED_DATE=/^(?:(?:(?:(?:0?[1-9]|[12][0-9]|3[01])[/\s-](?:0?[1-9]|1[0-2])[/\s-](?:19|20)\d{2})|(?:(?:19|20)\d{2}[/\s-](?:0?[1-9]|1[0-2])[/\s-](?:0?[1-9]|[12][0-9]|3[01]))))(?:\s(?:1[012]|0?[1-9]):[0-5][0-9](?::[0-5][0-9])?(?:\s[AP]M)?)?$/u
 
-function ${REVIVER}(_key:string,value:unknown){if(typeof value!=='string')return value;const text=value.replaceAll('"','');if(!ISO8601.test(text)&&!FORMAL_DATE.test(text)&&!SHORTENED_DATE.test(text))return value;const date=new Date(text);return Number.isNaN(date.getTime())?value:date}`
+function ${REVIVER}(_key:string,value:unknown){if(typeof value!=='string')return value;const text=value.replace(/"/gu,'');if(!ISO8601.test(text)&&!FORMAL_DATE.test(text)&&!SHORTENED_DATE.test(text))return value;const date=new Date(text);return Number.isNaN(date.getTime())?value:date}`
 
 // A literal-path `fetch` for an operation Eden cannot type: path parameters are strings in a URL,
 // the query is spread into the search string, and the body is JSON. The URL starts at the

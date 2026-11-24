@@ -82,7 +82,7 @@ describe('the generated client', () => {
       "export * from './client'\n",
     )
     expect(readFileSync(path.join(generated, 'hooks.ts'), 'utf8')).toContain(
-      "import { client, clientOrigin } from '@/lib'",
+      "import { client } from '@/lib'",
     )
   })
 

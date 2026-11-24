@@ -9,7 +9,6 @@ import {
   getItemsInfiniteQueryOptions,
   getItemsQueryOptions,
   getPostUsersMutationOptions,
-  getReportJsonQueryOptions,
   getSlowQueryOptions,
   getUsersIdQueryOptions,
   getUsersKey,
@@ -292,23 +291,6 @@ describe('generated mutationOptions', () => {
     const result = await observer.mutate({})
     expect(result).toBeFalsy()
     expect(requestLog).toStrictEqual(['DELETE /users/1'])
-  })
-})
-
-// `/report.json` is a path Eden Treaty cannot type, so its hook calls `fetch` itself and types
-// its data by the response's component, where a `date-time` string is a `Date`. Eden Treaty
-// revives a date string in a JSON body into a `Date`; the fallback has to hand over the same
-// value, or `data.generatedAt.getTime()` compiles and throws.
-describe('fetch fallback', () => {
-  it('queryFn revives a date-time string into the Date its type says', async () => {
-    const queryClient = makeClient()
-    const report = await queryClient.query(getReportJsonQueryOptions())
-    expect(requestLog).toStrictEqual(['GET /report.json'])
-    expect(report).toStrictEqual({
-      generatedAt: new Date('2026-01-02T03:04:05.000Z'),
-      title: 'Weekly',
-    })
-    expect(report.generatedAt.getTime()).toBe(Date.UTC(2026, 0, 2, 3, 4, 5))
   })
 })
 

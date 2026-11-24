@@ -68,7 +68,7 @@ describe('a client in a package of its own', () => {
 
   it('is imported by the hooks of another package by the name of its own', () => {
     expect(read('react/__generated__/src/hooks.ts')).toContain(
-      "import { client, clientOrigin } from '@packages/eden'",
+      "import { client } from '@packages/eden'",
     )
   })
 

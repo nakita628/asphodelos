@@ -186,7 +186,7 @@ describe('schemaConstNames', () => {
   })
 
   it('resolves the names per file when the output is split', () => {
-    // `User` and `user` are written to files of their own, where neither collides.
+    // `User` and `user` are separate groups, each resolved on its own, so neither is suffixed.
     expect(schemaConstNames(schemas, true).get('user')).toBe('UserSchema')
   })
 

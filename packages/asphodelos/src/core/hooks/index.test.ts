@@ -3545,13 +3545,24 @@ describe('fetch fallback', () => {
       day: new Date('2026-11-24'),
       nested: [{ at: new Date('2026-11-24T03:10Z') }],
     })
-    const plain = { name: 'Alice', id: '2026', count: 3, when: '2026-13-45T99:99:99Z', none: null }
+    // Eden's patterns, and so its misses: a date-time without an offset and a year outside
+    // 1900–2099 stay strings, as they do behind the Eden hooks.
+    const plain = {
+      name: 'Alice',
+      id: '2026',
+      count: 3,
+      when: '2026-13-45T99:99:99Z',
+      naive: '2026-11-24T03:10:22',
+      never: '9999-12-31',
+      none: null,
+    }
     expect(parse(plain)).toStrictEqual(plain)
   })
 
   // Keys that differ only in case share a pascal-cased name, so the schemas generator writes all
-  // but the first under a suffixed const. The hook names the const that was written — resolved
-  // per file when the schemas are split, where the two keys do not meet.
+  // but the first under a suffixed const. The hook names the const that was written. A split
+  // output resolves the names per file, so there the hook follows the schemas generator into the
+  // plain name — which the barrel then exports twice; that is the split generator's to fix (#54).
   describe('a response component whose key collides in case', () => {
     const colliding: OpenAPI = {
       openapi: '3.1.0',
@@ -3597,7 +3608,7 @@ describe('fetch fallback', () => {
       expect(code).not.toMatch(/\bUserSchema\b/u)
     })
 
-    it('is typed by the const of its own file when the schemas are split', async () => {
+    it('is typed by the name the split schemas generator resolves per file', async () => {
       const code = await generate(true)
       expect(code).toContain("import type { UserSchema } from './schemas'")
       expect(code).toContain('Static<typeof UserSchema>')
