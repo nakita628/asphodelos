@@ -290,10 +290,12 @@ as a `Date` too, and a date the patterns miss — `2026-11-24T03:10:22` without 
 `t.File` or `t.Transform` field is typed as decoded and holds the value as it was sent.
 
 A response the document declares as something other than JSON is read as declared, and typed as
-what is read: `text/*` alone — the `text/csv` of an `/export.csv` — resolves with its text as a
-`string`, which unlike treaty's is not read further (`42` stays a string), and any other media
-type, such as `application/octet-stream` or `application/pdf`, with its bytes as an `ArrayBuffer`.
-A response with a JSON media type among them is parsed as JSON.
+what is read: `text/*` alone, in UTF-8 — the `text/csv` of an `/export.csv` — resolves with its
+text as a `string`, which unlike treaty's is not read further (`42` stays a string), and any other
+media type, such as `application/octet-stream`, `application/pdf` or a `text/csv;
+charset=shift_jis`, with its bytes as an `ArrayBuffer`. A response with a JSON media type or a
+range such as `*/*` among them is parsed as JSON. An event stream (`text/event-stream`) is not
+supported: it is not streamed, and its hook is typed `unknown`.
 
 A JSON response without a body — a `204`, an empty `200` — resolves with `undefined`. TanStack Query
 does not take `undefined` as a query's data, so there a query hook, unlike a mutation hook, reports

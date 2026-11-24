@@ -153,9 +153,18 @@ function pathParamNames(pathStr: string): readonly string[] {
   return [...pathStr.matchAll(/\{([^}]+)\}/gu)].map((m) => m[1] ?? '')
 }
 
-/** Whether a response of this media type is left to the JSON reader: JSON, or an event stream. */
-function isParsedMedia(type: string) {
-  return type === 'application/json' || type.endsWith('+json') || type === 'text/event-stream'
+// How a `fetch` fallback reads a response declared under this media type key. JSON is anything
+// that says so (`application/json`, `+json`, `text/json`) and anything that does not say what it
+// is: a range such as the `*/*` of a controller without `produces`, which was parsed as JSON
+// before the hooks told media types apart. An event stream is left to the JSON reader as well,
+// since a single read does not fit it. Text is `text/*` in UTF-8, the one charset `res.text()`
+// decodes: a `text/csv; charset=shift_jis` is handed over as the bytes it is.
+function mediaRead(key: string): 'json' | 'text' | 'bytes' {
+  const [head = '', ...parameters] = key.split(';').map((part) => part.trim().toLowerCase())
+  if (head.includes('json') || head.includes('*') || head === 'text/event-stream') return 'json'
+  const charset = parameters.find((parameter) => parameter.startsWith('charset='))?.slice(8)
+  const utf8 = charset === undefined || /^["']?utf-?8["']?$/u.test(charset)
+  return head.startsWith('text/') && utf8 ? 'text' : 'bytes'
 }
 
 // The data type for a fetch fallback comes from its 2xx response schema — the Eden chain that
@@ -182,18 +191,15 @@ function successType(
   }
   if (!info.void) return { dataT: 'unknown' }
   // No JSON schema: the response is read as what it declares, and typed as what is read — text
-  // for `text/*` alone, bytes once any other media type is among them (a `text/csv` beside an
+  // for text alone, bytes once any other media type is among them (a `text/csv` beside an
   // `application/pdf` is bytes too: text read from bytes can be decoded, bytes read as text are
-  // lost). A JSON media type without a schema is parsed as before, and so is an event stream,
-  // which a single read does not fit.
-  const media = Object.keys(ok[1].content ?? {}).map(
-    (key) => key.split(';')[0]?.trim().toLowerCase() ?? '',
-  )
-  if (media.length === 0) return { dataT: 'void' }
-  if (media.some(isParsedMedia)) return { dataT: 'unknown' }
-  return media.every((type) => type.startsWith('text/'))
-    ? { dataT: 'string', reads: 'text' }
-    : { dataT: 'ArrayBuffer', reads: 'bytes' }
+  // lost). With a JSON media type among them it is parsed as before.
+  const reads = new Set(Object.keys(ok[1].content ?? {}).map(mediaRead))
+  if (reads.size === 0) return { dataT: 'void' }
+  if (reads.has('json')) return { dataT: 'unknown' }
+  return reads.has('bytes')
+    ? { dataT: 'ArrayBuffer', reads: 'bytes' }
+    : { dataT: 'string', reads: 'text' }
 }
 
 function isBodyMethod(method: string) {

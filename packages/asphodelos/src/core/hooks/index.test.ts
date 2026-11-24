@@ -3639,6 +3639,30 @@ describe('fetch fallback', () => {
       read: 'readResponse(res)',
     },
     {
+      name: 'text in a charset other than UTF-8',
+      content: { 'text/csv; charset=Shift_JIS': {} },
+      dataT: 'ArrayBuffer',
+      read: "readResponse(res, 'bytes')",
+    },
+    {
+      name: 'text in UTF-8, spelled out',
+      content: { 'text/csv;charset="UTF-8"': {} },
+      dataT: 'string',
+      read: "readResponse(res, 'text')",
+    },
+    {
+      name: 'a media range',
+      content: { '*/*': { schema: { type: 'object' } } },
+      dataT: 'unknown',
+      read: 'readResponse(res)',
+    },
+    {
+      name: 'a JSON type under another name',
+      content: { 'text/json': {} },
+      dataT: 'unknown',
+      read: 'readResponse(res)',
+    },
+    {
       name: 'an event stream',
       content: { 'text/event-stream': {} },
       dataT: 'unknown',
