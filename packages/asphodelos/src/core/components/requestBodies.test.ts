@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { requestBodiesCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { requestBodies } from './requestBodies.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,19 @@ afterEach(() => {
 
 describe('requestBodies — no-op paths', () => {
   it('returns error when requestBodies is undefined', async () => {
-    const result = await runGeneratorError(requestBodies(undefined, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      requestBodies(undefined, '/ignored.ts', false, false).pipe(
+        Effect.provide(fileSystemLayer),
+        Effect.flip,
+      ),
+    )
     expect(result.message).toStrictEqual('No requestBodies found')
   })
 
   it('returns success message when requestBodies is empty', async () => {
-    const result = await runGenerator(requestBodies({}, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      requestBodies({}, '/ignored.ts', false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No requestBodies found')
   })
 })
@@ -52,7 +61,9 @@ describe('requestBodies — non-split mode', () => {
         },
       },
     } as const
-    const result = await runGenerator(requestBodies(sample, output, false, false))
+    const result = await Effect.runPromise(
+      requestBodies(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated requestBodies code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -83,7 +94,9 @@ describe('requestBodies — split mode', () => {
         },
       },
     } as const
-    const result = await runGenerator(requestBodies(sample, output, true, false))
+    const result = await Effect.runPromise(
+      requestBodies(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(dir, 'requestBodies')
     expect(result).toStrictEqual(
       `Generated requestBodies code written to ${outDir}/*.ts (index.ts included)`,
@@ -119,7 +132,9 @@ describe('requestBodies — caller ≡ generator contract', () => {
         },
       },
     } as const
-    await runGenerator(requestBodies(sample, output, false, false))
+    await Effect.runPromise(
+      requestBodies(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = requestBodiesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)RequestBodySchema\s*=/gu
@@ -145,7 +160,9 @@ describe('requestBodies — caller ≡ generator contract', () => {
         },
       },
     } as const
-    await runGenerator(requestBodies(sample, output, true, false))
+    await Effect.runPromise(
+      requestBodies(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(path.join(dir, 'requestBodies', 'createUser.ts'), 'utf8')
     const generated = requestBodiesCode({ CreateUser: sample.CreateUser })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)RequestBodySchema\s*=/gu
@@ -172,7 +189,9 @@ describe('requestBodies — a referenced schema named like another component kin
     async ({ split, file, specifier }) => {
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-request-bodies-'))
       const output = path.join(tmpDir, 'requestBodies.ts')
-      await runGenerator(requestBodies(section, output, split, false))
+      await Effect.runPromise(
+        requestBodies(section, output, split, false).pipe(Effect.provide(fileSystemLayer)),
+      )
       expect(fs.readFileSync(path.join(tmpDir, file), 'utf8')).toStrictEqual(
         `import { CreateUserRequestBodySchema } from '${specifier}'\n\nexport const NewUserRequestBodySchema = CreateUserRequestBodySchema\n`,
       )

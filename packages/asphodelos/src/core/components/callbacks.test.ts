@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { callbacksCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { callbacks } from './callbacks.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,16 @@ afterEach(() => {
 
 describe('callbacks — no-op paths', () => {
   it('returns error when callbacks is undefined', async () => {
-    const result = await runGeneratorError(callbacks(undefined, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      callbacks(undefined, '/ignored.ts', false).pipe(Effect.provide(fileSystemLayer), Effect.flip),
+    )
     expect(result.message).toStrictEqual('No callbacks found')
   })
 
   it('returns success message when callbacks is empty', async () => {
-    const result = await runGenerator(callbacks({}, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      callbacks({}, '/ignored.ts', false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No callbacks found')
   })
 })
@@ -40,7 +46,9 @@ describe('callbacks — non-split mode', () => {
         '{$request.body#/url}': { post: { responses: { '200': { description: 'ok' } } } },
       },
     }
-    const result = await runGenerator(callbacks(sample, output, false))
+    const result = await Effect.runPromise(
+      callbacks(sample, output, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated callbacks code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -59,7 +67,9 @@ describe('callbacks — split mode', () => {
         '{$request.body#/url}': { post: { responses: { '200': { description: 'ok' } } } },
       },
     }
-    const result = await runGenerator(callbacks(sample, output, true))
+    const result = await Effect.runPromise(
+      callbacks(sample, output, true).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(dir, 'callbacks')
     expect(result).toStrictEqual(
       `Generated callbacks code written to ${outDir}/*.ts (index.ts included)`,
@@ -83,7 +93,7 @@ describe('callbacks — caller ≡ generator contract', () => {
         '{$request.body#/url}': { post: { responses: { '200': { description: 'ok' } } } },
       },
     }
-    await runGenerator(callbacks(sample, output, false))
+    await Effect.runPromise(callbacks(sample, output, false).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = callbacksCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Callback\s*=/gu
@@ -101,7 +111,7 @@ describe('callbacks — caller ≡ generator contract', () => {
         '{$request.body#/url}': { post: { responses: { '200': { description: 'ok' } } } },
       },
     }
-    await runGenerator(callbacks(sample, output, true))
+    await Effect.runPromise(callbacks(sample, output, true).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(path.join(dir, 'callbacks', 'cb1.ts'), 'utf8')
     const generated = callbacksCode({ Cb1: sample.Cb1 })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)Callback\s*=/gu
@@ -135,7 +145,9 @@ describe('callbacks — a referenced schema named like another component kind', 
     async ({ split, file, specifier }) => {
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-callbacks-'))
       const output = path.join(tmpDir, 'callbacks.ts')
-      await runGenerator(callbacks(section, output, split))
+      await Effect.runPromise(
+        callbacks(section, output, split).pipe(Effect.provide(fileSystemLayer)),
+      )
       const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
       expect(emitted).toContain(`import { EventRequestBodySchema } from '${specifier}'`)
       expect(emitted).not.toContain('requestBodies')

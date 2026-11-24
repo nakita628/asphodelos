@@ -80,12 +80,12 @@ jobs:
 
           OPEN=$(gh pr list --head release-pr --base main --state open --json number --jq '.[0].number // empty')
 
-          # What npm users receive: the package's source without its tests and test helpers, the
+          # What npm users receive: the package's source without its tests, the
           # build config, the README and LICENSE npm always packs, and the manifest apart from the
           # fields only this repository reads.
           SHIPPED=$(git diff --name-only "$TAG" HEAD -- packages/asphodelos \
             | { grep -E '^packages/asphodelos/(src/|tsdown\.config\.ts$|README\.md$|LICENSE$)' || true; } \
-            | { grep -Ev '\.test\.ts$|^packages/asphodelos/src/testing/' || true; })
+            | { grep -Ev '\.test\.ts$' || true; })
           OWN='del(.version, .scripts, .devDependencies)'
           if [ "$(git show "$TAG:$MANIFEST" | jq -S "$OWN")" != "$(jq -S "$OWN" "$MANIFEST")" ]; then
             SHIPPED+=$'\n'"$MANIFEST"

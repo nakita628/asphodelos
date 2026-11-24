@@ -6,10 +6,11 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { TSchema } from '@sinclair/typebox'
+import { Effect } from 'effect'
 import { Elysia } from 'elysia'
 
+import { fileSystemLayer } from '../fsp/index.js'
 import type { OpenAPI, Schema } from '../openapi/index.js'
-import { runGenerator } from '../testing/index.js'
 import { elysia, schemas } from './index.js'
 
 /**
@@ -41,9 +42,17 @@ async function generate(api: OpenAPI) {
   workdirs.push(dir)
   const componentsOutput = path.join(dir, 'src/components/schemas.ts')
   const components = { schemas: { output: componentsOutput, split: false } }
-  await runGenerator(elysia(api, { output: path.join(dir, 'src/index.ts'), components }))
+  await Effect.runPromise(
+    elysia(api, { output: path.join(dir, 'src/index.ts'), components }).pipe(
+      Effect.provide(fileSystemLayer),
+    ),
+  )
   if (api.components?.schemas) {
-    await runGenerator(schemas(api.components.schemas, componentsOutput, false, false, components))
+    await Effect.runPromise(
+      schemas(api.components.schemas, componentsOutput, false, false, components).pipe(
+        Effect.provide(fileSystemLayer),
+      ),
+    )
   }
   return {
     dir,

@@ -4,8 +4,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { parseOpenAPI } from '../../openapi/index.js'
-import { runGenerator } from '../../testing/index.js'
 import { elysia } from './index.js'
 
 // Integration coverage for `elysia()` writing `src/index.ts`. Statement-level
@@ -60,7 +62,7 @@ describe('elysia — merges user edits into src/index.ts on regeneration', () =>
     const sanityDir = mkdtempSync(path.join(tmpdir(), 'asphodelos-sanity-'))
     const sanityPath = path.join(sanityDir, 'openapi.json') as `${string}.json`
     writeFileSync(sanityPath, JSON.stringify(TAGLESS_OPENAPI))
-    await runGenerator(parseOpenAPI(sanityPath))
+    await Effect.runPromise(parseOpenAPI(sanityPath).pipe(Effect.provide(fileSystemLayer)))
     rmSync(sanityDir, { recursive: true, force: true })
   })
 
@@ -81,8 +83,10 @@ describe('elysia — merges user edits into src/index.ts on regeneration', () =>
   })
 
   it('writes the canonical app file on a clean working directory', async () => {
-    const parsed = await runGenerator(parseOpenAPI(openapiPath))
-    await runGenerator(elysia(parsed))
+    const parsed = await Effect.runPromise(
+      parseOpenAPI(openapiPath).pipe(Effect.provide(fileSystemLayer)),
+    )
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
 
     const appSrc = await readFile(path.join(workdir, 'src', 'index.ts'), 'utf8')
     expect(appSrc).toBe(
@@ -102,16 +106,20 @@ if (import.meta.main) {
   })
 
   it('is idempotent across consecutive runs on a clean directory', async () => {
-    const parsed = await runGenerator(parseOpenAPI(openapiPath))
-    await runGenerator(elysia(parsed))
+    const parsed = await Effect.runPromise(
+      parseOpenAPI(openapiPath).pipe(Effect.provide(fileSystemLayer)),
+    )
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const after1 = await readFile(path.join(workdir, 'src', 'index.ts'), 'utf8')
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const after2 = await readFile(path.join(workdir, 'src', 'index.ts'), 'utf8')
     expect(after2).toBe(after1)
   })
 
   it('converges on user-edited files after one merge cycle', async () => {
-    const parsed = await runGenerator(parseOpenAPI(openapiPath))
+    const parsed = await Effect.runPromise(
+      parseOpenAPI(openapiPath).pipe(Effect.provide(fileSystemLayer)),
+    )
     const srcDir = path.join(workdir, 'src')
     await mkdir(srcDir, { recursive: true })
     const seeded = `import { Elysia } from 'elysia'
@@ -119,7 +127,6 @@ import { swagger } from '@elysiajs/swagger'
 import { users } from './modules/users'
 import { orders } from './modules/orders'
 import { healthz } from './modules/healthz'
-import { runGenerator } from '../../testing/index.js'
 
 const app = new Elysia().use(swagger()).use(users).use(orders).use(healthz).listen(8080)
 
@@ -127,18 +134,20 @@ export type App = typeof app
 `
     await writeFile(path.join(srcDir, 'index.ts'), seeded, 'utf8')
 
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const run1 = await readFile(path.join(srcDir, 'index.ts'), 'utf8')
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const run2 = await readFile(path.join(srcDir, 'index.ts'), 'utf8')
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const run3 = await readFile(path.join(srcDir, 'index.ts'), 'utf8')
     expect(run2).toBe(run1)
     expect(run3).toBe(run1)
   })
 
   it('survives five consecutive regenerations without drift', async () => {
-    const parsed = await runGenerator(parseOpenAPI(openapiPath))
+    const parsed = await Effect.runPromise(
+      parseOpenAPI(openapiPath).pipe(Effect.provide(fileSystemLayer)),
+    )
     const srcDir = path.join(workdir, 'src')
     await mkdir(srcDir, { recursive: true })
     const seeded = `import { Elysia } from 'elysia'
@@ -153,15 +162,15 @@ export type App = typeof app
 `
     await writeFile(path.join(srcDir, 'index.ts'), seeded, 'utf8')
 
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const r1 = await readFile(path.join(srcDir, 'index.ts'), 'utf8')
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const r2 = await readFile(path.join(srcDir, 'index.ts'), 'utf8')
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const r3 = await readFile(path.join(srcDir, 'index.ts'), 'utf8')
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const r4 = await readFile(path.join(srcDir, 'index.ts'), 'utf8')
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const r5 = await readFile(path.join(srcDir, 'index.ts'), 'utf8')
 
     expect(r2).toBe(r1)
@@ -171,8 +180,10 @@ export type App = typeof app
   })
 
   it('preserves user edits to the import.meta.main block (dropped console.log stays dropped)', async () => {
-    const parsed = await runGenerator(parseOpenAPI(openapiPath))
-    await runGenerator(elysia(parsed))
+    const parsed = await Effect.runPromise(
+      parseOpenAPI(openapiPath).pipe(Effect.provide(fileSystemLayer)),
+    )
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const appPath = path.join(workdir, 'src', 'index.ts')
     const initial = await readFile(appPath, 'utf8')
     expect(initial.includes('console.log')).toBe(true)
@@ -185,7 +196,7 @@ export type App = typeof app
     expect(trimmed.includes('console.log')).toBe(false)
     await writeFile(appPath, trimmed, 'utf8')
 
-    await runGenerator(elysia(parsed))
+    await Effect.runPromise(elysia(parsed).pipe(Effect.provide(fileSystemLayer)))
     const afterRegeneration = await readFile(appPath, 'utf8')
     expect(afterRegeneration.includes('console.log')).toBe(false)
     expect(afterRegeneration.includes('if (import.meta.main)')).toBe(true)

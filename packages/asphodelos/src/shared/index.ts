@@ -27,32 +27,8 @@ import {
 } from '../core/index.js'
 import { GenerateError } from '../error/index.js'
 import { readdir, unlink } from '../fsp/index.js'
+import { makeImportPath } from '../helper/code.js'
 import type { OpenAPI } from '../openapi/index.js'
-
-/**
- * The specifier `from` imports the generated file `target` by.
- *
- * Through the alias when the config names one and `target` sits under the app entry's directory —
- * `@/` stands for that directory, so `src/client.ts` is `@/client` from anywhere — and relative to
- * `from` otherwise. The extension goes. A barrel is imported by its directory; any other file
- * keeps its `index`, so an entry is named rather than left to directory resolution.
- */
-function importSpecifier(
-  from: string,
-  target: string,
-  alias: { readonly prefix: string; readonly directory: string } | undefined,
-  kind: 'file' | 'barrel' = 'file',
-) {
-  const module = posix
-    .normalize(target)
-    .replace(kind === 'barrel' ? /(?:\/index)?\.ts$/u : /\.ts$/u, '')
-  if (alias !== undefined) {
-    const inside = posix.relative(alias.directory, module)
-    if (inside !== '' && !inside.startsWith('..')) return `${alias.prefix}/${inside}`
-  }
-  const relative = posix.relative(posix.dirname(posix.normalize(from)), module)
-  return relative.startsWith('.') ? relative : `./${relative}`
-}
 
 /**
  * The directory of the nearest `package.json` at or above `dir`, or `undefined` when there is
@@ -194,7 +170,7 @@ function settleTarget(from: string, target: Target, pathAlias: Alias) {
       return target.package === undefined ? target : { ...target, import: target.package }
     }
     if (pathAlias === undefined) return target
-    const specifier = importSpecifier(from, target.output, pathAlias, 'barrel')
+    const specifier = makeImportPath(from, target.output, pathAlias, 'barrel')
     return specifier.startsWith('.') ? target : { ...target, import: specifier }
   })
 }
@@ -272,8 +248,8 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
       output,
       clientConfig.output,
       isBeside || clientBarrel === undefined
-        ? importSpecifier(output, clientConfig.output, pathAlias)
-        : importSpecifier(output, clientBarrel, pathAlias, 'barrel'),
+        ? makeImportPath(output, clientConfig.output, pathAlias)
+        : makeImportPath(output, clientBarrel, pathAlias, 'barrel'),
       clientConfig.package,
       `${field}.output is in another package than the client: name the package the client is published as, client.package, for the file to import it by.`,
     )
@@ -341,7 +317,7 @@ export function makeJob(openAPI: OpenAPI, config: Config) {
               packageImport(
                 output,
                 appOutput,
-                importSpecifier(output, appOutput, pathAlias),
+                makeImportPath(output, appOutput, pathAlias),
                 config.package,
                 'client.output is in another package than the app entry: name the package the app is published as, the top-level package, for the client to import it by.',
               ),

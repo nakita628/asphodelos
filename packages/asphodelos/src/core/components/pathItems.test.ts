@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { pathItemsCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { pathItems } from './pathItems.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,16 @@ afterEach(() => {
 
 describe('pathItems — no-op paths', () => {
   it('returns error when pathItems is undefined', async () => {
-    const result = await runGeneratorError(pathItems(undefined, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      pathItems(undefined, '/ignored.ts', false).pipe(Effect.provide(fileSystemLayer), Effect.flip),
+    )
     expect(result.message).toStrictEqual('No pathItems found')
   })
 
   it('returns success message when pathItems is empty', async () => {
-    const result = await runGenerator(pathItems({}, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      pathItems({}, '/ignored.ts', false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No pathItems found')
   })
 })
@@ -36,7 +42,9 @@ describe('pathItems — non-split mode', () => {
       Health: { get: { responses: { '200': { description: 'ok' } } } },
       Ready: { get: { responses: { '200': { description: 'ok' } } } },
     }
-    const result = await runGenerator(pathItems(sample, output, false))
+    const result = await Effect.runPromise(
+      pathItems(sample, output, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated pathItems code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -51,7 +59,9 @@ describe('pathItems — split mode', () => {
       Health: { get: { responses: { '200': { description: 'ok' } } } },
       Ready: { get: { responses: { '200': { description: 'ok' } } } },
     }
-    const result = await runGenerator(pathItems(sample, output, true))
+    const result = await Effect.runPromise(
+      pathItems(sample, output, true).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(dir, 'pathItems')
     expect(result).toStrictEqual(
       `Generated pathItems code written to ${outDir}/*.ts (index.ts included)`,
@@ -71,7 +81,7 @@ describe('pathItems — caller ≡ generator contract', () => {
       Health: { get: { responses: { '200': { description: 'ok' } } } },
       Ready: { get: { responses: { '200': { description: 'ok' } } } },
     }
-    await runGenerator(pathItems(sample, output, false))
+    await Effect.runPromise(pathItems(sample, output, false).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = pathItemsCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)PathItem\s*=/gu
@@ -87,7 +97,7 @@ describe('pathItems — caller ≡ generator contract', () => {
     const sample = {
       Health: { get: { responses: { '200': { description: 'ok' } } } },
     }
-    await runGenerator(pathItems(sample, output, true))
+    await Effect.runPromise(pathItems(sample, output, true).pipe(Effect.provide(fileSystemLayer)))
     const emitted = fs.readFileSync(path.join(dir, 'pathItems', 'health.ts'), 'utf8')
     const generated = pathItemsCode({ Health: sample.Health })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)PathItem\s*=/gu
@@ -122,7 +132,9 @@ describe('pathItems — referenced components named like another kind', () => {
     async ({ split, file, prefix }) => {
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-path-items-'))
       const output = path.join(tmpDir, 'pathItems.ts')
-      await runGenerator(pathItems(sample, output, split))
+      await Effect.runPromise(
+        pathItems(sample, output, split).pipe(Effect.provide(fileSystemLayer)),
+      )
       const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
       expect(emitted).toContain(`import { NotFoundResponseSchema } from '${prefix}/responses'`)
       expect(emitted).toContain(`import { ErrorResponseSchema } from '${prefix}/schemas'`)

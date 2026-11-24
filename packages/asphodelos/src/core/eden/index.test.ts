@@ -3,8 +3,10 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import type { OpenAPI } from '../../openapi/index.js'
-import { runGenerator } from '../../testing/index.js'
 import { eden } from './index.js'
 
 const generateAndRead = async (
@@ -17,7 +19,9 @@ const generateAndRead = async (
   const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-eden-'))
   process.chdir(dir)
   try {
-    await runGenerator(eden(api, 'src/eden.ts', importPath, client, basePath))
+    await Effect.runPromise(
+      eden(api, 'src/eden.ts', importPath, client, basePath).pipe(Effect.provide(fileSystemLayer)),
+    )
     return readFileSync(path.join(dir, 'src/eden.ts'), 'utf8')
   } finally {
     process.chdir(cwd)
@@ -247,13 +251,13 @@ export async function deleteItems(...args: Parameters<typeof client.items.delete
 
 describe('eden generator — empty input', () => {
   it('returns ok with no-op message when there are no operations', async () => {
-    const result = await runGenerator(
+    const result = await Effect.runPromise(
       eden(
         { openapi: '3.1.0', info: { title: 'T', version: '0' }, paths: {} },
         'src/eden.ts',
         './client',
         'client',
-      ),
+      ).pipe(Effect.provide(fileSystemLayer)),
     )
     expect(result).toStrictEqual('No operations found')
   })

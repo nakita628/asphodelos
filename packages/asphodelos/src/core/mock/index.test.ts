@@ -4,8 +4,10 @@ import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import type { OpenAPI } from '../../openapi/index.js'
-import { runGenerator } from '../../testing/index.js'
 import { mock } from './index.js'
 
 // The Prism-compatible `Prefer` helpers are emitted verbatim into every mock; they are pinned once
@@ -76,7 +78,9 @@ describe('mock', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-mock-'))
     dirs.push(dir)
     const output = path.join(dir, 'mock.ts')
-    const result = await runGenerator(mock(spec, output, { prefix: '/api' }))
+    const result = await Effect.runPromise(
+      mock(spec, output, { prefix: '/api' }).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated mock server written to ${output}`)
     expect(withoutPreferHelpers(await readFile(output, 'utf8')))
       .toBe(`import { Elysia } from 'elysia'
@@ -144,7 +148,9 @@ if (import.meta.main) {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-mock-'))
     dirs.push(dir)
     const output = path.join(dir, 'mock.ts')
-    await runGenerator(mock(spec, output, { prefix: '/api' }))
+    await Effect.runPromise(
+      mock(spec, output, { prefix: '/api' }).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(withoutPreferHelpers(await readFile(output, 'utf8')))
       .toBe(`import { Elysia } from 'elysia'
 import { faker } from '@faker-js/faker'

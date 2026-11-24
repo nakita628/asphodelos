@@ -3,9 +3,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { makeQueryHooks } from '../../helper/query.js'
 import type { OpenAPI } from '../../openapi/index.js'
-import { runGenerator } from '../../testing/index.js'
 import { HOOK_CONFIGS } from './index.js'
 
 describe('swr generator', () => {
@@ -22,7 +24,7 @@ describe('swr generator', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-'))
     process.chdir(dir)
     try {
-      await runGenerator(swr(api, 'src/swr.ts', './lib'))
+      await Effect.runPromise(swr(api, 'src/swr.ts', './lib').pipe(Effect.provide(fileSystemLayer)))
       return readFileSync(path.join(dir, 'src/swr.ts'), 'utf8')
     } finally {
       process.chdir(cwd)
@@ -603,12 +605,12 @@ export function useDeleteItemsId<
   })
 
   it('returns no-op marker for empty input (no operations)', async () => {
-    const result = await runGenerator(
+    const result = await Effect.runPromise(
       swr(
         { openapi: '3.1.0', info: { title: 'T', version: '0' }, paths: {} },
         'src/swr.ts',
         './lib',
-      ),
+      ).pipe(Effect.provide(fileSystemLayer)),
     )
     expect(result).toStrictEqual('No operations found')
   })
@@ -622,7 +624,7 @@ export function useDeleteItemsId<
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-fetch-'))
     process.chdir(dir)
     try {
-      await runGenerator(
+      await Effect.runPromise(
         makeQueryHooks(
           {
             openapi: '3.1.0',
@@ -655,7 +657,7 @@ export function useDeleteItemsId<
           'client',
           undefined,
           '../components/schemas',
-        ),
+        ).pipe(Effect.provide(fileSystemLayer)),
       )
       const code = readFileSync(path.join(dir, 'src/hooks/swr.ts'), 'utf8')
       expect(code).toContain("import type { Static } from 'elysia'")
@@ -693,7 +695,9 @@ describe('tanstack-query generator', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-tq-'))
     process.chdir(dir)
     try {
-      await runGenerator(tanstackQuery(api, 'src/tanstack.ts', './lib'))
+      await Effect.runPromise(
+        tanstackQuery(api, 'src/tanstack.ts', './lib').pipe(Effect.provide(fileSystemLayer)),
+      )
       return readFileSync(path.join(dir, 'src/tanstack.ts'), 'utf8')
     } finally {
       process.chdir(cwd)
@@ -1434,12 +1438,12 @@ export function useDeleteItemsId<
   })
 
   it('returns no-op marker for empty input (no operations)', async () => {
-    const result = await runGenerator(
+    const result = await Effect.runPromise(
       tanstackQuery(
         { openapi: '3.1.0', info: { title: 'T', version: '0' }, paths: {} },
         'src/tanstack.ts',
         './lib',
-      ),
+      ).pipe(Effect.provide(fileSystemLayer)),
     )
     expect(result).toStrictEqual('No operations found')
   })
@@ -1449,7 +1453,7 @@ export function useDeleteItemsId<
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-tq-pkg-'))
     process.chdir(dir)
     try {
-      await runGenerator(
+      await Effect.runPromise(
         tanstackQuery(
           {
             openapi: '3.1.0',
@@ -1465,7 +1469,7 @@ export function useDeleteItemsId<
           undefined,
           undefined,
           '@example/custom-query',
-        ),
+        ).pipe(Effect.provide(fileSystemLayer)),
       )
       const code = readFileSync(path.join(dir, 'src/tanstack.ts'), 'utf8')
       const expected = `import { useQuery, useSuspenseQuery, queryOptions } from '@example/custom-query'
@@ -1566,7 +1570,7 @@ describe('preact-query generator', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-preact-'))
     process.chdir(dir)
     try {
-      await runGenerator(
+      await Effect.runPromise(
         makeQueryHooks(
           {
             openapi: '3.1.0',
@@ -1586,7 +1590,7 @@ describe('preact-query generator', () => {
           './lib',
           HOOK_CONFIGS['preact-query'],
           'client',
-        ),
+        ).pipe(Effect.provide(fileSystemLayer)),
       )
       const code = readFileSync(path.join(dir, 'src/preact.ts'), 'utf8')
       const header = code.slice(0, code.indexOf("import { client } from './lib'"))
@@ -1633,7 +1637,9 @@ describe('vue-query generator', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-vue-'))
     process.chdir(dir)
     try {
-      await runGenerator(vueQuery(api, 'src/vue.ts', './lib'))
+      await Effect.runPromise(
+        vueQuery(api, 'src/vue.ts', './lib').pipe(Effect.provide(fileSystemLayer)),
+      )
       return readFileSync(path.join(dir, 'src/vue.ts'), 'utf8')
     } finally {
       process.chdir(cwd)
@@ -1721,12 +1727,12 @@ export function useItems<
   })
 
   it('returns no-op marker for empty input', async () => {
-    const result = await runGenerator(
+    const result = await Effect.runPromise(
       vueQuery(
         { openapi: '3.1.0', info: { title: 'T', version: '0' }, paths: {} },
         'src/vue.ts',
         './lib',
-      ),
+      ).pipe(Effect.provide(fileSystemLayer)),
     )
     expect(result).toStrictEqual('No operations found')
   })
@@ -2090,7 +2096,9 @@ describe('solid-query generator', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-solid-'))
     process.chdir(dir)
     try {
-      await runGenerator(solidQuery(api, 'src/solid.ts', './lib'))
+      await Effect.runPromise(
+        solidQuery(api, 'src/solid.ts', './lib').pipe(Effect.provide(fileSystemLayer)),
+      )
       return readFileSync(path.join(dir, 'src/solid.ts'), 'utf8')
     } finally {
       process.chdir(cwd)
@@ -2172,12 +2180,12 @@ export function createItems<
   })
 
   it('returns no-op marker for empty input', async () => {
-    const result = await runGenerator(
+    const result = await Effect.runPromise(
       solidQuery(
         { openapi: '3.1.0', info: { title: 'T', version: '0' }, paths: {} },
         'src/solid.ts',
         './lib',
-      ),
+      ).pipe(Effect.provide(fileSystemLayer)),
     )
     expect(result).toStrictEqual('No operations found')
   })
@@ -2546,7 +2554,9 @@ describe('svelte-query generator', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-svelte-'))
     process.chdir(dir)
     try {
-      await runGenerator(svelteQuery(api, 'src/svelte.ts', './lib'))
+      await Effect.runPromise(
+        svelteQuery(api, 'src/svelte.ts', './lib').pipe(Effect.provide(fileSystemLayer)),
+      )
       return readFileSync(path.join(dir, 'src/svelte.ts'), 'utf8')
     } finally {
       process.chdir(cwd)
@@ -2626,12 +2636,12 @@ export function createItems<
   })
 
   it('returns no-op marker for empty input', async () => {
-    const result = await runGenerator(
+    const result = await Effect.runPromise(
       svelteQuery(
         { openapi: '3.1.0', info: { title: 'T', version: '0' }, paths: {} },
         'src/svelte.ts',
         './lib',
-      ),
+      ).pipe(Effect.provide(fileSystemLayer)),
     )
     expect(result).toStrictEqual('No operations found')
   })
@@ -2992,7 +3002,9 @@ describe('angular-query generator', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-angular-'))
     process.chdir(dir)
     try {
-      await runGenerator(angularQuery(api, 'src/angular.ts', './lib'))
+      await Effect.runPromise(
+        angularQuery(api, 'src/angular.ts', './lib').pipe(Effect.provide(fileSystemLayer)),
+      )
       return readFileSync(path.join(dir, 'src/angular.ts'), 'utf8')
     } finally {
       process.chdir(cwd)
@@ -3071,12 +3083,12 @@ export function injectItems<
   })
 
   it('returns no-op marker for empty input', async () => {
-    const result = await runGenerator(
+    const result = await Effect.runPromise(
       angularQuery(
         { openapi: '3.1.0', info: { title: 'T', version: '0' }, paths: {} },
         'src/angular.ts',
         './lib',
-      ),
+      ).pipe(Effect.provide(fileSystemLayer)),
     )
     expect(result).toStrictEqual('No operations found')
   })
@@ -3450,8 +3462,10 @@ describe('fetch fallback', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-'))
     process.chdir(dir)
     try {
-      await runGenerator(
-        makeQueryHooks(openAPI, 'src/hooks.ts', './lib', HOOK_CONFIGS[library], 'client'),
+      await Effect.runPromise(
+        makeQueryHooks(openAPI, 'src/hooks.ts', './lib', HOOK_CONFIGS[library], 'client').pipe(
+          Effect.provide(fileSystemLayer),
+        ),
       )
       return readFileSync(path.join(dir, 'src/hooks.ts'), 'utf8')
     } finally {

@@ -1,4 +1,4 @@
-import path from 'node:path'
+import path, { posix } from 'node:path'
 
 export function makeModuleSpec(
   fromFile: string,
@@ -7,6 +7,31 @@ export function makeModuleSpec(
   const rel = path.relative(path.dirname(fromFile), target.output).replaceAll('\\', '/')
   const stripped = rel.replace(/\.ts$/u, '').replace(/(^|\/)index$/u, '')
   return stripped === '' ? '.' : stripped.startsWith('.') ? stripped : `./${stripped}`
+}
+
+/**
+ * The path `from` imports the generated file `target` by.
+ *
+ * Through the alias when the config names one and `target` sits under the app entry's directory —
+ * `@/` stands for that directory, so `src/client.ts` is `@/client` from anywhere — and relative to
+ * `from` otherwise. The extension goes. A barrel is imported by its directory; any other file
+ * keeps its `index`, so an entry is named rather than left to directory resolution.
+ */
+export function makeImportPath(
+  from: string,
+  target: string,
+  alias: { readonly prefix: string; readonly directory: string } | undefined,
+  kind: 'file' | 'barrel' = 'file',
+) {
+  const module = posix
+    .normalize(target)
+    .replace(kind === 'barrel' ? /(?:\/index)?\.ts$/u : /\.ts$/u, '')
+  if (alias !== undefined) {
+    const inside = posix.relative(alias.directory, module)
+    if (inside !== '' && !inside.startsWith('..')) return `${alias.prefix}/${inside}`
+  }
+  const relative = posix.relative(posix.dirname(posix.normalize(from)), module)
+  return relative.startsWith('.') ? relative : `./${relative}`
 }
 
 export function makeBarrel(value: { readonly [k: string]: unknown }) {

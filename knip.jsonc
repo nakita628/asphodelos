@@ -21,10 +21,10 @@
     },
     "packages/asphodelos": {
       // The entries (the CLI and the `exports` subpaths) come from package.json `bin` and the
-      // `@asphodelos/source` export condition. The `!` marks shipped code for `--production`;
-      // `src/testing` holds the test helpers and is not shipped. An export that exists only so
-      // its unit test can reach it carries `@internal`, which production mode leaves alone.
-      "project": ["src/**/*.ts!", "!src/testing/**!", "lint/**/*.{js,ts}"],
+      // `@asphodelos/source` export condition. The `!` marks shipped code for `--production`.
+      // An export that exists only so its unit test can reach it carries `@internal`, which
+      // production mode leaves alone.
+      "project": ["src/**/*.ts!", "lint/**/*.{js,ts}"],
       "ignoreDependencies": [
         // Not imported: declared so that npm resolves it to the same rc as `effect`. A newer
         // copy installs a second `effect` and the CLI fails with "Service not found"
