@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 
 import type { OpenAPI } from '../../openapi/index.js'
 import { makeAppType, schemaToTs } from './index.js'
@@ -674,5 +674,32 @@ describe('makeAppType (full Elysia<...> shape)', () => {
     expect(routes[1]).toBe(
       `{ "a": { post: { body: unknown; params: {}; query: unknown; headers: unknown; response: { 201: unknown; 422: ${VALIDATION_ENVELOPE} } } } }`,
     )
+  })
+})
+
+describe('makeAppType — a query string after a path parameter', () => {
+  it('leaves the path key out of the route tree', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { appType } = makeAppType({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/jobs/{id}': {
+            get: { operationId: 'getJob', responses: { '204': { description: 'ok' } } },
+          },
+          '/jobs/{id}?beta=true': {
+            get: { operationId: 'getJobBeta', responses: { '204': { description: 'ok' } } },
+          },
+          '/jobs/{id}/cancel': {
+            post: { operationId: 'cancelJob', responses: { '204': { description: 'ok' } } },
+          },
+        },
+      })
+      expect(appType).toContain('"cancel"')
+      expect(appType).not.toContain('beta')
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

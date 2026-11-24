@@ -355,6 +355,26 @@ export function useInfiniteGetItems<
     expect(code).toBe(expected)
   })
 
+  it('GET on a path key with its own query string: the fetch fallback appends the query with `&`', async () => {
+    const code = await generateAndRead({
+      openapi: '3.1.0',
+      info: { title: 'T', version: '0' },
+      paths: {
+        '/jobs/{id}?beta=true': {
+          get: {
+            operationId: 'getJobBeta',
+            parameters: [
+              { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+              { name: 'limit', in: 'query', schema: { type: 'integer' } },
+            ],
+            responses: { '204': { description: 'ok' } },
+          },
+        },
+      },
+    })
+    expect(code).toContain('?beta=true${search.size ? `&${search}`')
+  })
+
   it('GET with path parameter: keyGetter + hook thread `params` ahead of `options`', async () => {
     const code = await generateAndRead({
       openapi: '3.1.0',

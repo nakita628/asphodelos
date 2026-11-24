@@ -5,6 +5,7 @@ import { Effect } from 'effect'
 import { emit } from '../../emit/index.js'
 import { isMediaWithSchema, isSchemaArray, isStringRef } from '../../guard/index.js'
 import { HTTP_METHODS } from '../../helper/index.js'
+import { isElysiaRoutePath } from '../../helper/path-params.js'
 import { collectSchemaRefs, parameterSchema } from '../../helper/schema.js'
 import type {
   Media,
@@ -235,7 +236,7 @@ function makeRoutes(openAPI: OpenAPI, prefix?: string) {
   const out: string[] = []
   const prefixKeys: readonly string[] = prefix && prefix !== '/' ? pathToKeys(prefix) : []
   for (const [pathStr, pathItem] of Object.entries(openAPI.paths ?? {})) {
-    if (!pathItem) continue
+    if (!pathItem || !isElysiaRoutePath(pathStr)) continue
     const keys = [...prefixKeys, ...pathToKeys(pathStr)]
     for (const method of HTTP_METHODS) {
       const operation = pathItem[method]
@@ -294,8 +295,8 @@ function collectRefs(openAPI: OpenAPI) {
     }
     if ('schema' in p) enqueue(parameterSchema(p))
   }
-  for (const [, pathItem] of Object.entries(openAPI.paths ?? {})) {
-    if (!pathItem) continue
+  for (const [pathStr, pathItem] of Object.entries(openAPI.paths ?? {})) {
+    if (!pathItem || !isElysiaRoutePath(pathStr)) continue
     for (const method of HTTP_METHODS) {
       const op = pathItem[method]
       if (!op) continue

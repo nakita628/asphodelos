@@ -83,3 +83,24 @@ export function renameOperationParams(operation: Operation, renames: ReadonlyMap
   )
   return { ...operation, parameters }
 }
+
+const warnedQueryKeys = new Set<string>()
+
+/**
+ * Whether a path key can become an Elysia route path.
+ *
+ * A key with a query string right after a `{param}` segment, such as `/jobs/{id}?beta=true`, cannot:
+ * Elysia reads `:id?` as an optional parameter, so the route tree Eden types would lose the routes
+ * beside it (`/jobs/{id}/cancel`). Such a key is left out of the app, its types, the mock and the
+ * Eden wrappers, with a warning once per key; the hooks reach it with `fetch`.
+ */
+export function isElysiaRoutePath(pathKey: string) {
+  if (!/\{[^/{}]+\}\?/u.test(pathKey)) return true
+  if (!warnedQueryKeys.has(pathKey)) {
+    warnedQueryKeys.add(pathKey)
+    console.warn(
+      `[asphodelos] path '${pathKey}' has a query string after a path parameter, which Elysia reads as an optional parameter; it is left out of the app, its types, the mock and the Eden wrappers`,
+    )
+  }
+  return false
+}
