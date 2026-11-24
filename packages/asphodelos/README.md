@@ -280,6 +280,15 @@ client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'proce
 such as `/widget.json` — call `fetch` with it, so they send where the client does. A package
 entry that `client.package` names exports `clientOrigin` beside `client`.
 
+Such a hook parses a JSON response the way treaty does: a string that looks like a date becomes a
+`Date`, which is what the `t.Date()` of a `format: date` / `date-time` field declares. The match is
+by the value, not by the schema, with treaty's patterns: an ISO 8601 date-time with a `Z` or an
+offset, a `Date.prototype.toString()` string, and a short date in the years 1900–2099 such as
+`2026-01-02` or `01/02/2026`. So a plain string field whose value looks like one of these arrives
+as a `Date` too, and a date the patterns miss — `2026-11-24T03:10:22` without an offset,
+`9999-12-31` — stays a string. What JSON does not carry is not decoded either: a `t.Uint8Array`,
+`t.File` or `t.Transform` field is typed as decoded and holds the value as it was sent.
+
 The `index.ts` beside the client re-exports it, so it is imported as `./lib` — by `eden`, by the
 hooks, and by your own code:
 

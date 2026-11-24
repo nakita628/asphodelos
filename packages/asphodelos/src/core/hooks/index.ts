@@ -1,5 +1,6 @@
 import path from 'node:path'
 
+import { schemaConstNames } from '../../generator/components/index.js'
 import { makeModuleSpec } from '../../helper/code.js'
 import type { QueryHookConfig } from '../../helper/query.js'
 import { makeQueryHooks } from '../../helper/query.js'
@@ -138,7 +139,8 @@ export const HOOK_CONFIGS = {
  * `schemas` is where `components.schemas` is written: a hook for a path Eden cannot type (a
  * segment with a `.` or a partial parameter) falls back to `fetch` and types its data by the
  * component the response names, so it has to import that component from wherever the schemas
- * generator put it — by the specifier the config names, or relative to `output`.
+ * generator put it — by the specifier the config names, or relative to `output` — under the name
+ * that generator gave it, which is not the key's own when two keys differ only in case.
  */
 export function hooks(
   openAPI: OpenAPI,
@@ -171,5 +173,6 @@ export function hooks(
     options.client,
     options.basePath,
     schemasImport,
+    schemaConstNames(openAPI.components?.schemas, options.schemas?.split),
   )
 }

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import { Type as t } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
 
-import { schemasCode } from './schemas.js'
+import { schemaConstNames, schemasCode } from './schemas.js'
 
 describe('schemasCode — empty / single', () => {
   it('returns empty string for undefined', () => {
@@ -158,5 +158,46 @@ describe('schemasCode — multiple disjoint groups', () => {
       Bar: { type: 'number' },
     })
     expect(result).toBe('export const FooSchema=t.String()\n\nexport const BarSchema=t.Number()')
+  })
+})
+
+// A generator that names a component from outside the schemas module has to name the const
+// `schemasCode` wrote, which is not the key's own once two keys differ only in case.
+describe('schemaConstNames', () => {
+  const schemas = {
+    User: { type: 'object', properties: { id: { type: 'string' } } },
+    user: { type: 'object', properties: { id: { type: 'integer' } } },
+    Pet: { type: 'object', properties: { owner: { $ref: '#/components/schemas/User' } } },
+  } as const
+
+  it('is empty without schemas', () => {
+    expect([...schemaConstNames(undefined)]).toStrictEqual([])
+  })
+
+  it('names every key by the const schemasCode exports for it', () => {
+    const names = schemaConstNames(schemas)
+    expect([...names]).toStrictEqual([
+      ['User', 'UserSchema'],
+      ['user', 'User2Schema'],
+      ['Pet', 'PetSchema'],
+    ])
+    const code = schemasCode(schemas)
+    for (const ident of names.values()) expect(code).toContain(`export const ${ident}=`)
+  })
+
+  it('resolves the names per file when the output is split', () => {
+    // `User` and `user` are separate groups, each resolved on its own, so neither is suffixed.
+    expect(schemaConstNames(schemas, true).get('user')).toBe('UserSchema')
+  })
+
+  it('suffixes a colliding key within one split file', () => {
+    const cycle = {
+      Node: { type: 'object', properties: { next: { $ref: '#/components/schemas/node' } } },
+      node: { type: 'object', properties: { next: { $ref: '#/components/schemas/Node' } } },
+    } as const
+    const names = schemaConstNames(cycle, true)
+    expect([...names.values()].toSorted()).toStrictEqual(['Node2Schema', 'NodeSchema'])
+    const code = schemasCode(cycle)
+    for (const ident of names.values()) expect(code).toContain(`export const ${ident}=`)
   })
 })
