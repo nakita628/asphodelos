@@ -133,6 +133,8 @@ type Target = {
   readonly fetchType?: string
   /** Whether the requests are a `fetch` fallback's, whose URL starts at the client's origin. */
   readonly usesFetch: boolean
+  /** Whether a `fetch` fallback builds a search string from the options' query. */
+  readonly usesSearch: boolean
 }
 
 // Eden treaty projects a path onto a property/function tree, so a segment it cannot turn into a
@@ -224,6 +226,7 @@ function edenTarget(
     mutationBody: (exprs, body, options) =>
       `const{data,error}=await ${call(exprs)}(${withBody ? `${body},${options}` : options});if(error)throw error;return data`,
     usesFetch: false,
+    usesSearch: false,
   }
 }
 
@@ -249,6 +252,24 @@ const FORMAL_DATE=/(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s(?:Jan|Feb|Mar|Apr|May|Jun|J
 const SHORTENED_DATE=/^(?:(?:(?:(?:0?[1-9]|[12][0-9]|3[01])[/\s-](?:0?[1-9]|1[0-2])[/\s-](?:19|20)\d{2})|(?:(?:19|20)\d{2}[/\s-](?:0?[1-9]|1[0-2])[/\s-](?:0?[1-9]|[12][0-9]|3[01]))))(?:\s(?:1[012]|0?[1-9]):[0-5][0-9](?::[0-5][0-9])?(?:\s[AP]M)?)?$/u
 
 function ${REVIVER}(_key:string,value:unknown){if(typeof value!=='string')return value;const text=value.replace(/"/gu,'');if(!ISO8601.test(text)&&!FORMAL_DATE.test(text)&&!SHORTENED_DATE.test(text))return value;const date=new Date(text);return Number.isNaN(date.getTime())?value:date}`
+
+/** What reads a `fetch` fallback's response, written into the hooks file beside the reviver. */
+const READER = 'readResponse'
+
+// `res.json()` types as `unknown`, which the annotated return type rejects; `JSON.parse` of the
+// text is `any`, which it takes without a cast — and it takes the reviver, which `json()` does not.
+// A response without content (a `204`, an empty `200`) has no JSON to parse and is typed `void`,
+// so it resolves with `undefined`. A failed response rejects with its body parsed the same way,
+// dates revived; one that is not JSON (a proxy's HTML `502`, an empty `404`) rejects with an
+// `Error` carrying the `status` and the text as `value`, the two members of Eden's error.
+const READER_CODE = `async function ${READER}(res:Response){const text=await res.text();if(res.ok)return text===''?undefined:JSON.parse(text,${REVIVER});let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
+
+/** What builds a `fetch` fallback's search string from the options' query. */
+const SEARCH = 'toSearch'
+
+// Eden Treaty sends a `Date` in the query as its ISO string, which is what a `format: date-time`
+// parameter reads; `String(date)` is the `Tue Nov 24 2026 …` form. An array repeats its key.
+const SEARCH_CODE = `function ${SEARCH}(query:Record<string,unknown>|undefined){const search=new URLSearchParams();for(const[key,value]of Object.entries(query??{})){if(value===undefined)continue;for(const item of Array.isArray(value)?value:[value]){search.append(key,item instanceof Date?item.toISOString():String(item))}}return search}`
 
 // A literal-path `fetch` for an operation Eden cannot type: path parameters are strings in a URL,
 // the query is spread into the search string, and the body is JSON. The URL starts at the
@@ -280,12 +301,7 @@ function fetchTarget(
       ? `\`\${${ORIGIN}}${inner}\${search.size ? \`${separator}\${search}\` : ''}\``
       : `\`\${${ORIGIN}}${inner}\``
   }
-  const search = (options: string) =>
-    hasQuery
-      ? `const search=new URLSearchParams();for(const[k,v]of Object.entries(${options}?.query??{})){if(v===undefined)continue;if(Array.isArray(v)){for(const x of v){search.append(k,String(x))}}else{search.set(k,String(v))}}`
-      : ''
-  // `res.json()` types as `unknown`, which the annotated return type rejects; `JSON.parse` of the
-  // text is `any`, which it takes without a cast — and it takes the reviver, which `json()` does not.
+  const search = (options: string) => (hasQuery ? `const search=${SEARCH}(${options}?.query);` : '')
   return {
     params: params.map((name) => ({ name, type: 'string' })),
     optionsType,
@@ -297,11 +313,12 @@ function fetchTarget(
     ...(withBody ? { bodyType: 'unknown' } : {}),
     bodyRequired: false,
     queryBody: (exprs, options, signal) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{headers:${options}?.headers${signal ? ',signal' : ''}});if(!res.ok)throw await res.json();return JSON.parse(await res.text(),${REVIVER})`,
+      `${search(options)}const res=await fetch(${url(exprs)},{headers:${options}?.headers${signal ? ',signal' : ''}});return ${READER}(res)`,
     mutationBody: (exprs, body, options) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});if(!res.ok)throw await res.json();return JSON.parse(await res.text(),${REVIVER})`,
+      `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});return ${READER}(res)`,
     ...(importName ? { fetchType: importName } : {}),
     usesFetch: true,
+    usesSearch: hasQuery,
   }
 }
 
@@ -776,7 +793,12 @@ function operationCode(
           ...(paginated ? infiniteCode(config, names, target, prefix, fullPath) : []),
         ]
       : mutationCode(config, method, pathStr, target, prefix, fullPath)
-  return { code: code.join('\n\n'), fetchType: target.fetchType, usesFetch: target.usesFetch }
+  return {
+    code: code.join('\n\n'),
+    fetchType: target.fetchType,
+    usesFetch: target.usesFetch,
+    usesSearch: target.usesSearch,
+  }
 }
 
 /**
@@ -904,7 +926,8 @@ export function makeQueryHooks(
     if (operations.length === 0) return 'No operations found'
     const usesFetch = operations.some((op) => op.usesFetch)
     const body = `${[
-      ...(usesFetch ? [REVIVER_CODE] : []),
+      ...(usesFetch ? [REVIVER_CODE, READER_CODE] : []),
+      ...(operations.some((op) => op.usesSearch) ? [SEARCH_CODE] : []),
       ...makePrefixKeyCodes(openAPI, prefix),
       ...operations.map((op) => op.code),
     ].join('\n\n')}\n`

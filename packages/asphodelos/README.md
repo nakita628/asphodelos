@@ -289,6 +289,16 @@ as a `Date` too, and a date the patterns miss — `2026-11-24T03:10:22` without 
 `9999-12-31` — stays a string. What JSON does not carry is not decoded either: a `t.Uint8Array`,
 `t.File` or `t.Transform` field is typed as decoded and holds the value as it was sent.
 
+A response without a body — a `204`, an empty `200` — resolves with `undefined`. A failed response
+rejects with its JSON body, parsed the same way; when the body is not JSON (a proxy's HTML `502`,
+an empty `404`) it rejects with an `Error` that carries the `status` and the text as `value`. A
+`Date` in `query` is sent as its ISO string, as treaty sends it.
+
+A response without a body — a `204`, an empty `200` — resolves with `undefined`. A failed response
+rejects with its JSON body, parsed the same way; when the body is not JSON (a proxy's HTML `502`,
+an empty `404`) it rejects with an `Error` that carries the `status` and the text as `value`. A
+`Date` in `query` is sent as its ISO string, as treaty sends it.
+
 The `index.ts` beside the client re-exports it, so it is imported as `./lib` — by `eden`, by the
 hooks, and by your own code:
 
