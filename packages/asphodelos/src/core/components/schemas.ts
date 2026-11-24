@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 
 import { emit } from '../../emit/index.js'
 import { GenerateError } from '../../error/index.js'
-import { schemasCode } from '../../generator/components/index.js'
+import { schemasCode, uniqueSchemas } from '../../generator/components/index.js'
 import { makeImports, schemaRefKinds } from '../../helper/index.js'
 import { collectSchemaRefs, sccSchemas } from '../../helper/schema.js'
 import type { Components, Schema } from '../../openapi/index.js'
@@ -19,7 +19,11 @@ function splitSchemaFiles(
   readonly?: boolean,
   exportTypes?: boolean,
 ) {
-  const groups = sccSchemas(Object.entries(section).map(([name, schema]) => ({ name, schema })))
+  // Keys that differ only in case are told apart before the split, over the whole document: each
+  // file then exports a const no other file does, and is named after a key no other file is.
+  const groups = sccSchemas(
+    Object.entries(uniqueSchemas(section)).map(([name, schema]) => ({ name, schema })),
+  )
   const nameToFile = new Map(
     groups.flatMap((group) => group.map((s) => [s.name, fileNameOf(group)] as const)),
   )

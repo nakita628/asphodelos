@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import { Type as t } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
 
-import { schemaConstNames, schemasCode } from './schemas.js'
+import { schemaConstNames, schemasCode, uniqueSchemas } from './schemas.js'
 
 describe('schemasCode — empty / single', () => {
   it('returns empty string for undefined', () => {
@@ -185,17 +185,80 @@ describe('schemaConstNames', () => {
     for (const ident of names.values()) expect(code).toContain(`export const ${ident}=`)
   })
 
-  it('resolves the names per file when the output is split', () => {
-    // `User` and `user` are separate groups, each resolved on its own, so neither is suffixed.
-    expect(schemaConstNames(schemas, true).get('user')).toBe('UserSchema')
+  // A `$ref` is rendered as the const of the key it names, not as the pascal-cased key: a ref to
+  // `user` is `User2Schema`, the const written for it, and a ref to `User` stays `UserSchema`.
+  it('points a $ref to a colliding key at the const written for it', () => {
+    const code = schemasCode({
+      ...schemas,
+      Owner: { type: 'object', properties: { account: { $ref: '#/components/schemas/user' } } },
+    })
+    expect(code).toContain('export const PetSchema=t.Object({"owner":t.Optional(UserSchema)})')
+    expect(code).toContain('export const OwnerSchema=t.Object({"account":t.Optional(User2Schema)})')
   })
 
-  it('suffixes a colliding key within one split file', () => {
+  it('closes a self reference of a suffixed key with Self', () => {
+    const code = schemasCode({
+      Node: { type: 'string' },
+      node: { type: 'object', properties: { next: { $ref: '#/components/schemas/node' } } },
+    })
+    expect(code).toBe(
+      'export const NodeSchema=t.String()\n\nexport const Node2Schema=t.Recursive((Self)=>t.Object({"next":t.Optional(Self)}))',
+    )
+  })
+
+  it('leaves a $ref member of an example or a default as the value it is', () => {
+    const ref = { $ref: '#/components/schemas/user' } as const
+    const unique = uniqueSchemas({
+      User: { type: 'string' },
+      user: { type: 'object', example: ref, default: ref, properties: { self: ref } },
+    })
+    expect(unique).toStrictEqual({
+      User: { type: 'string' },
+      User2: {
+        type: 'object',
+        example: ref,
+        default: ref,
+        properties: { self: { $ref: '#/components/schemas/User2' } },
+      },
+    })
+  })
+
+  // Under `properties` a key is a property's name: one called `default` or `example` holds a
+  // schema, not a value.
+  it('follows a $ref under a property named like a data keyword', () => {
+    const ref = { $ref: '#/components/schemas/user' } as const
+    const to = { $ref: '#/components/schemas/User2' } as const
+    const unique = uniqueSchemas({
+      User: { type: 'string' },
+      user: { type: 'number' },
+      Settings: { type: 'object', properties: { default: ref, example: ref, $ref: ref } },
+    })
+    expect(unique.Settings).toStrictEqual({
+      type: 'object',
+      properties: { default: to, example: to, $ref: to },
+    })
+  })
+
+  it('leaves a $ref that does not decode as it is', () => {
+    const broken = { $ref: '#/components/schemas/100%' } as const
+    const unique = uniqueSchemas({
+      User: { type: 'string' },
+      user: { type: 'object', properties: { rate: broken } },
+    })
+    expect(unique.User2).toStrictEqual({ type: 'object', properties: { rate: broken } })
+  })
+
+  it('returns a document without colliding keys as it is', () => {
+    const plain = { User: { type: 'string' }, user_profile: { type: 'string' } } as const
+    expect(uniqueSchemas(plain)).toBe(plain)
+  })
+
+  it('names two keys that collide with each other in a cycle', () => {
     const cycle = {
       Node: { type: 'object', properties: { next: { $ref: '#/components/schemas/node' } } },
       node: { type: 'object', properties: { next: { $ref: '#/components/schemas/Node' } } },
     } as const
-    const names = schemaConstNames(cycle, true)
+    const names = schemaConstNames(cycle)
     expect([...names.values()].toSorted()).toStrictEqual(['Node2Schema', 'NodeSchema'])
     const code = schemasCode(cycle)
     for (const ident of names.values()) expect(code).toContain(`export const ${ident}=`)

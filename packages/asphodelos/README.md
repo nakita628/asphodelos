@@ -475,6 +475,9 @@ you type — and the CLI checks the rest when it runs:
 - `components.output` (one file) and the per-type `components.*` sections are mutually exclusive.
 - A component section with `split: true` writes one file per entry plus an `index.ts` barrel into a
   directory; otherwise `output` is a single `.ts` file (a directory stands for its `index.ts`).
+- Schema keys that differ only in case (`User`, `user`) would share a const: the first keeps
+  `UserSchema`, the next is written as `User2Schema` — in `user2.ts` when split — and a `$ref`
+  to it inside the schemas names that const.
 - A split directory belongs to the generator: every run empties its `.ts` files before refilling
   it, so an entry that leaves the document does not leave an orphaned file behind. Subdirectories,
   other files and the single-file outputs of other generators are left alone.

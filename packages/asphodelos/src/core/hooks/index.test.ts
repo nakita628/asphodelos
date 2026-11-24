@@ -3682,9 +3682,8 @@ describe('fetch fallback', () => {
   })
 
   // Keys that differ only in case share a pascal-cased name, so the schemas generator writes all
-  // but the first under a suffixed const. The hook names the const that was written. A split
-  // output resolves the names per file, so there the hook follows the schemas generator into the
-  // plain name — which the barrel then exports twice; that is the split generator's to fix (#54).
+  // but the first under a suffixed const. The hook names the const that was written, which is the
+  // same one whether the schemas are one file or split.
   describe('a response component whose key collides in case', () => {
     const colliding: OpenAPI = {
       openapi: '3.1.0',
@@ -3730,10 +3729,11 @@ describe('fetch fallback', () => {
       expect(code).not.toMatch(/\bUserSchema\b/u)
     })
 
-    it('is typed by the name the split schemas generator resolves per file', async () => {
+    it('is typed by the same const when the schemas are split', async () => {
       const code = await generate(true)
-      expect(code).toContain("import type { UserSchema } from './schemas'")
-      expect(code).toContain('Static<typeof UserSchema>')
+      expect(code).toContain("import type { User2Schema } from './schemas'")
+      expect(code).toContain('Static<typeof User2Schema>')
+      expect(code).not.toMatch(/\bUserSchema\b/u)
     })
   })
 
