@@ -3516,10 +3516,132 @@ describe('fetch fallback', () => {
     async (library) => {
       const code = await generateAndRead(library)
       expect(code).toContain('function reviveDate(_key: string, value: unknown) {')
-      expect(code).toContain('return JSON.parse(await res.text(), reviveDate)')
-      expect(code).not.toContain('JSON.parse(await res.text())')
+      expect(code).toContain('JSON.parse(text, reviveDate)')
+      expect(code).not.toContain('JSON.parse(text)')
+      expect(code).not.toContain('res.json()')
     },
   )
+
+  // The helpers the fallback hooks call, as the hooks file carries them.
+  const importHelpers = async () => {
+    const code = await generateAndRead('tanstack-query')
+    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export '))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-helpers-'))
+    const file = path.join(dir, 'helpers.ts')
+    writeFileSync(file, `${source}\nexport { readResponse, toSearch }\n`)
+    try {
+      return (await import(file)) as {
+        readonly readResponse: (res: Response) => Promise<unknown>
+        readonly toSearch: (query: { [key: string]: unknown } | undefined) => URLSearchParams
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it.each(['tanstack-query', 'swr'] as const)(
+    '%s: queries and mutations read the response and build the search string with the helpers',
+    async (library) => {
+      const code = await generateAndRead(library)
+      expect(code).toContain('return readResponse(res)')
+      expect(code).toMatch(/const search = toSearch\(\w+\?\.query\)/u)
+      expect(code).not.toContain('String(v)')
+    },
+  )
+
+  // A response without content is typed `void`: there is no JSON in it to parse.
+  it('a response without a body resolves with undefined', async () => {
+    const { readResponse } = await importHelpers()
+    expect(await readResponse(new Response(null, { status: 204 }))).toBeUndefined()
+    expect(await readResponse(new Response('', { status: 200 }))).toBeUndefined()
+  })
+
+  it('a JSON response resolves with its dates revived', async () => {
+    const { readResponse } = await importHelpers()
+    expect(
+      await readResponse(Response.json({ id: 1, at: '2026-11-24T03:10:22.000Z' })),
+    ).toStrictEqual({ id: 1, at: new Date('2026-11-24T03:10:22.000Z') })
+  })
+
+  it('a JSON error body rejects with the body, its dates revived', async () => {
+    const { readResponse } = await importHelpers()
+    const res = Response.json({ message: 'gone', at: '2026-11-24T03:10:22.000Z' }, { status: 410 })
+    expect(await readResponse(res).catch((error: unknown) => error)).toStrictEqual({
+      message: 'gone',
+      at: new Date('2026-11-24T03:10:22.000Z'),
+    })
+  })
+
+  // A proxy's HTML page or an empty `404` is not JSON: the error says so by its status and text
+  // rather than by the `SyntaxError` of a failed parse.
+  it.each([
+    { name: 'an HTML page', body: '<html>Bad Gateway</html>', status: 502 },
+    { name: 'an empty body', body: '', status: 404 },
+  ])('an error with $name rejects with the status and the text', async ({ body, status }) => {
+    const { readResponse } = await importHelpers()
+    const error = await readResponse(new Response(body, { status })).catch(
+      (error_: unknown) => error_,
+    )
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(SyntaxError)
+    expect(error).toMatchObject({ status, value: body })
+  })
+
+  // Eden Treaty sends a `Date` as its ISO string, which a `format: date-time` parameter reads.
+  it('a Date in the query is sent as its ISO string', async () => {
+    const { toSearch } = await importHelpers()
+    const at = new Date('2026-11-24T03:10:22.000Z')
+    const search = toSearch({ at, between: [at, 'now'], raw: true, limit: 3 })
+    expect([...search]).toStrictEqual([
+      ['at', '2026-11-24T03:10:22.000Z'],
+      ['between', '2026-11-24T03:10:22.000Z'],
+      ['between', 'now'],
+      ['raw', 'true'],
+      ['limit', '3'],
+    ])
+    expect([...toSearch(undefined)]).toStrictEqual([])
+  })
+
+  // The rest of what Eden Treaty does with a query value: `null` and `undefined` are left out,
+  // as a value and as an item, and an object goes out as its JSON.
+  it('the query leaves out null and undefined and sends an object as its JSON', async () => {
+    const { toSearch } = await importHelpers()
+    const search = toSearch({
+      skip: undefined,
+      cursor: null,
+      ids: [1, undefined, null, 2],
+      filter: { name: 'a' },
+    })
+    expect([...search]).toStrictEqual([
+      ['ids', '1'],
+      ['ids', '2'],
+      ['filter', '{"name":"a"}'],
+    ])
+  })
+
+  it.each(['tanstack-query', 'swr'] as const)(
+    '%s: a HEAD operation is sent as HEAD',
+    async (library) => {
+      const code = await generateAndRead(library, {
+        ...api,
+        paths: {
+          '/widget.json': {
+            head: { operationId: 'headWidget', responses: { '200': { description: 'OK' } } },
+          },
+        },
+      })
+      expect(code).toMatch(/await fetch\(`\$\{clientOrigin\}\/widget\.json`, \{\s*method: 'HEAD',/u)
+    },
+  )
+
+  it('a document whose fallbacks take no query carries no search helper', async () => {
+    const code = await generateAndRead('tanstack-query', {
+      ...api,
+      paths: { '/widget.json': api.paths?.['/widget.json'] ?? {} },
+    })
+    expect(code).toContain('async function readResponse(res: Response) {')
+    expect(code).not.toContain('toSearch')
+  })
 
   it('the reviver turns the date strings Eden does into a Date and leaves the rest', async () => {
     const code = await generateAndRead('tanstack-query')
@@ -3627,5 +3749,7 @@ describe('fetch fallback', () => {
     expect(code).toContain("import { client } from './lib'")
     expect(code).not.toContain('clientOrigin')
     expect(code).not.toContain('reviveDate')
+    expect(code).not.toContain('readResponse')
+    expect(code).not.toContain('toSearch')
   })
 })
