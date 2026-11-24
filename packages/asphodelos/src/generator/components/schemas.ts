@@ -17,9 +17,7 @@ function findFree(base: string, i: number, used: ReadonlySet<string>): string {
  * OpenAPI schema keys are case-sensitive, but `pascalCase` upper-cases the first
  * letter, so `User` and `user` both emit `const UserSchema` / `type User`
  * (TS2451 / TS2300). Map each colliding key to a deterministic suffixed exported
- * name (`User`, `User2`, …) so every declaration is unique. The map is global
- * across SCC groups; TypeBox refs (`t.Ref('user')`, recursive `Self`) keep using
- * the original key, so only the exported binding names change.
+ * name (`User`, `User2`, …) so every declaration is unique.
  */
 function resolveUniqueNames(keys: readonly string[]): ReadonlyMap<string, string> {
   return keys.reduce<{ readonly used: Set<string>; readonly map: Map<string, string> }>(
@@ -37,26 +35,60 @@ function resolveUniqueNames(keys: readonly string[]): ReadonlyMap<string, string
 /**
  * The schema const the schemas generator writes for each `components.schemas` key, so a generator
  * that names a component from outside (a hook typing its data by one) names the const that was
- * actually written. A split output resolves the unique names per file — one file per group of
- * mutually-recursive schemas — the way {@link schemasCode} is called for each, so two keys that
- * collide across files keep one name there, as they do in what the split generator writes.
+ * actually written. The names are resolved over the whole document, whether the output is one
+ * file or split: a split output writes the same consts, one file per group.
  */
 export function schemaConstNames(
   schemas: { readonly [k: string]: Schema } | undefined,
-  split?: boolean,
 ): ReadonlyMap<string, string> {
   if (!schemas) return new Map()
-  const files = split
-    ? sccSchemas(Object.entries(schemas).map(([name, schema]) => ({ name, schema }))).map((group) =>
-        Object.fromEntries(group.map((member) => [member.name, member.schema])),
-      )
-    : [schemas]
   return new Map(
-    files.flatMap((file) =>
-      [...resolveUniqueNames(Object.keys(file))].map(
-        ([key, unique]) => [key, `${unique}Schema`] as const,
-      ),
+    [...resolveUniqueNames(Object.keys(schemas))].map(
+      ([key, unique]) => [key, `${unique}Schema`] as const,
     ),
+  )
+}
+
+// What a schema carries as data rather than as schemas: a `$ref` member in there is a value.
+const DATA_KEYS = new Set(['example', 'examples', 'default', 'enum', 'const'])
+
+function renameRefs<T>(value: T, renamed: ReadonlyMap<string, string>): T
+function renameRefs(value: unknown, renamed: ReadonlyMap<string, string>): unknown {
+  if (Array.isArray(value)) return value.map((item: unknown) => renameRefs(item, renamed))
+  if (typeof value !== 'object' || value === null) return value
+  return Object.fromEntries(
+    Object.entries(value).map(([key, member]: readonly [string, unknown]) => {
+      if (DATA_KEYS.has(key)) return [key, member]
+      if (key !== '$ref' || typeof member !== 'string') return [key, renameRefs(member, renamed)]
+      const m = /^#\/components\/schemas\/([^/]+)$/u.exec(member)
+      const to = m?.[1] ? renamed.get(decodeURIComponent(m[1])) : undefined
+      return [key, to ? `#/components/schemas/${to}` : member]
+    }),
+  )
+}
+
+/**
+ * `schemas` with every key that needs a suffix to stay unique (`user` beside `User`) renamed to
+ * its unique name (`User2`), and every `$ref` to it pointed at the new key. Everything that names
+ * a schema by its key — the const and the type, a `$ref` rendered as a const, a sibling file's
+ * import, the file a split output writes it to — then names the one that was written for it. The
+ * names are those of {@link schemaConstNames}, so the rename has to be made over the whole
+ * document, before it is split into files. A document without colliding keys is returned as it is.
+ */
+export function uniqueSchemas(schemas: { readonly [k: string]: Schema }): {
+  readonly [k: string]: Schema
+} {
+  const renamed = new Map(
+    [...resolveUniqueNames(Object.keys(schemas))].filter(
+      ([key, unique]) => pascalCase(key) !== unique,
+    ),
+  )
+  if (renamed.size === 0) return schemas
+  return Object.fromEntries(
+    Object.entries(schemas).map(([key, schema]) => [
+      renamed.get(key) ?? key,
+      renameRefs(schema, renamed),
+    ]),
   )
 }
 
@@ -67,10 +99,10 @@ export function schemasCode(
   exported = true,
 ) {
   if (!schemas || Object.keys(schemas).length === 0) return ''
-  const names = resolveUniqueNames(Object.keys(schemas))
-  const groups = sccSchemas(Object.entries(schemas).map(([name, schema]) => ({ name, schema })))
+  const unique = uniqueSchemas(schemas)
+  const groups = sccSchemas(Object.entries(unique).map(([name, schema]) => ({ name, schema })))
   return groups
-    .map((group) => emitGroup(group, readonlyMode, exportTypes, exported, names))
+    .map((group) => emitGroup(group, readonlyMode, exportTypes, exported))
     .filter((s) => s.length > 0)
     .join('\n\n')
 }
@@ -87,13 +119,7 @@ function refsWithin(schema: Schema, memberNames: ReadonlySet<string>) {
 // expansion that makes `Static<typeof Module.Import>` blow past the instantiation depth limit
 // (TS2589). Non-star SCCs (true N-way recursion, union/intersect cycles) stay on the
 // `t.Module` path, where the depth limit is the input's problem, not ours to mis-collapse.
-function findStar(
-  group: readonly Member[],
-  exportedName: (name: string) => string,
-): { hub: Member; spokes: readonly Member[] } | null {
-  // The collapse rewrites refs by `${pascalCase(name)}Schema`, which only matches the emitted
-  // const when no name needed a uniqueness suffix — otherwise fall back to t.Module.
-  if (group.some((member) => exportedName(member.name) !== pascalCase(member.name))) return null
+function findStar(group: readonly Member[]): { hub: Member; spokes: readonly Member[] } | null {
   const memberNames = new Set(group.map((member) => member.name))
   const refs = new Map(
     group.map((member) => [member.name, refsWithin(member.schema, memberNames)] as const),
@@ -153,26 +179,21 @@ function emitGroup(
   readonlyMode: boolean | undefined,
   exportTypes: boolean | undefined,
   exported: boolean,
-  names: ReadonlyMap<string, string>,
 ) {
   const exportKw = exported ? 'export ' : ''
   const head = group[0]
-  const exportedName = (name: string) => names.get(name) ?? pascalCase(name)
   if (group.length === 1 && head) {
     const { name, schema } = head
-    const ident = `${exportedName(name)}Schema`
-    const selfRef = `${pascalCase(name)}Schema`
+    const ident = `${pascalCase(name)}Schema`
     const refs = collectSchemaRefs(schema)
     const inner = typebox(schema)
     const expr = refs.has(name)
-      ? `t.Recursive((Self)=>${inner.replaceAll(new RegExp(`\\b${selfRef}\\b`, 'gu'), 'Self')})`
+      ? `t.Recursive((Self)=>${inner.replaceAll(new RegExp(`\\b${ident}\\b`, 'gu'), 'Self')})`
       : inner
     const decl = `${exportKw}const ${ident}=${readonly(expr, readonlyMode)}`
-    return exportTypes
-      ? `${decl}\n\nexport type ${exportedName(name)}=Static<typeof ${ident}>`
-      : decl
+    return exportTypes ? `${decl}\n\nexport type ${pascalCase(name)}=Static<typeof ${ident}>` : decl
   }
-  const star = findStar(group, exportedName)
+  const star = findStar(group)
   if (star) return emitStar(star, exportKw, readonlyMode, exportTypes)
   const memberNames = new Set(group.map((member) => member.name))
   const moduleEntries = group
@@ -188,11 +209,11 @@ function emitGroup(
   const moduleId = head ? `${pascalCase(head.name)}Module` : 'Module'
   const decls = group
     .map(({ name }) => {
-      const ident = `${exportedName(name)}Schema`
+      const ident = `${pascalCase(name)}Schema`
       const expr = `${moduleId}.Import('${name}')`
       const decl = `${exportKw}const ${ident}=${readonly(expr, readonlyMode)}`
       return exportTypes
-        ? `${decl}\n\nexport type ${exportedName(name)}=Static<typeof ${ident}>`
+        ? `${decl}\n\nexport type ${pascalCase(name)}=Static<typeof ${ident}>`
         : decl
     })
     .join('\n\n')

@@ -130,3 +130,67 @@ describe('schemas — split mode, a sibling named like another component kind', 
     )
   })
 })
+
+// Keys that differ only in case share a pascal-cased name. The names are resolved over the whole
+// document, as in a single file, so every file exports a const of its own, is written under a
+// name of its own, and the barrel exports each name once.
+describe('schemas — split mode, keys that differ only in case', () => {
+  const generate = async (sample: Parameters<typeof schemas>[0]) => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-schemas-'))
+    await Effect.runPromise(
+      schemas(sample, path.join(tmpDir, 'schemas.ts'), true, true).pipe(
+        Effect.provide(fileSystemLayer),
+      ),
+    )
+    const dir = path.join(tmpDir, 'schemas')
+    return Object.fromEntries(
+      fs
+        .readdirSync(dir)
+        .toSorted()
+        .map((file) => [file, fs.readFileSync(path.join(dir, file), 'utf8')] as const),
+    )
+  }
+
+  it('writes `User` and `user` to files of their own, under consts of their own', async () => {
+    const files = await generate({
+      User: { type: 'object', properties: { id: { type: 'string' } } },
+      user: { type: 'object', properties: { id: { type: 'integer' } } },
+    })
+    expect(Object.keys(files)).toStrictEqual(['index.ts', 'user.ts', 'user2.ts'])
+    expect(files['user.ts']).toContain(
+      'export const UserSchema = t.Object({ id: t.Optional(t.String()) })',
+    )
+    expect(files['user.ts']).toContain('export type User = Static<typeof UserSchema>')
+    expect(files['user2.ts']).toContain('export const User2Schema = t.Object({')
+    expect(files['user2.ts']).toContain('export type User2 = Static<typeof User2Schema>')
+    expect(files['index.ts']).toBe("export * from './user'\nexport * from './user2'\n")
+  })
+
+  it('exports `UserProfile` and `user_profile` under different names', async () => {
+    const files = await generate({
+      UserProfile: { type: 'string' },
+      user_profile: { type: 'number' },
+    })
+    expect(Object.keys(files)).toStrictEqual(['index.ts', 'userProfile.ts', 'userProfile2.ts'])
+    expect(files['userProfile.ts']).toContain('export const UserProfileSchema = t.String()')
+    expect(files['userProfile2.ts']).toContain('export const UserProfile2Schema = t.Number()')
+  })
+
+  it('imports a colliding key from its file, by the const written for it', async () => {
+    const files = await generate({
+      User: { type: 'string' },
+      user: { type: 'number' },
+      Pet: {
+        type: 'object',
+        properties: {
+          owner: { $ref: '#/components/schemas/User' },
+          account: { $ref: '#/components/schemas/user' },
+        },
+      },
+    })
+    expect(files['pet.ts']).toContain("import { UserSchema } from './user'")
+    expect(files['pet.ts']).toContain("import { User2Schema } from './user2'")
+    expect(files['pet.ts']).toContain('owner: t.Optional(UserSchema)')
+    expect(files['pet.ts']).toContain('account: t.Optional(User2Schema)')
+  })
+})
