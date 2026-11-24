@@ -3531,7 +3531,7 @@ describe('fetch fallback', () => {
     writeFileSync(file, `${source}\nexport { readResponse, toSearch }\n`)
     try {
       return (await import(file)) as {
-        readonly readResponse: (res: Response) => Promise<unknown>
+        readonly readResponse: (res: Response, as?: 'json' | 'text' | 'bytes') => Promise<unknown>
         readonly toSearch: (query: { [key: string]: unknown } | undefined) => URLSearchParams
       }
     } finally {
@@ -3563,96 +3563,132 @@ describe('fetch fallback', () => {
     ).toStrictEqual({ id: 1, at: new Date('2026-11-24T03:10:22.000Z') })
   })
 
-  // A path with a `.txt` or `.csv` segment is the kind that falls back, and its body is not JSON:
-  // the response is read by its content type, as Eden Treaty reads one.
-  it('a text response resolves with its text', async () => {
+  // A path with a `.txt` or `.pdf` segment is the kind that falls back, and its body is not JSON:
+  // a response the document declares as text or as another media type is read as declared.
+  it('a response read as text resolves with its text, as it is', async () => {
     const { readResponse } = await importHelpers()
-    const text = (body: string, type: string) =>
-      readResponse(new Response(body, { headers: { 'content-type': type } }))
-    expect(await text('id,name\n1,Alice\n', 'text/csv; charset=utf-8')).toBe('id,name\n1,Alice\n')
-    expect(await text('hello', 'text/plain')).toBe('hello')
-    // The text is what the hook's `string` says: it is not read as a number, a date or JSON.
-    expect(await text('42', 'text/plain')).toBe('42')
-    expect(await text('{"id":1}', 'text/plain')).toBe('{"id":1}')
-    expect(await text('', 'text/plain')).toBeUndefined()
+    const text = (body: string) => readResponse(new Response(body), 'text')
+    expect(await text('id,name\n1,Alice\n')).toBe('id,name\n1,Alice\n')
+    // The text is what the hook's `string` says: not a number, not JSON, and not `undefined`.
+    expect(await text('42')).toBe('42')
+    expect(await text('{"id":1}')).toBe('{"id":1}')
+    expect(await text('')).toBe('')
   })
 
-  it('an octet-stream response resolves with its bytes', async () => {
+  it('a response read as bytes resolves with its bytes, empty or not', async () => {
     const { readResponse } = await importHelpers()
-    const data = await readResponse(
-      new Response(new Uint8Array([1, 2, 3]), {
-        headers: { 'content-type': 'application/octet-stream' },
-      }),
-    )
-    expect(data).toBeInstanceOf(ArrayBuffer)
-    expect([...new Uint8Array(data as ArrayBuffer)]).toStrictEqual([1, 2, 3])
+    const bytes = async (body: Uint8Array) => [
+      ...new Uint8Array((await readResponse(new Response(body), 'bytes')) as ArrayBuffer),
+    ]
+    expect(await bytes(new Uint8Array([0, 159, 255]))).toStrictEqual([0, 159, 255])
+    expect(await bytes(new Uint8Array())).toStrictEqual([])
   })
 
-  it('a JSON media type other than application/json is parsed as JSON', async () => {
+  it('a failed response rejects the same way however it is read', async () => {
     const { readResponse } = await importHelpers()
-    const res = new Response('{"at":"2026-11-24T03:10:22.000Z"}', {
-      headers: { 'content-type': 'application/problem+json; charset=utf-8' },
-    })
-    expect(await readResponse(res)).toStrictEqual({ at: new Date('2026-11-24T03:10:22.000Z') })
-  })
-
-  it('a response that names no content type is JSON when it parses and text when not', async () => {
-    const { readResponse } = await importHelpers()
-    const bare = (body: string) => {
-      const res = new Response(body)
-      res.headers.delete('content-type')
-      return readResponse(res)
+    for (const as of ['text', 'bytes'] as const) {
+      const res = new Response('gone', { status: 410 })
+      expect(await readResponse(res, as).catch((error: unknown) => error)).toMatchObject({
+        status: 410,
+        value: 'gone',
+      })
     }
-    expect(await bare('{"id":1}')).toStrictEqual({ id: 1 })
-    expect(await bare('not json')).toBe('not json')
   })
 
-  it('a failed octet-stream response rejects like any other', async () => {
-    const { readResponse } = await importHelpers()
-    const res = new Response('gone', {
-      status: 410,
-      headers: { 'content-type': 'application/octet-stream' },
-    })
-    expect(await readResponse(res).catch((error: unknown) => error)).toMatchObject({
-      status: 410,
-      value: 'gone',
-    })
-  })
-
-  // The data type says what `readResponse` hands over for the media types the response declares.
-  const declared: readonly { name: string; content: Content; dataT: string }[] = [
+  // The hook reads the response as the document declares it, and types its data as what is read.
+  const declared: readonly {
+    name: string
+    content: Content
+    dataT: string
+    read: string
+  }[] = [
     {
       name: 'text/plain',
       content: { 'text/plain': { schema: { type: 'string' } } },
       dataT: 'string',
+      read: "readResponse(res, 'text')",
     },
     {
       name: 'text/csv with a charset',
       content: { 'text/csv; charset=utf-8': {} },
       dataT: 'string',
+      read: "readResponse(res, 'text')",
     },
     {
       name: 'application/octet-stream',
       content: { 'application/octet-stream': {} },
       dataT: 'ArrayBuffer',
+      read: "readResponse(res, 'bytes')",
     },
     {
-      name: 'text and bytes',
-      content: { 'text/plain': {}, 'application/octet-stream': {} },
-      dataT: 'ArrayBuffer | string',
+      name: 'application/pdf',
+      content: { 'application/pdf': {} },
+      dataT: 'ArrayBuffer',
+      read: "readResponse(res, 'bytes')",
     },
-    { name: 'a media type it does not know', content: { 'image/png': {} }, dataT: 'unknown' },
+    {
+      name: 'text beside another media type',
+      content: { 'text/csv': {}, 'application/pdf': {} },
+      dataT: 'ArrayBuffer',
+      read: "readResponse(res, 'bytes')",
+    },
+    {
+      name: 'a JSON media type without a schema',
+      content: { 'application/problem+json': {}, 'text/plain': {} },
+      dataT: 'unknown',
+      read: 'readResponse(res)',
+    },
+    {
+      name: 'an event stream',
+      content: { 'text/event-stream': {} },
+      dataT: 'unknown',
+      read: 'readResponse(res)',
+    },
   ]
-  it.each(declared)('a response declared as $name is typed $dataT', async ({ content, dataT }) => {
+  it.each(declared)(
+    'a response declared as $name is typed $dataT',
+    async ({ content, dataT, read }) => {
+      for (const library of ['tanstack-query', 'swr'] as const) {
+        const code = await generateAndRead(library, {
+          ...api,
+          paths: {
+            '/report.txt': {
+              get: {
+                operationId: 'getReport',
+                responses: { '200': { description: 'OK', content } },
+              },
+            },
+          },
+        })
+        expect(code).toContain(`return ${read}\n`)
+        expect(code).toContain(library === 'swr' ? `useSWR<${dataT}, TError>` : `TData = ${dataT},`)
+      }
+    },
+  )
+
+  // A JSON schema beside another media type is read as JSON, as it was.
+  it('a response with a JSON schema is parsed as JSON whatever else it declares', async () => {
     const code = await generateAndRead('tanstack-query', {
       ...api,
       paths: {
         '/report.txt': {
-          get: { operationId: 'getReport', responses: { '200': { description: 'OK', content } } },
+          get: {
+            operationId: 'getReport',
+            responses: {
+              '200': {
+                description: 'OK',
+                content: {
+                  'application/json': { schema: { type: 'object' } },
+                  'text/plain': {},
+                },
+              },
+            },
+          },
         },
       },
     })
-    expect(code).toContain(`TData = ${dataT},`)
+    expect(code).toContain('return readResponse(res)\n')
+    expect(code).toContain('TData = unknown,')
   })
 
   it('a response without content stays typed void', async () => {
@@ -3736,7 +3772,7 @@ describe('fetch fallback', () => {
       ...api,
       paths: { '/widget.json': api.paths?.['/widget.json'] ?? {} },
     })
-    expect(code).toContain('async function readResponse(res: Response) {')
+    expect(code).toContain('async function readResponse(')
     expect(code).not.toContain('toSearch')
   })
 

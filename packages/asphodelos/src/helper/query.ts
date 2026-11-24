@@ -153,6 +153,11 @@ function pathParamNames(pathStr: string): readonly string[] {
   return [...pathStr.matchAll(/\{([^}]+)\}/gu)].map((m) => m[1] ?? '')
 }
 
+/** Whether a response of this media type is left to the JSON reader: JSON, or an event stream. */
+function isParsedMedia(type: string) {
+  return type === 'application/json' || type.endsWith('+json') || type === 'text/event-stream'
+}
+
 // The data type for a fetch fallback comes from its 2xx response schema — the Eden chain that
 // normally yields it is untypeable here. A component `$ref` resolves to `Static` of its schema const,
 // which the schemas module always exports — its type alias (`Account`) only with `exportTypes`;
@@ -165,6 +170,8 @@ function successType(
 ): {
   readonly dataT: string
   readonly importName?: string
+  /** How the body is read; left out for JSON, which is what `readResponse` reads by default. */
+  readonly reads?: 'text' | 'bytes'
 } {
   const ok = Object.entries(operation.responses ?? {}).find(([status]) => status.startsWith('2'))
   if (!ok) return { dataT: 'void' }
@@ -174,17 +181,19 @@ function successType(
     return { dataT: `Static<typeof ${ident}>`, importName: ident }
   }
   if (!info.void) return { dataT: 'unknown' }
-  // No JSON schema: the data is what `readResponse` hands over for the media types the response
-  // declares — the bytes of an `application/octet-stream`, the text of a `text/*`.
-  const kinds = new Set(
-    Object.keys(ok[1].content ?? {}).map((media) => {
-      const type = media.split(';')[0]?.trim().toLowerCase() ?? ''
-      if (type === 'application/octet-stream') return 'ArrayBuffer'
-      return type.startsWith('text/') ? 'string' : 'unknown'
-    }),
+  // No JSON schema: the response is read as what it declares, and typed as what is read — text
+  // for `text/*` alone, bytes once any other media type is among them (a `text/csv` beside an
+  // `application/pdf` is bytes too: text read from bytes can be decoded, bytes read as text are
+  // lost). A JSON media type without a schema is parsed as before, and so is an event stream,
+  // which a single read does not fit.
+  const media = Object.keys(ok[1].content ?? {}).map(
+    (key) => key.split(';')[0]?.trim().toLowerCase() ?? '',
   )
-  if (kinds.size === 0) return { dataT: 'void' }
-  return { dataT: kinds.has('unknown') ? 'unknown' : [...kinds].toSorted().join(' | ') }
+  if (media.length === 0) return { dataT: 'void' }
+  if (media.some(isParsedMedia)) return { dataT: 'unknown' }
+  return media.every((type) => type.startsWith('text/'))
+    ? { dataT: 'string', reads: 'text' }
+    : { dataT: 'ArrayBuffer', reads: 'bytes' }
 }
 
 function isBodyMethod(method: string) {
@@ -266,18 +275,16 @@ function ${REVIVER}(_key:string,value:unknown){if(typeof value!=='string')return
 /** What reads a `fetch` fallback's response, written into the hooks file beside the reviver. */
 const READER = 'readResponse'
 
-// The response is read by its `Content-Type`, as Eden Treaty reads one: JSON is parsed, an
-// `application/octet-stream` is handed over as an `ArrayBuffer`, and anything else as its text —
-// a path with a `.txt` or `.csv` segment is the kind that falls back, and its body is not JSON.
-// Unlike Eden, the text is not read further (`"42"` stays a string), so it is what the hook's
-// `string` says. A response that names no type is JSON when it parses and text when it does not.
 // `res.json()` types as `unknown`, which the annotated return type rejects; `JSON.parse` of the
 // text is `any`, which it takes without a cast — and it takes the reviver, which `json()` does not.
-// A response without content (a `204`, an empty `200`) has nothing to parse and is typed `void`,
-// so it resolves with `undefined`. A failed response rejects with its body parsed as JSON,
+// A response without content (a `204`, an empty `200`) has no JSON to parse and is typed `void`,
+// so it resolves with `undefined`. A response the document declares as text or as another media
+// type is not JSON — a path with a `.txt` or `.pdf` segment is the kind that falls back — and is
+// read as declared (`as`): its text as it is, or its bytes, empty or not, so it is what the
+// hook's `string` or `ArrayBuffer` says. A failed response rejects with its body parsed as JSON,
 // dates revived; one that is not JSON (a proxy's HTML `502`, an empty `404`) rejects with an
 // `Error` carrying the `status` and the text as `value`, the two members of Eden's error.
-const READER_CODE = `async function ${READER}(res:Response){const type=res.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase()??'';if(res.ok&&type==='application/octet-stream')return res.arrayBuffer();const text=await res.text();if(res.ok){if(text==='')return undefined;if(type==='application/json'||type.endsWith('+json'))return JSON.parse(text,${REVIVER});if(type!=='')return text;try{return JSON.parse(text,${REVIVER})}catch{return text}}let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
+const READER_CODE = `async function ${READER}(res:Response,as:'json'|'text'|'bytes'='json'){if(res.ok&&as==='bytes')return res.arrayBuffer();const text=await res.text();if(res.ok){if(as==='text')return text;return text===''?undefined:JSON.parse(text,${REVIVER})}let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
 
 /** What builds a `fetch` fallback's search string from the options' query. */
 const SEARCH = 'toSearch'
@@ -306,7 +313,8 @@ function fetchTarget(
     ? '{ headers?: Record<string, string>; query?: Record<string, unknown> }'
     : '{ headers?: Record<string, string> }'
   const withBody = isBodyMethod(method)
-  const { dataT, importName } = successType(operation, schemaNames)
+  const { dataT, importName, reads } = successType(operation, schemaNames)
+  const read = `return ${READER}(res${reads ? `,'${reads}'` : ''})`
   const url = (exprs: readonly string[]) => {
     const inner = fullPath.replaceAll(/\{([^}]+)\}/gu, (_, n: string) => {
       const index = names.indexOf(n)
@@ -330,9 +338,9 @@ function fetchTarget(
     ...(withBody ? { bodyType: 'unknown' } : {}),
     bodyRequired: false,
     queryBody: (exprs, options, signal) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{${method === 'head' ? "method:'HEAD'," : ''}headers:${options}?.headers${signal ? ',signal' : ''}});return ${READER}(res)`,
+      `${search(options)}const res=await fetch(${url(exprs)},{${method === 'head' ? "method:'HEAD'," : ''}headers:${options}?.headers${signal ? ',signal' : ''}});${read}`,
     mutationBody: (exprs, body, options) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});return ${READER}(res)`,
+      `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});${read}`,
     ...(importName ? { fetchType: importName } : {}),
     usesFetch: true,
     usesSearch: hasQuery,
