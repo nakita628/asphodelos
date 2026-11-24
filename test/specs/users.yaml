@@ -107,6 +107,16 @@ paths:
                 properties:
                   ok:
                     type: boolean
+  /report.json:
+    get:
+      operationId: getReport
+      responses:
+        '200':
+          description: A report, at a path Eden Treaty cannot type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
 components:
   schemas:
     User:
@@ -145,3 +155,14 @@ components:
             type: string
         nextPage:
           type: integer
+    Report:
+      type: object
+      required:
+        - generatedAt
+        - title
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        title:
+          type: string

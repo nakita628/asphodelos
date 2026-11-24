@@ -154,8 +154,13 @@ function pathParamNames(pathStr: string): readonly string[] {
 // The data type for a fetch fallback comes from its 2xx response schema — the Eden chain that
 // normally yields it is untypeable here. A component `$ref` resolves to `Static` of its schema const,
 // which the schemas module always exports — its type alias (`Account`) only with `exportTypes`;
-// inline and empty responses degrade to a safe wide type.
-function successType(operation: Operation): {
+// inline and empty responses degrade to a safe wide type. The const is named the way the schemas
+// generator named it (`schemaNames`): keys that differ only in case (`User`, `user`) share a
+// pascal-cased name, and all but the first are written under a suffixed one (`User2Schema`).
+function successType(
+  operation: Operation,
+  schemaNames: ReadonlyMap<string, string> | undefined,
+): {
   readonly dataT: string
   readonly importName?: string
 } {
@@ -163,7 +168,7 @@ function successType(operation: Operation): {
   if (!ok) return { dataT: 'void' }
   const info = responseInfo(ok[1])
   if (info.ref) {
-    const ident = `${pascalCase(info.ref)}Schema`
+    const ident = schemaNames?.get(info.ref) ?? `${pascalCase(info.ref)}Schema`
     return { dataT: `Static<typeof ${ident}>`, importName: ident }
   }
   if (info.void) return { dataT: 'void' }
@@ -225,12 +230,35 @@ function edenTarget(
 /** The origin the client module exports beside the client, which a `fetch` fallback's URL starts at. */
 const ORIGIN = 'clientOrigin'
 
+/** The JSON reviver a `fetch` fallback parses its response with, written into the hooks file. */
+const REVIVER = 'reviveDate'
+
+// Eden Treaty parses a JSON response with a reviver that turns a date string into a `Date`, and
+// the schemas say `t.Date()` for a `format: date` / `date-time` string, so `Static` of a response
+// component promises a `Date`. A fetch fallback parses the same way, with the patterns Eden tests
+// a string by (ISO 8601, `Date.prototype.toString()` and a short `2026-01-02` / `01/02/2026`
+// form), so both kinds of hook hand over the same value for the same schema. Eden does not export
+// its reviver, so the hooks file carries its own. What JSON cannot carry otherwise (`t.Uint8Array`,
+// `t.File`, a `t.Transform`) stays as the wire sent it.
+const REVIVER_CODE = String.raw`const ISO8601=/(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d\.\d+([+-][0-2]\d:[0-5]\d|Z))|(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d([+-][0-2]\d:[0-5]\d|Z))|(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d([+-][0-2]\d:[0-5]\d|Z))/u
+
+const FORMAL_DATE=/(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{2}\s\d{4}\s\d{2}:\d{2}:\d{2}\sGMT(?:\+|-)\d{4}\s\([^)]+\)/u
+
+const SHORTENED_DATE=/^(?:(?:(?:(?:0?[1-9]|[12][0-9]|3[01])[/\s-](?:0?[1-9]|1[0-2])[/\s-](?:19|20)\d{2})|(?:(?:19|20)\d{2}[/\s-](?:0?[1-9]|1[0-2])[/\s-](?:0?[1-9]|[12][0-9]|3[01]))))(?:\s(?:1[012]|0?[1-9]):[0-5][0-9](?::[0-5][0-9])?(?:\s[AP]M)?)?$/u
+
+function ${REVIVER}(_key:string,value:unknown){if(typeof value!=='string')return value;const text=value.replaceAll('"','');if(!ISO8601.test(text)&&!FORMAL_DATE.test(text)&&!SHORTENED_DATE.test(text))return value;const date=new Date(text);return Number.isNaN(date.getTime())?value:date}`
+
 // A literal-path `fetch` for an operation Eden cannot type: path parameters are strings in a URL,
 // the query is spread into the search string, and the body is JSON. The URL starts at the
 // client's origin, so the request goes where the client's do. The path parameters are named the
 // way the Eden hooks name theirs, `params`, `params2`, …, so a parameter the document calls
 // `search`, `res` or `clientOrigin` cannot hide what the body reads by that name.
-function fetchTarget(fullPath: string, method: string, operation: Operation): Target {
+function fetchTarget(
+  fullPath: string,
+  method: string,
+  operation: Operation,
+  schemaNames: ReadonlyMap<string, string> | undefined,
+): Target {
   const names = pathParamNames(fullPath)
   const params = names.map((_, index) => (index === 0 ? 'params' : `params${index + 1}`))
   const hasQuery = (operation.parameters ?? []).some((p) => 'in' in p && p.in === 'query')
@@ -238,7 +266,7 @@ function fetchTarget(fullPath: string, method: string, operation: Operation): Ta
     ? '{ headers?: Record<string, string>; query?: Record<string, unknown> }'
     : '{ headers?: Record<string, string> }'
   const withBody = isBodyMethod(method)
-  const { dataT, importName } = successType(operation)
+  const { dataT, importName } = successType(operation, schemaNames)
   const url = (exprs: readonly string[]) => {
     const inner = fullPath.replaceAll(/\{([^}]+)\}/gu, (_, n: string) => {
       const index = names.indexOf(n)
@@ -253,7 +281,7 @@ function fetchTarget(fullPath: string, method: string, operation: Operation): Ta
       ? `const search=new URLSearchParams();for(const[k,v]of Object.entries(${options}?.query??{})){if(v===undefined)continue;if(Array.isArray(v)){for(const x of v){search.append(k,String(x))}}else{search.set(k,String(v))}}`
       : ''
   // `res.json()` types as `unknown`, which the annotated return type rejects; `JSON.parse` of the
-  // text is `any`, which it takes without a cast.
+  // text is `any`, which it takes without a cast — and it takes the reviver, which `json()` does not.
   return {
     params: params.map((name) => ({ name, type: 'string' })),
     optionsType,
@@ -265,9 +293,9 @@ function fetchTarget(fullPath: string, method: string, operation: Operation): Ta
     ...(withBody ? { bodyType: 'unknown' } : {}),
     bodyRequired: false,
     queryBody: (exprs, options, signal) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{headers:${options}?.headers${signal ? ',signal' : ''}});if(!res.ok)throw await res.json();return JSON.parse(await res.text())`,
+      `${search(options)}const res=await fetch(${url(exprs)},{headers:${options}?.headers${signal ? ',signal' : ''}});if(!res.ok)throw await res.json();return JSON.parse(await res.text(),${REVIVER})`,
     mutationBody: (exprs, body, options) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});if(!res.ok)throw await res.json();return JSON.parse(await res.text())`,
+      `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});if(!res.ok)throw await res.json();return JSON.parse(await res.text(),${REVIVER})`,
     ...(importName ? { fetchType: importName } : {}),
     usesFetch: true,
   }
@@ -725,9 +753,10 @@ function operationCode(
   method: (typeof HTTP_METHODS)[number],
   operation: Operation,
   client: string,
+  schemaNames: ReadonlyMap<string, string> | undefined,
 ) {
   const target = needsFetchHook(fullPath)
-    ? fetchTarget(fullPath, method, operation)
+    ? fetchTarget(fullPath, method, operation, schemaNames)
     : edenTarget(fullPath, method, operation, client)
   const prefix = resourcePrefix(fullPath)
   const isQuery = method === 'get' || method === 'head'
@@ -842,6 +871,7 @@ export function makeQueryHooks(
   client: string,
   basePath?: string,
   schemasImport = './components/schemas',
+  schemaNames?: ReadonlyMap<string, string>,
 ) {
   return Effect.gen(function* () {
     const prefix = basePath && basePath !== '/' ? basePath : ''
@@ -854,13 +884,26 @@ export function makeQueryHooks(
             // otherwise reads as no required query and the hook types options as optional.
             const operation = resolveOperation(rawOperation, openAPI.components)
             return [
-              operationCode(config, pathStr, `${prefix}${pathStr}`, method, operation, client),
+              operationCode(
+                config,
+                pathStr,
+                `${prefix}${pathStr}`,
+                method,
+                operation,
+                client,
+                schemaNames,
+              ),
             ]
           })
         : [],
     )
     if (operations.length === 0) return 'No operations found'
-    const body = `${[...makePrefixKeyCodes(openAPI, prefix), ...operations.map((op) => op.code)].join('\n\n')}\n`
+    const usesFetch = operations.some((op) => op.usesFetch)
+    const body = `${[
+      ...(usesFetch ? [REVIVER_CODE] : []),
+      ...makePrefixKeyCodes(openAPI, prefix),
+      ...operations.map((op) => op.code),
+    ].join('\n\n')}\n`
     // A fetch hook types its data by the component the response names, which lives in the
     // generated schemas module rather than behind the Eden client.
     const fetchTypes = [...new Set(filterDefined(operations.map((op) => op.fetchType)))].toSorted()
@@ -871,7 +914,7 @@ export function makeQueryHooks(
       body,
       fetchTypes,
       schemasImport,
-      operations.some((op) => op.usesFetch),
+      usesFetch,
     )
     yield* emit(`${header}${body}`, path.dirname(output), output)
     return `Generated ${config.label} code written to ${output}`

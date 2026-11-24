@@ -86,5 +86,14 @@ export const app = new Elysia()
     abortLog.push(request.signal.aborted)
     return { ok: true }
   })
+  // The dot keeps Eden Treaty from typing the path, so the hooks reach it with `fetch`.
+  .get(
+    '/report.json',
+    () => {
+      requestLog.push('GET /report.json')
+      return { generatedAt: new Date('2026-01-02T03:04:05.000Z'), title: 'Weekly' }
+    },
+    { response: { 200: t.Object({ generatedAt: t.Date(), title: t.String() }) } },
+  )
 
 export type App = typeof app

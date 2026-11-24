@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -8,7 +8,7 @@ import { Effect } from 'effect'
 import { fileSystemLayer } from '../../fsp/index.js'
 import { makeQueryHooks } from '../../helper/query.js'
 import type { OpenAPI } from '../../openapi/index.js'
-import { HOOK_CONFIGS } from './index.js'
+import { HOOK_CONFIGS, hooks } from './index.js'
 
 describe('swr generator', () => {
   const swr = (
@@ -3488,6 +3488,102 @@ describe('fetch fallback', () => {
     },
   )
 
+  // Eden Treaty turns a date string in a JSON response into a `Date`, and `Static` of a response
+  // component says `Date` for a `format: date-time` string. The fallback parses with a reviver of
+  // its own, so it hands over what the Eden hooks do and what its type says.
+  it.each(['tanstack-query', 'swr'] as const)(
+    '%s: a response is parsed with the date reviver',
+    async (library) => {
+      const code = await generateAndRead(library)
+      expect(code).toContain('function reviveDate(_key: string, value: unknown) {')
+      expect(code).toContain('return JSON.parse(await res.text(), reviveDate)')
+      expect(code).not.toContain('JSON.parse(await res.text())')
+    },
+  )
+
+  it('the reviver turns the date strings Eden does into a Date and leaves the rest', async () => {
+    const code = await generateAndRead('tanstack-query')
+    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export '))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-reviver-'))
+    const file = path.join(dir, 'reviver.ts')
+    writeFileSync(file, `${source}\nexport { reviveDate }\n`)
+    const { reviveDate } = (await import(file)) as {
+      readonly reviveDate: (key: string, value: unknown) => unknown
+    }
+    rmSync(dir, { recursive: true, force: true })
+    const parse = (value: unknown) => JSON.parse(JSON.stringify(value), reviveDate)
+    expect(
+      parse({
+        at: '2026-11-24T03:10:22.000Z',
+        offset: '2026-11-24T03:10:22+09:00',
+        day: '2026-11-24',
+        nested: [{ at: '2026-11-24T03:10Z' }],
+      }),
+    ).toStrictEqual({
+      at: new Date('2026-11-24T03:10:22.000Z'),
+      offset: new Date('2026-11-24T03:10:22+09:00'),
+      day: new Date('2026-11-24'),
+      nested: [{ at: new Date('2026-11-24T03:10Z') }],
+    })
+    const plain = { name: 'Alice', id: '2026', count: 3, when: '2026-13-45T99:99:99Z', none: null }
+    expect(parse(plain)).toStrictEqual(plain)
+  })
+
+  // Keys that differ only in case share a pascal-cased name, so the schemas generator writes all
+  // but the first under a suffixed const. The hook names the const that was written — resolved
+  // per file when the schemas are split, where the two keys do not meet.
+  describe('a response component whose key collides in case', () => {
+    const colliding: OpenAPI = {
+      openapi: '3.1.0',
+      info: { title: 'Collide', version: '1' },
+      paths: {
+        '/user.json': {
+          get: {
+            operationId: 'getUser',
+            responses: {
+              '200': {
+                description: 'OK',
+                content: { 'application/json': { schema: { $ref: '#/components/schemas/user' } } },
+              },
+            },
+          },
+        },
+      },
+      components: { schemas: { User: { type: 'object' }, user: { type: 'object' } } },
+    }
+
+    const generate = async (split: boolean) => {
+      const cwd = process.cwd()
+      const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-names-'))
+      process.chdir(dir)
+      try {
+        await Effect.runPromise(
+          hooks(colliding, 'src/hooks.ts', './lib', 'tanstack-query', {
+            client: 'client',
+            schemas: { output: 'src/schemas.ts', split },
+          }).pipe(Effect.provide(fileSystemLayer)),
+        )
+        return readFileSync(path.join(dir, 'src/hooks.ts'), 'utf8')
+      } finally {
+        process.chdir(cwd)
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+
+    it('is typed by the suffixed const the schemas file exports', async () => {
+      const code = await generate(false)
+      expect(code).toContain("import type { User2Schema } from './schemas'")
+      expect(code).toContain('Static<typeof User2Schema>')
+      expect(code).not.toMatch(/\bUserSchema\b/u)
+    })
+
+    it('is typed by the const of its own file when the schemas are split', async () => {
+      const code = await generate(true)
+      expect(code).toContain("import type { UserSchema } from './schemas'")
+      expect(code).toContain('Static<typeof UserSchema>')
+    })
+  })
+
   it('a document Eden types throughout imports the client alone', async () => {
     const code = await generateAndRead('tanstack-query', {
       ...api,
@@ -3499,5 +3595,6 @@ describe('fetch fallback', () => {
     })
     expect(code).toContain("import { client } from './lib'")
     expect(code).not.toContain('clientOrigin')
+    expect(code).not.toContain('reviveDate')
   })
 })

@@ -280,6 +280,16 @@ client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'proce
 such as `/widget.json` — call `fetch` with it, so they send where the client does. A package
 entry that `client.package` names exports `clientOrigin` beside `client`.
 
+Such a hook parses a JSON response the way treaty does, turning a date string into a `Date`, so its
+data matches the `t.Date()` its response schema declares for a `format: date` / `date-time` string.
+What JSON does not carry is not decoded: a `t.Uint8Array`, `t.File` or `t.Transform` field is typed
+as decoded and holds the value as it was sent.
+
+Such a hook parses a JSON response the way treaty does, turning a date string into a `Date`, so its
+data matches the `t.Date()` its response schema declares for a `format: date` / `date-time` string.
+What JSON does not carry is not decoded: a `t.Uint8Array`, `t.File` or `t.Transform` field is typed
+as decoded and holds the value as it was sent.
+
 The `index.ts` beside the client re-exports it, so it is imported as `./lib` — by `eden`, by the
 hooks, and by your own code:
 
