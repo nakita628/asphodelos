@@ -6,9 +6,9 @@ import path from 'node:path'
 
 import { Effect } from 'effect'
 
+import { fileSystemLayer } from '../fsp/index.js'
 import type { OpenAPI } from '../openapi/index.js'
 import { parseOpenAPI } from '../openapi/index.js'
-import { runGenerator } from '../testing/index.js'
 import {
   callbacks,
   components,
@@ -33,7 +33,7 @@ import {
  * is emitted; per-kind files are imported individually.
  */
 const run = (api: OpenAPI, options: Parameters<typeof elysia>[1] = {}) =>
-  runGenerator(
+  Effect.runPromise(
     Effect.gen(function* () {
       const isReadonly = options.readonly === true
       const c = api.components
@@ -110,7 +110,7 @@ const run = (api: OpenAPI, options: Parameters<typeof elysia>[1] = {}) =>
         { concurrency: 'unbounded' },
       )
       return results[0]
-    }),
+    }).pipe(Effect.provide(fileSystemLayer)),
   )
 
 const TAGLESS_OPENAPI = {
@@ -414,7 +414,9 @@ describe('elysia (tagless OpenAPI)', () => {
   })
 
   it('groups operations by REST resource derived from path, not by tag', async () => {
-    const parsed = await runGenerator(parseOpenAPI(taglessPath))
+    const parsed = await Effect.runPromise(
+      parseOpenAPI(taglessPath).pipe(Effect.provide(fileSystemLayer)),
+    )
 
     const result = await run(parsed)
 
@@ -447,7 +449,9 @@ if (import.meta.main) {
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       await run(parsed)
 
       const componentsDir = path.join(dir, 'src', 'components')
@@ -472,7 +476,9 @@ if (import.meta.main) {
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       await run(parsed)
 
       const responsesSrc = await readFile(
@@ -494,7 +500,9 @@ if (import.meta.main) {
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       await run(parsed)
 
       const appSrc = await readFile(path.join(dir, 'src', 'index.ts'), 'utf8')
@@ -518,7 +526,9 @@ if (import.meta.main) {
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       await run(parsed)
 
       const modelSrc = await readFile(path.join(dir, 'src', 'modules', 'items', 'model.ts'), 'utf8')
@@ -554,7 +564,9 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       await run(parsed)
 
       const appSrc = await readFile(path.join(dir, 'src', 'index.ts'), 'utf8')
@@ -570,7 +582,9 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
   })
 
   it('emits a controller with empty tags metadata when the operation has none', async () => {
-    const parsed = await runGenerator(parseOpenAPI(taglessPath))
+    const parsed = await Effect.runPromise(
+      parseOpenAPI(taglessPath).pipe(Effect.provide(fileSystemLayer)),
+    )
 
     await run(parsed)
 
@@ -589,7 +603,9 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       await run(parsed, { readonly: true })
 
       const schemasSrc = await readFile(path.join(dir, 'src', 'components', 'schemas.ts'), 'utf8')
@@ -616,10 +632,14 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       const { schemas: schemasComponent } = await import('./index.js')
-      await runGenerator(
-        schemasComponent(parsed.components?.schemas, 'src/lib/schemas', true, false),
+      await Effect.runPromise(
+        schemasComponent(parsed.components?.schemas, 'src/lib/schemas', true, false).pipe(
+          Effect.provide(fileSystemLayer),
+        ),
       )
 
       const splitDir = path.join(dir, 'src', 'lib', 'schemas')
@@ -644,7 +664,9 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(ALL_COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       await run(parsed)
 
       const compEntries = (await readdir(path.join(dir, 'src', 'components'))).toSorted()
@@ -698,10 +720,12 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(ALL_COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       const c = parsed.components
       // A failure rejects, so reaching the assertions below is itself the success check.
-      await runGenerator(
+      await Effect.runPromise(
         Effect.all(
           [
             schemas(c?.schemas, 'src/components/schemas', true, false),
@@ -717,7 +741,7 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
             mediaTypes(c?.mediaTypes, 'src/components/mediaTypes', true, false),
           ],
           { concurrency: 'unbounded' },
-        ),
+        ).pipe(Effect.provide(fileSystemLayer)),
       )
 
       const checks: readonly { kind: string; entries: readonly string[] }[] = [
@@ -753,8 +777,12 @@ export type ItemsModel = { [k in keyof typeof ItemsModel]: UnwrapSchema<(typeof 
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(COMPONENTS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
-      await runGenerator(elysia(parsed, { output: 'src/server/index.ts' }))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
+      await Effect.runPromise(
+        elysia(parsed, { output: 'src/server/index.ts' }).pipe(Effect.provide(fileSystemLayer)),
+      )
 
       expect(await readFile(path.join(dir, 'src', 'server', 'index.ts'), 'utf8')).toBe(
         `import { Elysia } from 'elysia'
@@ -785,7 +813,9 @@ if (import.meta.main) {
     try {
       const apiPath = path.join(dir, 'openapi.json') as `${string}.json`
       writeFileSync(apiPath, JSON.stringify(TAGLESS_OPENAPI))
-      const parsed = await runGenerator(parseOpenAPI(apiPath))
+      const parsed = await Effect.runPromise(
+        parseOpenAPI(apiPath).pipe(Effect.provide(fileSystemLayer)),
+      )
       await run(parsed)
 
       const srcEntries = (await readdir(path.join(dir, 'src'))).toSorted()
@@ -824,13 +854,17 @@ describe('components.output aggregate mode — end-to-end import paths', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-agg-flat-'))
     process.chdir(dir)
     try {
-      await runGenerator(
+      await Effect.runPromise(
         elysia(api, {
           output: 'src/index.ts',
           componentsOutput: 'src/components.ts',
-        }),
+        }).pipe(Effect.provide(fileSystemLayer)),
       )
-      await runGenerator(components(api.components, path.join(dir, 'src', 'components.ts'), false))
+      await Effect.runPromise(
+        components(api.components, path.join(dir, 'src', 'components.ts'), false).pipe(
+          Effect.provide(fileSystemLayer),
+        ),
+      )
       expect(existsSync(path.join(dir, 'src', 'components.ts'))).toBe(true)
 
       const module = await readFile(path.join(dir, 'src', 'modules', 'items', 'index.ts'), 'utf8')
@@ -856,11 +890,11 @@ export const items = new Elysia()
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-agg-nested-'))
     process.chdir(dir)
     try {
-      await runGenerator(
+      await Effect.runPromise(
         elysia(api, {
           output: 'src/index.ts',
           componentsOutput: 'src/lib/components.ts',
-        }),
+        }).pipe(Effect.provide(fileSystemLayer)),
       )
 
       const module = await readFile(path.join(dir, 'src', 'modules', 'items', 'index.ts'), 'utf8')

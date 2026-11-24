@@ -6,8 +6,8 @@ import path from 'node:path'
 import { Effect } from 'effect'
 
 import { parseConfig } from '../config/index.js'
+import { fileSystemLayer } from '../fsp/index.js'
 import type { OpenAPI } from '../openapi/index.js'
-import { runGenerator, runGeneratorError } from '../testing/index.js'
 import {
   cleanSplitOutputs,
   isInsideDirectory,
@@ -208,11 +208,11 @@ describe('cleanSplitOutputs', () => {
 
   it('empties the direct .ts children and keeps everything else', async () => {
     const schemas = splitDirectory()
-    const removed = await runGenerator(
+    const removed = await Effect.runPromise(
       cleanSplitOutputs([
         { name: 'schemas', output: schemas, split: true },
         { name: 'types', output: path.join(schemas, 'types.ts'), split: false },
-      ]),
+      ]).pipe(Effect.provide(fileSystemLayer)),
     )
 
     expect(removed.toSorted()).toStrictEqual([
@@ -227,8 +227,10 @@ describe('cleanSplitOutputs', () => {
 
   it('never cleans a split job that merges into the user code', async () => {
     const modules = splitDirectory()
-    const removed = await runGenerator(
-      cleanSplitOutputs([{ name: 'elysia', output: modules, split: true }]),
+    const removed = await Effect.runPromise(
+      cleanSplitOutputs([{ name: 'elysia', output: modules, split: true }]).pipe(
+        Effect.provide(fileSystemLayer),
+      ),
     )
 
     expect(removed).toStrictEqual([])
@@ -238,8 +240,10 @@ describe('cleanSplitOutputs', () => {
   it('treats a split directory that does not exist yet as empty', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-split-'))
     workdirs.push(dir)
-    const removed = await runGenerator(
-      cleanSplitOutputs([{ name: 'schemas', output: path.join(dir, 'missing'), split: true }]),
+    const removed = await Effect.runPromise(
+      cleanSplitOutputs([{ name: 'schemas', output: path.join(dir, 'missing'), split: true }]).pipe(
+        Effect.provide(fileSystemLayer),
+      ),
     )
 
     expect(removed).toStrictEqual([])
@@ -267,7 +271,9 @@ describe('outsideSources', () => {
       JSON.stringify({ openapi: '3.1.0', info: { title: 'A', version: '1' }, paths: {} }),
     )
 
-    expect(await runGenerator(outsideSources(input))).toStrictEqual([])
+    expect(
+      await Effect.runPromise(outsideSources(input).pipe(Effect.provide(fileSystemLayer))),
+    ).toStrictEqual([])
   })
 
   // A `$ref` that leaves the document's directory is exactly the file a watcher on that
@@ -289,7 +295,9 @@ describe('outsideSources', () => {
       }),
     )
 
-    expect(await runGenerator(outsideSources(input))).toStrictEqual([shared])
+    expect(
+      await Effect.runPromise(outsideSources(input).pipe(Effect.provide(fileSystemLayer))),
+    ).toStrictEqual([shared])
   })
 
   // A document that does not parse cannot say what it refers to; the caller decides what to
@@ -299,7 +307,13 @@ describe('outsideSources', () => {
     const input = path.join(directory, 'openapi.json')
     writeFileSync(input, '{ not json')
 
-    expect((await runGeneratorError(outsideSources(input)))._tag).toBe('GenerateError')
+    expect(
+      (
+        await Effect.runPromise(
+          outsideSources(input).pipe(Effect.provide(fileSystemLayer), Effect.flip),
+        )
+      )._tag,
+    ).toBe('GenerateError')
   })
 
   // TypeSpec imports are followed through the source text: a relative file, a directory
@@ -322,7 +336,9 @@ describe('outsideSources', () => {
     writeFileSync(id, 'scalar Id extends string;\n')
     writeFileSync(common, 'model Common {}\n')
 
-    expect(await runGenerator(outsideSources(input))).toStrictEqual([common, id, user])
+    expect(
+      await Effect.runPromise(outsideSources(input).pipe(Effect.provide(fileSystemLayer))),
+    ).toStrictEqual([common, id, user])
   })
 
   // Two files importing each other must not send the walk round in circles.
@@ -335,7 +351,9 @@ describe('outsideSources', () => {
     writeFileSync(input, 'import "../models/b.tsp";\n')
     writeFileSync(other, 'import "../spec/a.tsp";\n')
 
-    expect(await runGenerator(outsideSources(input))).toStrictEqual([other])
+    expect(
+      await Effect.runPromise(outsideSources(input).pipe(Effect.provide(fileSystemLayer))),
+    ).toStrictEqual([other])
   })
 
   // A file beside the document, or below it, is one the watcher on the directory already sees;
@@ -355,6 +373,8 @@ describe('outsideSources', () => {
       }),
     )
 
-    expect(await runGenerator(outsideSources(input))).toStrictEqual([])
+    expect(
+      await Effect.runPromise(outsideSources(input).pipe(Effect.provide(fileSystemLayer))),
+    ).toStrictEqual([])
   })
 })

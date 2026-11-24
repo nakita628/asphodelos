@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { headersCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { headers } from './headers.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,19 @@ afterEach(() => {
 
 describe('headers — no-op paths', () => {
   it('returns error when headers is undefined', async () => {
-    const result = await runGeneratorError(headers(undefined, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      headers(undefined, '/ignored.ts', false, false).pipe(
+        Effect.provide(fileSystemLayer),
+        Effect.flip,
+      ),
+    )
     expect(result.message).toStrictEqual('No headers found')
   })
 
   it('returns success message when headers is empty', async () => {
-    const result = await runGenerator(headers({}, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      headers({}, '/ignored.ts', false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No headers found')
   })
 })
@@ -36,7 +45,9 @@ describe('headers — non-split mode', () => {
       AuthHeader: { schema: { type: 'string' } },
       RateLimitHeader: { schema: { type: 'integer' } },
     } as const
-    const result = await runGenerator(headers(sample, output, false, false))
+    const result = await Effect.runPromise(
+      headers(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated headers code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -51,7 +62,9 @@ describe('headers — split mode', () => {
       AuthHeader: { schema: { type: 'string' } },
       RateLimitHeader: { schema: { type: 'integer' } },
     } as const
-    const result = await runGenerator(headers(sample, output, true, false))
+    const result = await Effect.runPromise(
+      headers(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(dir, 'headers')
     expect(result).toStrictEqual(
       `Generated headers code written to ${outDir}/*.ts (index.ts included)`,
@@ -71,7 +84,9 @@ describe('headers — caller ≡ generator contract', () => {
       AuthHeader: { schema: { type: 'string' } },
       RateLimitHeader: { schema: { type: 'integer' } },
     } as const
-    await runGenerator(headers(sample, output, false, false))
+    await Effect.runPromise(
+      headers(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = headersCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)HeaderSchema\s*=/gu
@@ -87,7 +102,9 @@ describe('headers — caller ≡ generator contract', () => {
     const sample = {
       AuthHeader: { schema: { type: 'string' } },
     } as const
-    await runGenerator(headers(sample, output, true, false))
+    await Effect.runPromise(
+      headers(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(path.join(dir, 'headers', 'authHeader.ts'), 'utf8')
     const generated = headersCode({ AuthHeader: sample.AuthHeader })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)HeaderSchema\s*=/gu
@@ -108,7 +125,9 @@ describe('headers — a referenced schema named like another component kind', ()
     async ({ split, file, specifier }) => {
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-headers-'))
       const output = path.join(tmpDir, 'headers.ts')
-      await runGenerator(headers(section, output, split, false))
+      await Effect.runPromise(
+        headers(section, output, split, false).pipe(Effect.provide(fileSystemLayer)),
+      )
       expect(fs.readFileSync(path.join(tmpDir, file), 'utf8')).toStrictEqual(
         `import { RateLimitHeaderSchema } from '${specifier}'\n\nexport const XRateHeaderSchema = RateLimitHeaderSchema\n`,
       )

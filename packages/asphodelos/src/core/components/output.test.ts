@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import type { Components } from '../../openapi/index.js'
-import { runGenerator } from '../../testing/index.js'
 import { components } from './output.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,18 @@ afterEach(() => {
 
 describe('components — no-op paths', () => {
   it('returns success when components is undefined', async () => {
-    const result = await runGenerator(components(undefined, '/ignored.ts'))
+    const result = await Effect.runPromise(
+      components(undefined, '/ignored.ts').pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No components found')
   })
 
   it('returns success when every component section is empty', async () => {
-    const result = await runGenerator(components({ schemas: {}, responses: {} }, '/ignored.ts'))
+    const result = await Effect.runPromise(
+      components({ schemas: {}, responses: {} }, '/ignored.ts').pipe(
+        Effect.provide(fileSystemLayer),
+      ),
+    )
     expect(result).toStrictEqual('No components found')
   })
 })
@@ -115,7 +123,9 @@ describe('components — single-file aggregate', () => {
       },
       mediaTypes: { JsonItem: { schema: { $ref: '#/components/schemas/Item' } } },
     }
-    const result = await runGenerator(components(sample, output, false))
+    const result = await Effect.runPromise(
+      components(sample, output, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated components code written to ${output}`)
     expect(fs.readFileSync(output, 'utf8')).toBe(`import { t } from 'elysia'
 
@@ -197,7 +207,7 @@ export const JsonItemMediaTypeSchema = ItemSchema
       headers: { H: { schema: { type: 'string' } } },
       mediaTypes: { Mt: { schema: { type: 'string' } } },
     }
-    await runGenerator(components(sample, output, true))
+    await Effect.runPromise(components(sample, output, true).pipe(Effect.provide(fileSystemLayer)))
     expect(fs.readFileSync(output, 'utf8')).toBe(`import { t } from 'elysia'
 
 export const ItemSchema = t.Readonly(t.Object({ id: t.Optional(t.String()) }))
@@ -232,7 +242,9 @@ export const MtMediaTypeSchema = t.Readonly(t.String())
         },
       },
     }
-    const result = await runGenerator(components(sample, output, false))
+    const result = await Effect.runPromise(
+      components(sample, output, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated components code written to ${output}`)
     expect(fs.readFileSync(output, 'utf8')).toBe(`import { t } from 'elysia'
 

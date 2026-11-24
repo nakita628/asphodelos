@@ -3,7 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { runGenerator } from '../../testing/index.js'
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { client } from './index.js'
 
 /** Generates `src/client.ts` with `options` on top of the plainest ones, and answers with its text. */
@@ -12,13 +14,13 @@ const generateAndRead = async (options: Partial<Parameters<typeof client>[1]> = 
   const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-client-'))
   process.chdir(dir)
   try {
-    await runGenerator(
+    await Effect.runPromise(
       client('src/client.ts', {
         appImport: './index',
         baseUrl: { env: 'API_URL', source: 'process.env' },
         sameOrigin: false,
         ...options,
-      }),
+      }).pipe(Effect.provide(fileSystemLayer)),
     )
     return readFileSync(path.join(dir, 'src/client.ts'), 'utf8')
   } finally {

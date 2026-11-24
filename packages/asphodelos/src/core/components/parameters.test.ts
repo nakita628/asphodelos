@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { parametersCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { parameters } from './parameters.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,19 @@ afterEach(() => {
 
 describe('parameters — no-op paths', () => {
   it('returns error when parameters is undefined', async () => {
-    const result = await runGeneratorError(parameters(undefined, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      parameters(undefined, '/ignored.ts', false, false).pipe(
+        Effect.provide(fileSystemLayer),
+        Effect.flip,
+      ),
+    )
     expect(result.message).toStrictEqual('No parameters found')
   })
 
   it('returns success message when parameters is empty', async () => {
-    const result = await runGenerator(parameters({}, '/ignored.ts', false, false))
+    const result = await Effect.runPromise(
+      parameters({}, '/ignored.ts', false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No parameters found')
   })
 })
@@ -36,7 +45,9 @@ describe('parameters — non-split mode', () => {
       IdParam: { name: 'id', in: 'path', schema: { type: 'string' } },
       NameParam: { name: 'name', in: 'query', schema: { type: 'string' } },
     } as const
-    const result = await runGenerator(parameters(sample, output, false, false))
+    const result = await Effect.runPromise(
+      parameters(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated parameters code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -51,7 +62,9 @@ describe('parameters — split mode', () => {
       IdParam: { name: 'id', in: 'path', schema: { type: 'string' } },
       NameParam: { name: 'name', in: 'query', schema: { type: 'string' } },
     } as const
-    const result = await runGenerator(parameters(sample, output, true, false))
+    const result = await Effect.runPromise(
+      parameters(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(dir, 'parameters')
     expect(result).toStrictEqual(
       `Generated parameters code written to ${outDir}/*.ts (index.ts included)`,
@@ -71,7 +84,9 @@ describe('parameters — caller ≡ generator contract', () => {
       IdParam: { name: 'id', in: 'path', schema: { type: 'string' } },
       NameParam: { name: 'name', in: 'query', schema: { type: 'string' } },
     } as const
-    await runGenerator(parameters(sample, output, false, false))
+    await Effect.runPromise(
+      parameters(sample, output, false, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = parametersCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ParamsSchema\s*=/gu
@@ -87,7 +102,9 @@ describe('parameters — caller ≡ generator contract', () => {
     const sample = {
       IdParam: { name: 'id', in: 'path', schema: { type: 'string' } },
     } as const
-    await runGenerator(parameters(sample, output, true, false))
+    await Effect.runPromise(
+      parameters(sample, output, true, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(path.join(dir, 'parameters', 'idParam.ts'), 'utf8')
     const generated = parametersCode({ IdParam: sample.IdParam })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)ParamsSchema\s*=/gu
@@ -114,7 +131,9 @@ describe('parameters — a referenced schema named like another component kind',
     async ({ split, file, specifier }) => {
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-parameters-'))
       const output = path.join(tmpDir, 'parameters.ts')
-      await runGenerator(parameters(section, output, split, false))
+      await Effect.runPromise(
+        parameters(section, output, split, false).pipe(Effect.provide(fileSystemLayer)),
+      )
       expect(fs.readFileSync(path.join(tmpDir, file), 'utf8')).toStrictEqual(
         `import { SearchParamsSchema } from '${specifier}'\n\nexport const QueryParamsSchema = SearchParamsSchema\n`,
       )

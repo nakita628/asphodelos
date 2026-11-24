@@ -3,9 +3,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../fsp/index.js'
 import { makeQueryHooks } from '../helper/query.js'
 import type { OpenAPI } from '../openapi/index.js'
-import { runGenerator } from '../testing/index.js'
 import { HOOK_CONFIGS } from './hooks/index.js'
 
 let tmpDir: string | undefined
@@ -32,7 +34,11 @@ const emitAll = async (openapi: OpenAPI) => {
   return Promise.all(
     generators.map(async ({ name, config }) => {
       const output = path.join(dir, `${name}.ts`)
-      await runGenerator(makeQueryHooks(openapi, output, '../client', config, 'client'))
+      await Effect.runPromise(
+        makeQueryHooks(openapi, output, '../client', config, 'client').pipe(
+          Effect.provide(fileSystemLayer),
+        ),
+      )
       return { name, code: fs.readFileSync(output, 'utf8') }
     }),
   )
@@ -185,7 +191,11 @@ describe('7 query clients — multiple path parameters & basePath contract', () 
     const results = await Promise.all(
       generators.map(async ({ name, config }) => {
         const output = path.join(dir, `${name}.ts`)
-        await runGenerator(makeQueryHooks(api, output, '../client', config, 'client', '/api'))
+        await Effect.runPromise(
+          makeQueryHooks(api, output, '../client', config, 'client', '/api').pipe(
+            Effect.provide(fileSystemLayer),
+          ),
+        )
         return { name, code: fs.readFileSync(output, 'utf8') }
       }),
     )

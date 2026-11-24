@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../../fsp/index.js'
 import { securitySchemesCode } from '../../generator/components/index.js'
-import { runGenerator, runGeneratorError } from '../../testing/index.js'
 import { securitySchemes } from './securitySchemes.js'
 
 let tmpDir: string | undefined
@@ -17,12 +19,19 @@ afterEach(() => {
 
 describe('securitySchemes — no-op paths', () => {
   it('returns error when securitySchemes is undefined', async () => {
-    const result = await runGeneratorError(securitySchemes(undefined, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      securitySchemes(undefined, '/ignored.ts', false).pipe(
+        Effect.provide(fileSystemLayer),
+        Effect.flip,
+      ),
+    )
     expect(result.message).toStrictEqual('No securitySchemes found')
   })
 
   it('returns success message when securitySchemes is empty', async () => {
-    const result = await runGenerator(securitySchemes({}, '/ignored.ts', false))
+    const result = await Effect.runPromise(
+      securitySchemes({}, '/ignored.ts', false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual('No securitySchemes found')
   })
 })
@@ -36,7 +45,9 @@ describe('securitySchemes — non-split mode', () => {
       ApiKey: { type: 'apiKey', name: 'X-Api-Key', in: 'header' },
       Bearer: { type: 'http', scheme: 'bearer' },
     }
-    const result = await runGenerator(securitySchemes(sample, output, false))
+    const result = await Effect.runPromise(
+      securitySchemes(sample, output, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(result).toStrictEqual(`Generated securitySchemes code written to ${output}`)
     expect(fs.existsSync(output)).toBe(true)
   })
@@ -51,7 +62,9 @@ describe('securitySchemes — split mode', () => {
       ApiKey: { type: 'apiKey', name: 'X-Api-Key', in: 'header' },
       Bearer: { type: 'http', scheme: 'bearer' },
     }
-    const result = await runGenerator(securitySchemes(sample, output, true))
+    const result = await Effect.runPromise(
+      securitySchemes(sample, output, true).pipe(Effect.provide(fileSystemLayer)),
+    )
     const outDir = path.join(dir, 'securitySchemes')
     expect(result).toStrictEqual(
       `Generated securitySchemes code written to ${outDir}/*.ts (index.ts included)`,
@@ -71,7 +84,9 @@ describe('securitySchemes — caller ≡ generator contract', () => {
       ApiKey: { type: 'apiKey', name: 'X-Api-Key', in: 'header' },
       Bearer: { type: 'http', scheme: 'bearer' },
     }
-    await runGenerator(securitySchemes(sample, output, false))
+    await Effect.runPromise(
+      securitySchemes(sample, output, false).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(output, 'utf8')
     const generated = securitySchemesCode(sample)
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)SecurityScheme\s*=/gu
@@ -87,7 +102,9 @@ describe('securitySchemes — caller ≡ generator contract', () => {
     const sample = {
       ApiKey: { type: 'apiKey', name: 'X-Api-Key', in: 'header' },
     }
-    await runGenerator(securitySchemes(sample, output, true))
+    await Effect.runPromise(
+      securitySchemes(sample, output, true).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(path.join(dir, 'securitySchemes', 'apiKey.ts'), 'utf8')
     const generated = securitySchemesCode({ ApiKey: sample.ApiKey })
     const re = /(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)SecurityScheme\s*=/gu
@@ -112,7 +129,9 @@ describe('securitySchemes — a referenced schema named like another component k
   ])('$mode: imports ClaimsHeaderSchema from the schemas', async ({ split, file, specifier }) => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-security-schemes-'))
     const output = path.join(tmpDir, 'securitySchemes.ts')
-    await runGenerator(securitySchemes(section, output, split))
+    await Effect.runPromise(
+      securitySchemes(section, output, split).pipe(Effect.provide(fileSystemLayer)),
+    )
     const emitted = fs.readFileSync(path.join(tmpDir, file), 'utf8')
     expect(emitted).toContain(`import { ClaimsHeaderSchema } from '${specifier}'`)
     expect(emitted).not.toContain('headers')

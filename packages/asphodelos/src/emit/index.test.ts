@@ -3,7 +3,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { runGenerator, runGeneratorError } from '../testing/index.js'
+import { Effect } from 'effect'
+
+import { fileSystemLayer } from '../fsp/index.js'
 import { emit } from './index.js'
 
 describe('emit', () => {
@@ -16,12 +18,18 @@ describe('emit', () => {
     fs.rmSync(testDir, { recursive: true, force: true })
   })
   it('should format, create directory, and write file successfully', async () => {
-    await runGenerator(emit('console.log("Hello, world!")', testDir, `${testDir}/test.ts`))
+    await Effect.runPromise(
+      emit('console.log("Hello, world!")', testDir, `${testDir}/test.ts`).pipe(
+        Effect.provide(fileSystemLayer),
+      ),
+    )
     expect(fs.existsSync(`${testDir}/test.ts`)).toBe(true)
   })
   it('should create nested directories', async () => {
     const nestedDir = `${testDir}/a/b/c`
-    await runGenerator(emit('const x = 1', nestedDir, `${nestedDir}/out.ts`))
+    await Effect.runPromise(
+      emit('const x = 1', nestedDir, `${nestedDir}/out.ts`).pipe(Effect.provide(fileSystemLayer)),
+    )
     expect(fs.existsSync(`${nestedDir}/out.ts`)).toBe(true)
   })
   it('should return error when write fails on read-only path', async () => {
@@ -29,8 +37,11 @@ describe('emit', () => {
     const readonlyDir = path.join(tmpDir, 'readonly')
     fs.mkdirSync(readonlyDir)
     fs.chmodSync(readonlyDir, 0o444)
-    const result = await runGeneratorError(
-      emit('const x = 1', readonlyDir, `${readonlyDir}/sub/out.ts`),
+    const result = await Effect.runPromise(
+      emit('const x = 1', readonlyDir, `${readonlyDir}/sub/out.ts`).pipe(
+        Effect.provide(fileSystemLayer),
+        Effect.flip,
+      ),
     )
     expect(result).toBeDefined()
 
