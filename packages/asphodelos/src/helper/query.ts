@@ -173,8 +173,18 @@ function successType(
     const ident = schemaNames?.get(info.ref) ?? `${pascalCase(info.ref)}Schema`
     return { dataT: `Static<typeof ${ident}>`, importName: ident }
   }
-  if (info.void) return { dataT: 'void' }
-  return { dataT: 'unknown' }
+  if (!info.void) return { dataT: 'unknown' }
+  // No JSON schema: the data is what `readResponse` hands over for the media types the response
+  // declares — the bytes of an `application/octet-stream`, the text of a `text/*`.
+  const kinds = new Set(
+    Object.keys(ok[1].content ?? {}).map((media) => {
+      const type = media.split(';')[0]?.trim().toLowerCase() ?? ''
+      if (type === 'application/octet-stream') return 'ArrayBuffer'
+      return type.startsWith('text/') ? 'string' : 'unknown'
+    }),
+  )
+  if (kinds.size === 0) return { dataT: 'void' }
+  return { dataT: kinds.has('unknown') ? 'unknown' : [...kinds].toSorted().join(' | ') }
 }
 
 function isBodyMethod(method: string) {
@@ -256,13 +266,18 @@ function ${REVIVER}(_key:string,value:unknown){if(typeof value!=='string')return
 /** What reads a `fetch` fallback's response, written into the hooks file beside the reviver. */
 const READER = 'readResponse'
 
+// The response is read by its `Content-Type`, as Eden Treaty reads one: JSON is parsed, an
+// `application/octet-stream` is handed over as an `ArrayBuffer`, and anything else as its text —
+// a path with a `.txt` or `.csv` segment is the kind that falls back, and its body is not JSON.
+// Unlike Eden, the text is not read further (`"42"` stays a string), so it is what the hook's
+// `string` says. A response that names no type is JSON when it parses and text when it does not.
 // `res.json()` types as `unknown`, which the annotated return type rejects; `JSON.parse` of the
 // text is `any`, which it takes without a cast — and it takes the reviver, which `json()` does not.
-// A response without content (a `204`, an empty `200`) has no JSON to parse and is typed `void`,
-// so it resolves with `undefined`. A failed response rejects with its body parsed the same way,
+// A response without content (a `204`, an empty `200`) has nothing to parse and is typed `void`,
+// so it resolves with `undefined`. A failed response rejects with its body parsed as JSON,
 // dates revived; one that is not JSON (a proxy's HTML `502`, an empty `404`) rejects with an
 // `Error` carrying the `status` and the text as `value`, the two members of Eden's error.
-const READER_CODE = `async function ${READER}(res:Response){const text=await res.text();if(res.ok)return text===''?undefined:JSON.parse(text,${REVIVER});let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
+const READER_CODE = `async function ${READER}(res:Response){const type=res.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase()??'';if(res.ok&&type==='application/octet-stream')return res.arrayBuffer();const text=await res.text();if(res.ok){if(text==='')return undefined;if(type==='application/json'||type.endsWith('+json'))return JSON.parse(text,${REVIVER});if(type!=='')return text;try{return JSON.parse(text,${REVIVER})}catch{return text}}let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
 
 /** What builds a `fetch` fallback's search string from the options' query. */
 const SEARCH = 'toSearch'

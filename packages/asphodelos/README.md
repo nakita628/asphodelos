@@ -289,6 +289,13 @@ as a `Date` too, and a date the patterns miss — `2026-11-24T03:10:22` without 
 `9999-12-31` — stays a string. What JSON does not carry is not decoded either: a `t.Uint8Array`,
 `t.File` or `t.Transform` field is typed as decoded and holds the value as it was sent.
 
+The response is read by its `Content-Type`, as treaty reads one: JSON (`application/json`, a
+`+json` type) is parsed, `application/octet-stream` resolves with an `ArrayBuffer`, and anything
+else — the `text/csv` of an `/export.csv` — with its text, which unlike treaty's is not read
+further: `42` stays a string. The data is typed to match: `string` for a response declared as
+`text/*`, `ArrayBuffer` for `application/octet-stream`. A response that names no type is JSON when
+it parses and text when it does not.
+
 A response without a body — a `204`, an empty `200` — resolves with `undefined`. TanStack Query
 does not take `undefined` as a query's data, so there a query hook, unlike a mutation hook, reports
 such a response as an error. A failed response
