@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 
 import { Type as t } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
@@ -548,5 +551,97 @@ describe('uniqueSchemaKeys', () => {
     expect(uniqueSchemaKeys(plain)).toBe(plain)
     const bare = { openapi: '3.1.0', info: { title: 'Bare', version: '1' }, paths: {} } as OpenAPI
     expect(uniqueSchemaKeys(bare)).toBe(bare)
+  })
+})
+
+// A dependent schema is checked inside the `.Decode` closure, which runs after every const exists:
+// it names the const, since a `t.Ref` or `Self` there resolves to nothing outside its scope.
+describe('schemasCode — a dependent schema inside its own recursive group', () => {
+  const dependent = (target: string) =>
+    ({
+      dependentSchemas: { k: { $ref: `#/components/schemas/${target}` } },
+      'x-dependentSchemas-message': 'k needs its schema',
+    }) as const
+  const load = async (code: string) => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-dependent-'))
+    const file = path.join(dir, 'schemas.ts')
+    writeFileSync(
+      file,
+      // The file sits outside the package, so TypeBox is imported by where it resolves from here.
+      `import { Type as t } from '${import.meta.resolve('@sinclair/typebox')}'\nimport { Value } from '${import.meta.resolve('@sinclair/typebox/value')}'\n${code}\n`,
+    )
+    try {
+      return (await import(file)) as { readonly [name: string]: Parameters<typeof Value.Decode>[0] }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it('names the const of a member of a module', async () => {
+    const code = schemasCode({
+      A: {
+        type: 'object',
+        properties: { b: { $ref: '#/components/schemas/B' }, k: { type: 'string' } },
+        ...dependent('B'),
+      },
+      B: { type: 'object', properties: { c: { $ref: '#/components/schemas/C' } } },
+      C: { type: 'object', properties: { a: { $ref: '#/components/schemas/A' } } },
+    } as unknown as { readonly [k: string]: Schema })
+    expect(code).toContain('t.Module(')
+    expect(code).toContain('const depSubs={"k":BSchema}')
+    const { ASchema } = await load(code)
+    if (!ASchema) throw new Error('ASchema is not exported')
+    expect(Value.Decode(ASchema, { k: 'x', b: {} })).toStrictEqual({ k: 'x', b: {} })
+  })
+
+  it('names the const of a self-recursive schema', async () => {
+    const code = schemasCode({
+      T: {
+        type: 'object',
+        properties: { t: { $ref: '#/components/schemas/T' }, k: { type: 'string' } },
+        ...dependent('T'),
+      },
+    } as unknown as { readonly [k: string]: Schema })
+    expect(code).toContain('t.Optional(Self)')
+    expect(code).toContain('const depSubs={"k":TSchema}')
+    const { TSchema } = await load(code)
+    if (!TSchema) throw new Error('TSchema is not exported')
+    expect(Value.Decode(TSchema, { k: 'x' })).toStrictEqual({ k: 'x' })
+  })
+
+  it('names the const of a spoke of a star', async () => {
+    const code = schemasCode({
+      Hub: {
+        type: 'object',
+        properties: { leaf: { $ref: '#/components/schemas/Leaf' }, k: { type: 'string' } },
+        ...dependent('Leaf'),
+      },
+      Leaf: { type: 'object', properties: { hub: { $ref: '#/components/schemas/Hub' } } },
+    } as unknown as { readonly [k: string]: Schema })
+    expect(code).toContain('t.Recursive(')
+    expect(code).toContain('const depSubs={"k":LeafSchema}')
+    const { HubSchema } = await load(code)
+    if (!HubSchema) throw new Error('HubSchema is not exported')
+    expect(Value.Decode(HubSchema, { k: 'x', leaf: {} })).toStrictEqual({ k: 'x', leaf: {} })
+  })
+
+  // A raw transform's regex can hold a lone paren; it does not stop the refs after it.
+  it('still replaces the refs after a raw transform with a lone paren', () => {
+    const code = schemasCode({
+      A: {
+        type: 'object',
+        properties: {
+          s: {
+            type: 'string',
+            'x-transform':
+              't.Transform(t.String()).Decode((v)=>v.replace(/\\(\\(\\(/g,"")).Encode((v)=>v)',
+          },
+          b: { $ref: '#/components/schemas/B' },
+        },
+      },
+      B: { type: 'object', properties: { c: { $ref: '#/components/schemas/C' } } },
+      C: { type: 'object', properties: { a: { $ref: '#/components/schemas/A' } } },
+    } as unknown as { readonly [k: string]: Schema })
+    expect(code).toContain('"b":t.Optional(t.Ref("B"))')
   })
 })

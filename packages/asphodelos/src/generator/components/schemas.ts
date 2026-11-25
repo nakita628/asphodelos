@@ -7,15 +7,61 @@ import { typebox } from '../typebox/index.js'
 // A string literal of the rendered code (`"…"`, `'…'`, `` `…` ``), escapes included.
 const STRING_LITERAL = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/su
 
+// Where the dependent schemas a `.Decode(…)` closure checks against (`const depSubs={…}`, written
+// by `transformWrap`) open and close in the code between the string literals. The closure runs
+// when a value is decoded, after every const of the module exists, so a const named there
+// (`{"k":BSchema}`) is left as it is: a `t.Ref` or `Self` there is checked outside the module or
+// the recursion, where it resolves to nothing. Only that literal is kept, bounded by counting its
+// braces, so nothing else in a closure is left out of the rewrite, and a literal left open at the
+// end is dropped. Like the split on string literals, the count reads the code as text: a raw
+// `x-transform` with a lone brace or quote in a regex literal can still throw it off.
+const DEPENDENT = 'const depSubs={'
+
+function closures(parts: readonly string[]): readonly (readonly [number, number])[] {
+  const marks: (readonly [number, number])[] = []
+  const state = { depth: 0 }
+  for (const [index, part] of parts.entries()) {
+    if (index % 2 === 1) continue
+    for (let at = 0; at < part.length; at += 1) {
+      if (state.depth === 0) {
+        if (!part.startsWith(DEPENDENT, at)) continue
+        marks.push([index, at + DEPENDENT.length])
+        state.depth = 1
+        at += DEPENDENT.length - 1
+        continue
+      }
+      if (part[at] === '{') state.depth += 1
+      if (part[at] === '}') state.depth -= 1
+      if (state.depth === 0) marks.push([index, at])
+    }
+  }
+  return marks.length % 2 === 0 ? marks : marks.slice(0, -1)
+}
+
 // Every reference to the identifier `from` in `code` replaced with `to`; the text of a string
-// literal, and a longer identifier that contains `from`, are left as they are.
+// literal, a longer identifier that contains `from`, and a closure's dependent schemas are left
+// as they are.
 function sub(code: string, from: string, to: string) {
   const escaped = from.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&')
   const ident = new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`, 'gu')
   // Split with a capture, the literals sit at the odd indexes, the code between them at the even.
-  return code
-    .split(STRING_LITERAL)
-    .map((part, i) => (i % 2 === 1 ? part : part.replaceAll(ident, () => to)))
+  const parts = code.split(STRING_LITERAL)
+  // The closures' bounds alternate open, close: a part is cut at each, and only the pieces
+  // outside a closure are rewritten.
+  const marks = code.includes(DEPENDENT) ? closures(parts) : []
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1) return part
+      const cuts = marks.filter(([at]) => at === i).map(([, offset]) => offset)
+      const before = marks.filter(([at]) => at < i).length
+      const pieces = [0, ...cuts, part.length].slice(0, -1).map((start, k) => ({
+        text: part.slice(start, [...cuts, part.length][k]),
+        inside: (before + k) % 2 === 1,
+      }))
+      return pieces
+        .map((piece) => (piece.inside ? piece.text : piece.text.replaceAll(ident, () => to)))
+        .join('')
+    })
     .join('')
 }
 
