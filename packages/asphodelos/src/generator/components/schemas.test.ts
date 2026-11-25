@@ -8,7 +8,7 @@ import { Value } from '@sinclair/typebox/value'
 import { parseSync } from 'oxc-parser'
 
 import type { OpenAPI, Schema } from '../../openapi/index.js'
-import { schemaConstNames, schemasCode, uniqueSchemaKeys, uniqueSchemas } from './schemas.js'
+import { schemasCode, uniqueSchemaKeys, uniqueSchemas } from './schemas.js'
 
 describe('schemasCode — empty / single', () => {
   it('returns empty string for undefined', () => {
@@ -260,28 +260,20 @@ describe('schemasCode — multiple disjoint groups', () => {
   })
 })
 
-// A generator that names a component from outside the schemas module has to name the const
-// `schemasCode` wrote, which is not the key's own once two keys differ only in case.
-describe('schemaConstNames', () => {
+// Two keys that differ only in case share a pascal-cased name, so `schemasCode` writes all but the
+// first under a suffixed const, and names that const wherever the key is referenced.
+describe('schemasCode — keys that differ only in case', () => {
   const schemas = {
     User: { type: 'object', properties: { id: { type: 'string' } } },
     user: { type: 'object', properties: { id: { type: 'integer' } } },
     Pet: { type: 'object', properties: { owner: { $ref: '#/components/schemas/User' } } },
   } as const
 
-  it('is empty without schemas', () => {
-    expect([...schemaConstNames(undefined)]).toStrictEqual([])
-  })
-
-  it('names every key by the const schemasCode exports for it', () => {
-    const names = schemaConstNames(schemas)
-    expect([...names]).toStrictEqual([
-      ['User', 'UserSchema'],
-      ['user', 'User2Schema'],
-      ['Pet', 'PetSchema'],
-    ])
+  it('writes every key under a const of its own, the later one suffixed', () => {
     const code = schemasCode(schemas)
-    for (const ident of names.values()) expect(code).toContain(`export const ${ident}=`)
+    expect(code).toContain('export const UserSchema=t.Object({"id":t.Optional(t.String())})')
+    expect(code).toContain('export const User2Schema=t.Object({"id":t.Optional(t.Integer(')
+    expect(code).toContain('export const PetSchema=t.Object({"owner":t.Optional(UserSchema)})')
   })
 
   // A `$ref` is rendered as the const of the key it names, not as the pascal-cased key: a ref to
@@ -357,10 +349,9 @@ describe('schemaConstNames', () => {
       Node: { type: 'object', properties: { next: { $ref: '#/components/schemas/node' } } },
       node: { type: 'object', properties: { next: { $ref: '#/components/schemas/Node' } } },
     } as const
-    const names = schemaConstNames(cycle)
-    expect([...names.values()].toSorted()).toStrictEqual(['Node2Schema', 'NodeSchema'])
     const code = schemasCode(cycle)
-    for (const ident of names.values()) expect(code).toContain(`export const ${ident}=`)
+    expect(code).toMatch(/\bNodeSchema=/u)
+    expect(code).toMatch(/\bNode2Schema=/u)
   })
 })
 
@@ -457,17 +448,14 @@ describe('uniqueSchemaKeys', () => {
   })
 
   it('keeps a key that already is the suffixed name of another', () => {
-    expect([
-      ...schemaConstNames({
-        User: { type: 'string' },
-        user: { type: 'number' },
-        User2: { type: 'boolean' },
-      }),
-    ]).toStrictEqual([
-      ['User', 'UserSchema'],
-      ['user', 'User3Schema'],
-      ['User2', 'User2Schema'],
-    ])
+    const code = schemasCode({
+      User: { type: 'string' },
+      user: { type: 'number' },
+      User2: { type: 'boolean' },
+    })
+    expect(code).toContain('export const UserSchema=t.String()')
+    expect(code).toContain('export const User3Schema=t.Number()')
+    expect(code).toContain('export const User2Schema=t.Boolean()')
   })
 
   it('leaves a non-schema $ref alone when the empty key is renamed', () => {

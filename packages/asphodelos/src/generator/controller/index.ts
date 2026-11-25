@@ -1,4 +1,5 @@
 import type { Route } from '../../helper/index.js'
+import { elysiaPath } from '../../helper/path-params.js'
 import { filterDefined, pascalCase, safeStatusKey, toSafeIdentifier } from '../../utils/index.js'
 
 function schemaIdent(name: string) {
@@ -7,10 +8,6 @@ function schemaIdent(name: string) {
 
 function join(entries: readonly (string | null)[], sep: string) {
   return filterDefined(entries).join(sep)
-}
-
-function toElysiaPath(p: string) {
-  return p.replaceAll(/\{([^}]+)\}/gu, ':$1')
 }
 
 function componentKey(name: string) {
@@ -69,7 +66,7 @@ export function controllerFile(
       ],
       ',',
     )
-    return `.${route.method}(${JSON.stringify(toElysiaPath(route.path))},${handler},{${opts}})`
+    return `.${route.method}(${JSON.stringify(elysiaPath(route.path))},${handler},{${opts}})`
   }
   const chain = routes.map(renderRoute).join('')
   const importedSchemaIdents = componentImports.map(schemaIdent)

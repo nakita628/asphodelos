@@ -222,7 +222,7 @@ describe('makeJob — every job actually runs', () => {
     expect(run.names).toContain('client')
     const code = run.read('src/lib/client.ts')
     expect(code).toContain("import type { app } from '../index'")
-    expect(code).toContain('export const clientOrigin = normalizeOrigin(process.env.API_URL!)')
+    expect(code).toContain('export const client = treaty<typeof app>(process.env.API_URL!)')
   })
 
   // A file that names no import reads the generated client, from wherever it is written. Beside

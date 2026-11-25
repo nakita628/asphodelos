@@ -1,7 +1,3 @@
-import path from 'node:path'
-
-import { schemaConstNames } from '../../generator/components/index.js'
-import { makeModuleSpec } from '../../helper/code.js'
 import type { QueryHookConfig } from '../../helper/query.js'
 import { makeQueryHooks } from '../../helper/query.js'
 import type { OpenAPI } from '../../openapi/index.js'
@@ -134,38 +130,16 @@ export const HOOK_CONFIGS = {
 } as const satisfies { readonly [K in HookLibrary]: QueryHookConfig }
 
 /**
- * Generates the hooks of one client library into `output`.
- *
- * `schemas` is where `components.schemas` is written: a hook for a path Eden cannot type (a
- * segment with a `.` or a partial parameter) falls back to `fetch` and types its data by the
- * component the response names, so it has to import that component from wherever the schemas
- * generator put it — by the specifier the config names, or relative to `output` — under the name
- * that generator gave it, which is not the key's own when two keys differ only in case and is
- * the same whether the schemas are one file or split.
+ * Generates the hooks of one client library into `output`. Every hook calls the Eden treaty
+ * client `importPath` exports and is typed by it.
  */
 export function hooks(
   openAPI: OpenAPI,
   output: string,
   importPath: string,
   library: HookLibrary,
-  options: {
-    readonly client: string
-    readonly basePath?: string
-    readonly schemas?: {
-      readonly output: string
-      readonly split?: boolean
-      readonly import?: string
-    }
-  },
+  options: { readonly client: string; readonly basePath?: string },
 ) {
-  const schemasImport =
-    options.schemas?.import ??
-    (options.schemas
-      ? makeModuleSpec(path.resolve(process.cwd(), output), {
-          output: path.resolve(process.cwd(), options.schemas.output),
-          split: options.schemas.split,
-        })
-      : undefined)
   return makeQueryHooks(
     openAPI,
     output,
@@ -173,7 +147,5 @@ export function hooks(
     HOOK_CONFIGS[library],
     options.client,
     options.basePath,
-    schemasImport,
-    schemaConstNames(openAPI.components?.schemas),
   )
 }

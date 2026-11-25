@@ -3,6 +3,7 @@ import { describe, expect, it, spyOn } from 'bun:test'
 import type { Operation } from '../openapi/index.js'
 import {
   canonicalParamNames,
+  elysiaPath,
   isElysiaRoutePath,
   normalizePath,
   renameOperationParams,
@@ -109,11 +110,25 @@ describe('isElysiaRoutePath', () => {
       expect(isElysiaRoutePath('/tasks/{task_id}?beta=true')).toBe(false)
       expect(warn.mock.calls).toStrictEqual([
         [
-          "[asphodelos] path '/tasks/{task_id}?beta=true' has a query string after a path parameter, which Elysia reads as an optional parameter; it is left out of the app, its types, the mock and the Eden wrappers",
+          "[asphodelos] path '/tasks/{task_id}?beta=true' has a query string after a path parameter, which Elysia reads as an optional parameter; it is left out of the app, its types, the mock, the Eden wrappers and the hooks",
         ],
       ])
     } finally {
       warn.mockRestore()
     }
+  })
+})
+
+// The spelling the controller registers a route by and the Eden chain is read off: Elysia reads a
+// parameter from its `:` to the end of the segment, so static text after it stays in its name.
+describe('elysiaPath', () => {
+  it('writes each path parameter as a colon parameter', () => {
+    expect(elysiaPath('/users/{userId}/posts/{postId}')).toBe('/users/:userId/posts/:postId')
+  })
+
+  it('leaves the static text beside a parameter where it is', () => {
+    expect(elysiaPath('/Accounts/{Sid}.json')).toBe('/Accounts/:Sid.json')
+    expect(elysiaPath('/v{version}/items')).toBe('/v:version/items')
+    expect(elysiaPath('/widget.json')).toBe('/widget.json')
   })
 })

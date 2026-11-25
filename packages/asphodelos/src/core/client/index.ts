@@ -10,23 +10,8 @@ export type BaseUrl =
   | { readonly env: string; readonly source: 'import.meta.env' | 'process.env' }
   | { readonly import: string; readonly value: string }
 
-/**
- * Treaty reads its origin this way before it appends a path: a scheme is added when there is
- * none — `http://` for a local host, `https://` otherwise — and a trailing `/` is dropped. The
- * origin is exported as treaty reads it, so a hook that calls `fetch` with it sends where the
- * client does. A missing origin is passed on as it is, so importing the client still succeeds
- * where the variable is unset and only a request fails, as it did before.
- */
-const NORMALIZE = `function normalizeOrigin(origin: string) {
-  if (!origin) return origin
-  const url = origin.includes('://')
-    ? origin
-    : \`\${['localhost', '127.0.0.1', '0.0.0.0'].some((host) => origin.includes(host)) ? 'http' : 'https'}://\${origin}\`
-  return url.endsWith('/') ? url.slice(0, -1) : url
-}`
-
 /** The names the client file declares itself; an export of the same name is imported under an alias. */
-const DECLARED = new Set(['treaty', 'app', 'client', 'clientOrigin', 'normalizeOrigin'])
+const DECLARED = new Set(['treaty', 'app', 'client'])
 
 function importCode(baseUrl: { readonly import: string; readonly value: string }) {
   const [name = '', ...rest] = baseUrl.value.split('.')
@@ -48,12 +33,11 @@ function importCode(baseUrl: { readonly import: string; readonly value: string }
 function baseUrlCode(baseUrl: BaseUrl, sameOrigin: boolean) {
   const [imports, expression] =
     'import' in baseUrl ? importCode(baseUrl) : [[], `${baseUrl.source}.${baseUrl.env}!`]
-  const value = sameOrigin
-    ? `typeof window === 'undefined' ? ${expression} : window.location.origin`
-    : expression
   return {
     imports,
-    origin: `${NORMALIZE}\n\nexport const clientOrigin = normalizeOrigin(${value})`,
+    origin: sameOrigin
+      ? `typeof window === 'undefined' ? ${expression} : window.location.origin`
+      : expression,
   }
 }
 
@@ -64,10 +48,8 @@ function baseUrlCode(baseUrl: BaseUrl, sameOrigin: boolean) {
  * worked out from the app as it stands, user code included, and the import is erased before a
  * browser bundle could pull the server in. `treaty` wants an origin — a relative path is read as
  * a host — so with `sameOrigin` the browser is given its own, `window.location.origin`, and
- * `baseUrl` serves the code that runs without a window. Either way the origin is a `const` of
- * its own, `clientOrigin`, read the way treaty reads it, so what the client is created with is
- * read off one declaration. It is exported beside the client: the hooks of a path Eden cannot
- * type call `fetch` with it.
+ * `baseUrl` serves the code that runs without a window. The origin is handed to `treaty` as it
+ * is: treaty adds the scheme it lacks and drops a trailing `/` itself.
  */
 export function client(
   output: string,
@@ -85,8 +67,7 @@ export function client(
     const code = [
       ["import { treaty } from '@elysiajs/eden'", ...imports].join('\n'),
       `import type { app } from '${options.appImport}'`,
-      origin,
-      'export const client = treaty<typeof app>(clientOrigin)',
+      `export const client = treaty<typeof app>(${origin})`,
     ].join('\n\n')
     yield* emit(`${code}\n`, path.dirname(output), output)
     if (options.barrel !== undefined) {
