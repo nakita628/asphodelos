@@ -3547,7 +3547,7 @@ describe('fetch fallback', () => {
     '%s: queries and mutations read the response and build the search string with the helpers',
     async (library) => {
       const code = await generateAndRead(library)
-      expect(code).toContain('return readResponse(res)')
+      expect(code).toContain('return await readResponse(res)')
       expect(code).toMatch(/const search = toSearch\(\w+\?\.query\)/u)
       expect(code).not.toContain('String(v)')
     },
@@ -3690,7 +3690,7 @@ describe('fetch fallback', () => {
             },
           },
         })
-        expect(code).toContain(`return ${read}\n`)
+        expect(code).toContain(`return await ${read}\n`)
         expect(code).toContain(library === 'swr' ? `useSWR<${dataT}, TError>` : `TData = ${dataT},`)
       }
     },
@@ -3812,7 +3812,7 @@ describe('fetch fallback', () => {
           schemas: { Job: { type: 'object', properties: { id: { type: 'string' } } } },
         },
       })
-      expect(code).toContain(`return ${read}\n`)
+      expect(code).toContain(`return await ${read}\n`)
       expect(code).toContain(library === 'swr' ? `useSWR<${dataT}, TError>` : `TData = ${dataT},`)
     }
   })
@@ -3914,7 +3914,7 @@ describe('fetch fallback', () => {
         },
       },
     })
-    expect(code).toContain('return readResponse(res)\n')
+    expect(code).toContain('return await readResponse(res)\n')
     expect(code).toContain('TData = unknown,')
   })
 
@@ -3939,7 +3939,7 @@ describe('fetch fallback', () => {
     })
     expect(code).toContain('TData = null,')
     expect(code).not.toContain('JobSchema')
-    expect(code).toContain('return readResponse(res)\n')
+    expect(code).toContain('return await readResponse(res)\n')
   })
 
   it('a response without content is typed null', async () => {
@@ -4010,6 +4010,29 @@ describe('fetch fallback', () => {
     expect(toFetchError(abort)).toBe(abort)
     const kept = Object.assign(new Error('410 Gone'), { status: 410, value: 'gone' })
     expect(toFetchError(kept)).toBe(kept)
+  })
+
+  // The read is awaited inside the guard: a body that fails while it is read is caught there too.
+  it('turns a body that fails while it is read into a FetchError', async () => {
+    const { readResponse, toFetchError } = await importHelpers()
+    const broken = new Response(
+      new ReadableStream({
+        pull(controller) {
+          controller.error(new TypeError('terminated'))
+        },
+      }),
+    )
+    const guarded = async () => {
+      try {
+        return await readResponse(broken)
+      } catch (error) {
+        throw toFetchError(error)
+      }
+    }
+    expect(await guarded().catch((error: unknown) => error)).toMatchObject({ status: 0 })
+    const code = await generateAndRead('tanstack-query')
+    expect(code).toContain('return await readResponse(res)')
+    expect(code).not.toContain('return readResponse(res')
   })
 
   it('says a successful body is not JSON', async () => {

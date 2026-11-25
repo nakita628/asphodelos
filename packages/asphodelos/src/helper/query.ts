@@ -416,7 +416,8 @@ function fetchTarget(
       : typeof reads === 'string'
         ? `,'${reads}'`
         : `,${JSON.stringify(reads)}`
-  const read = `return ${READER}(res${as})`
+  // Awaited, so a body that fails while it is read stays inside the guard's `try`.
+  const read = `return await ${READER}(res${as})`
   // An operation that answers with nothing but an event stream cannot be read: the hook rejects
   // without opening the stream, so a library's retries do not open it again and again.
   const streamOnly = reads === 'stream'
