@@ -238,4 +238,18 @@ describe('schemas — split mode, a schema keyed like the barrel', () => {
     ).toStrictEqual(['index.ts', 'index2.ts', 'index3.ts', 'index4.ts', 'index5.ts'])
     expect(files['index.ts']?.split('\n').filter(Boolean)).toHaveLength(4)
   })
+
+  it('names files that differ only in case, or that Windows reserves, apart', async () => {
+    const files = await generate({
+      ab: { type: 'string' },
+      aB: { type: 'number' },
+      Con: { type: 'boolean' },
+    })
+    expect(Object.keys(files)).toStrictEqual(['aB2.ts', 'ab.ts', 'con2.ts', 'index.ts'])
+    expect(files['aB2.ts']).toContain('export const ABSchema = t.Number()')
+    expect(files['con2.ts']).toContain('export const ConSchema = t.Boolean()')
+    expect(files['index.ts']).toBe(
+      "export * from './aB2'\nexport * from './ab'\nexport * from './con2'\n",
+    )
+  })
 })

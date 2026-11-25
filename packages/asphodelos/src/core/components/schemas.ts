@@ -22,16 +22,28 @@ function freeFileName(base: string, i: number, taken: ReadonlySet<string>): stri
   return taken.has(candidate.toLowerCase()) ? freeFileName(base, i + 1, taken) : candidate
 }
 
-// Each group's file name. `index` is the barrel's, on a case-insensitive file system too, so a
-// group named like it (`Index`, `index`) takes the first `index<n>` no other file has.
+// The names no schema file may take: the barrel's, and those Windows keeps for its devices.
+const RESERVED_FILE_NAMES = [
+  'index',
+  'con',
+  'prn',
+  'aux',
+  'nul',
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((n) => [`com${n}`, `lpt${n}`]),
+]
+
+// Each group's file name, unique on a case-insensitive file system too. A group whose name is
+// reserved (`Index`, `con`) or already taken by an earlier group's in another case (`aB` after
+// `ab`) takes the first `<name><n>` no other file has.
 function fileNamesOf(groups: readonly (readonly { name: string; schema: Schema }[])[]) {
   const bases = groups.map(baseFileNameOf)
-  const taken = new Set(['index', ...bases.map((base) => base.toLowerCase())])
+  const taken = new Set([...RESERVED_FILE_NAMES, ...bases.map((base) => base.toLowerCase())])
+  const claimed = new Set(RESERVED_FILE_NAMES)
   return bases.map((base) => {
-    if (base.toLowerCase() !== 'index') return base
-    const free = freeFileName(base, 2, taken)
-    taken.add(free.toLowerCase())
-    return free
+    const name = claimed.has(base.toLowerCase()) ? freeFileName(base, 2, taken) : base
+    taken.add(name.toLowerCase())
+    claimed.add(name.toLowerCase())
+    return name
   })
 }
 
