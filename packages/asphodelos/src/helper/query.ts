@@ -193,7 +193,7 @@ function entryRead(
   // lost). With a JSON media type among them it is parsed as before. An event stream beside
   // another media type is left to the other one.
   const all = new Set(Object.keys(response.content ?? {}).map(mediaRead))
-  if (all.size === 0) return { dataT: 'void', read: 'json' }
+  if (all.size === 0) return { dataT: 'null', read: 'json' }
   const reads = new Set([...all].filter((read) => read !== 'stream'))
   if (reads.size === 0) return { read: 'stream' }
   if (reads.has('json')) return { dataT: 'unknown', read: 'json' }
@@ -227,7 +227,7 @@ function successType(
       : responses.length === 1
         ? responses.filter(([status]) => status === 'default')
         : []
-  if (declared.length === 0) return { dataT: 'void', importNames: [] }
+  if (declared.length === 0) return { dataT: 'null', importNames: [] }
   const entries = declared.map(([status, response]) =>
     Object.assign(entryRead(response, schemaNames), { status: status.toUpperCase() }),
   )
@@ -249,7 +249,7 @@ function successType(
   // status the document does not list is read the widest way its entries with a body are: JSON
   // when one of them is, bytes when one of them is, text otherwise.
   const bodies = new Set(
-    entries.filter((entry) => entry.dataT !== 'void').map((entry) => entry.read),
+    entries.filter((entry) => entry.dataT !== 'null').map((entry) => entry.read),
   )
   const fallback: Read = bodies.has('json') ? 'json' : bodies.has('bytes') ? 'bytes' : 'text'
   const byStatus = Object.fromEntries([
@@ -340,8 +340,9 @@ const READER = 'readResponse'
 
 // `res.json()` types as `unknown`, which the annotated return type rejects; `JSON.parse` of the
 // text is `any`, which it takes without a cast — and it takes the reviver, which `json()` does not.
-// A response without content (a `204`, an empty `200`) has no JSON to parse and is typed `void`,
-// so it resolves with `undefined`. A response the document declares as text or as another media
+// A response without content (a `204`, an empty `200`) has no JSON to parse and is typed `null`,
+// so it resolves with `null`: TanStack Query does not take `undefined` as a query's data, and
+// every library and hook kind resolves the same. A response the document declares as text or as another media
 // type is not JSON — a path with a `.txt` or `.pdf` segment is the kind that falls back — and is
 // read as declared (`as`): its text as it is, or its bytes, empty or not, so it is what the
 // hook's `string` or `ArrayBuffer` says. Where the statuses are declared as different media types,
@@ -351,7 +352,7 @@ const READER = 'readResponse'
 // the stream to its end. A failed response rejects with its body parsed as JSON, dates revived;
 // one that is not JSON (a proxy's HTML `502`, an empty `404`) rejects with an `Error` carrying the
 // `status` and the text as `value`, the two members of Eden's error.
-const READER_CODE = `async function ${READER}(res:Response,as:Read|{readonly[status:string]:Read}='json'){const read=typeof as==='string'?as:(as[res.status]??as[\`\${String(res.status)[0]}XX\`]??as.default??'json');if(res.ok&&read==='stream'){await res.body?.cancel().catch(()=>{});throw Object.assign(new Error('A text/event-stream response is not supported by a fetch hook'),{status:res.status})}if(res.ok&&read==='bytes')return res.arrayBuffer();const text=await res.text();if(res.ok){if(read==='text')return text;return text===''?undefined:JSON.parse(text,${REVIVER})}let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
+const READER_CODE = `async function ${READER}(res:Response,as:Read|{readonly[status:string]:Read}='json'){const read=typeof as==='string'?as:(as[res.status]??as[\`\${String(res.status)[0]}XX\`]??as.default??'json');if(res.ok&&read==='stream'){await res.body?.cancel().catch(()=>{});throw Object.assign(new Error('A text/event-stream response is not supported by a fetch hook'),{status:res.status})}if(res.ok&&read==='bytes')return res.arrayBuffer();const text=await res.text();if(res.ok){if(read==='text')return text;return text.trim()===''?null:JSON.parse(text,${REVIVER})}let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
 
 /** How the reader reads a successful response, declared beside it. */
 const READ_TYPE_CODE = `type Read='json'|'text'|'bytes'|'stream'`
@@ -383,7 +384,11 @@ function fetchTarget(
     ? '{ headers?: Record<string, string>; query?: Record<string, unknown> }'
     : '{ headers?: Record<string, string> }'
   const withBody = isBodyMethod(method)
-  const { dataT, importNames, reads } = successType(operation, schemaNames)
+  // A `HEAD` answers with headers alone: whatever its `2xx` declares, the body is empty.
+  const { dataT, importNames, reads } =
+    method === 'head'
+      ? { dataT: 'null', importNames: [], reads: undefined }
+      : successType(operation, schemaNames)
   const as =
     reads === undefined
       ? ''
