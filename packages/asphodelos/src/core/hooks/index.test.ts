@@ -3552,7 +3552,7 @@ describe('fetch fallback', () => {
     },
   )
 
-  // A response without content is typed `void`: there is no JSON in it to parse.
+  // A response without content is typed `null`: there is no JSON in it to parse.
   // TanStack Query does not take `undefined` as a query's data: every hook resolves with `null`.
   it('a response without a body resolves with null', async () => {
     const { readResponse } = await importHelpers()
@@ -3914,6 +3914,30 @@ describe('fetch fallback', () => {
     })
     expect(code).toContain('return readResponse(res)\n')
     expect(code).toContain('TData = unknown,')
+  })
+
+  // A `HEAD` answers with headers alone, whatever its `2xx` declares.
+  it('types a HEAD as null whatever its 2xx declares', async () => {
+    const code = await generateAndRead('tanstack-query', {
+      ...api,
+      paths: {
+        '/report.txt': {
+          head: {
+            operationId: 'headReport',
+            responses: {
+              '200': {
+                description: 'OK',
+                content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
+              },
+            },
+          },
+        },
+      },
+      components: { schemas: { Job: { type: 'object' } } },
+    })
+    expect(code).toContain('TData = null,')
+    expect(code).not.toContain('JobSchema')
+    expect(code).toContain('return readResponse(res)\n')
   })
 
   it('a response without content is typed null', async () => {

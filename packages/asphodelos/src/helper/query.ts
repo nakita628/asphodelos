@@ -384,7 +384,11 @@ function fetchTarget(
     ? '{ headers?: Record<string, string>; query?: Record<string, unknown> }'
     : '{ headers?: Record<string, string> }'
   const withBody = isBodyMethod(method)
-  const { dataT, importNames, reads } = successType(operation, schemaNames)
+  // A `HEAD` answers with headers alone: whatever its `2xx` declares, the body is empty.
+  const { dataT, importNames, reads } =
+    method === 'head'
+      ? { dataT: 'null', importNames: [], reads: undefined }
+      : successType(operation, schemaNames)
   const as =
     reads === undefined
       ? ''
