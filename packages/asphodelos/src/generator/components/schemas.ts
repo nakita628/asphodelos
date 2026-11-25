@@ -7,15 +7,57 @@ import { typebox } from '../typebox/index.js'
 // A string literal of the rendered code (`"…"`, `'…'`, `` `…` ``), escapes included.
 const STRING_LITERAL = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/su
 
+// Where a `.Decode(…)` closure opens and closes in the code between the string literals. The
+// closure runs when a value is decoded, after every const of the module exists, so a const it
+// names (a dependent schema's, `const depSubs={"k":BSchema}`) is left as it is: a `t.Ref` or
+// `Self` there is checked outside the module or the recursion, where it resolves to nothing.
+const DECODE = '.Decode('
+
+function closures(parts: readonly string[]): readonly (readonly [number, number])[] {
+  const marks: (readonly [number, number])[] = []
+  const state = { depth: 0 }
+  for (const [index, part] of parts.entries()) {
+    if (index % 2 === 1) continue
+    for (let at = 0; at < part.length; at += 1) {
+      if (state.depth === 0) {
+        if (!part.startsWith(DECODE, at)) continue
+        marks.push([index, at + DECODE.length])
+        state.depth = 1
+        at += DECODE.length - 1
+        continue
+      }
+      if (part[at] === '(') state.depth += 1
+      if (part[at] === ')') state.depth -= 1
+      if (state.depth === 0) marks.push([index, at])
+    }
+  }
+  return marks
+}
+
 // Every reference to the identifier `from` in `code` replaced with `to`; the text of a string
-// literal, and a longer identifier that contains `from`, are left as they are.
+// literal, a longer identifier that contains `from`, and a `.Decode(…)` closure are left as they
+// are.
 function sub(code: string, from: string, to: string) {
   const escaped = from.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&')
   const ident = new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`, 'gu')
   // Split with a capture, the literals sit at the odd indexes, the code between them at the even.
-  return code
-    .split(STRING_LITERAL)
-    .map((part, i) => (i % 2 === 1 ? part : part.replaceAll(ident, () => to)))
+  const parts = code.split(STRING_LITERAL)
+  // The closures' bounds alternate open, close: a part is cut at each, and only the pieces
+  // outside a closure are rewritten.
+  const marks = closures(parts)
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1) return part
+      const cuts = marks.filter(([at]) => at === i).map(([, offset]) => offset)
+      const before = marks.filter(([at]) => at < i).length
+      const pieces = [0, ...cuts, part.length].slice(0, -1).map((start, k) => ({
+        text: part.slice(start, [...cuts, part.length][k]),
+        inside: (before + k) % 2 === 1,
+      }))
+      return pieces
+        .map((piece) => (piece.inside ? piece.text : piece.text.replaceAll(ident, () => to)))
+        .join('')
+    })
     .join('')
 }
 
