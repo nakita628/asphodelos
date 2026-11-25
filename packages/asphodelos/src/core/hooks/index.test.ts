@@ -3525,10 +3525,10 @@ describe('fetch fallback', () => {
   // The helpers the fallback hooks call, as the hooks file carries them.
   const importHelpers = async () => {
     const code = await generateAndRead('tanstack-query')
-    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export '))
+    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export function'))
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-helpers-'))
     const file = path.join(dir, 'helpers.ts')
-    writeFileSync(file, `${source}\nexport { readResponse, toSearch }\n`)
+    writeFileSync(file, `${source}\nexport { readResponse, toSearch, toFetchError }\n`)
     try {
       return (await import(file)) as {
         readonly readResponse: (
@@ -3536,6 +3536,7 @@ describe('fetch fallback', () => {
           as?: 'json' | 'text' | 'bytes' | 'stream' | { readonly [status: string]: string },
         ) => Promise<unknown>
         readonly toSearch: (query: { [key: string]: unknown } | undefined) => URLSearchParams
+        readonly toFetchError: (error: unknown) => unknown
       }
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -3546,7 +3547,7 @@ describe('fetch fallback', () => {
     '%s: queries and mutations read the response and build the search string with the helpers',
     async (library) => {
       const code = await generateAndRead(library)
-      expect(code).toContain('return readResponse(res)')
+      expect(code).toContain('return await readResponse(res)')
       expect(code).toMatch(/const search = toSearch\(\w+\?\.query\)/u)
       expect(code).not.toContain('String(v)')
     },
@@ -3689,7 +3690,7 @@ describe('fetch fallback', () => {
             },
           },
         })
-        expect(code).toContain(`return ${read}\n`)
+        expect(code).toContain(`return await ${read}\n`)
         expect(code).toContain(library === 'swr' ? `useSWR<${dataT}, TError>` : `TData = ${dataT},`)
       }
     },
@@ -3811,7 +3812,7 @@ describe('fetch fallback', () => {
           schemas: { Job: { type: 'object', properties: { id: { type: 'string' } } } },
         },
       })
-      expect(code).toContain(`return ${read}\n`)
+      expect(code).toContain(`return await ${read}\n`)
       expect(code).toContain(library === 'swr' ? `useSWR<${dataT}, TError>` : `TData = ${dataT},`)
     }
   })
@@ -3884,7 +3885,7 @@ describe('fetch fallback', () => {
         },
       })
       expect(code).toContain(
-        "throw new Error('A text/event-stream response is not supported by a fetch hook')",
+        "new Error('A text/event-stream response is not supported by a fetch hook')",
       )
       expect(code).not.toContain('await fetch(')
       expect(code).not.toContain('clientOrigin')
@@ -3913,7 +3914,7 @@ describe('fetch fallback', () => {
         },
       },
     })
-    expect(code).toContain('return readResponse(res)\n')
+    expect(code).toContain('return await readResponse(res)\n')
     expect(code).toContain('TData = unknown,')
   })
 
@@ -3938,7 +3939,7 @@ describe('fetch fallback', () => {
     })
     expect(code).toContain('TData = null,')
     expect(code).not.toContain('JobSchema')
-    expect(code).toContain('return readResponse(res)\n')
+    expect(code).toContain('return await readResponse(res)\n')
   })
 
   it('a response without content is typed null', async () => {
@@ -3946,14 +3947,30 @@ describe('fetch fallback', () => {
     expect(code).toContain('TData = null,')
   })
 
-  it('a JSON error body rejects with the body, its dates revived', async () => {
+  // A failed response rejects with one shape, Eden's: an `Error` with the `status` and the body.
+  it('a JSON error body rejects with the status and the body, its dates revived', async () => {
     const { readResponse } = await importHelpers()
     const res = Response.json({ message: 'gone', at: '2026-11-24T03:10:22.000Z' }, { status: 410 })
-    expect(await readResponse(res).catch((error: unknown) => error)).toStrictEqual({
-      message: 'gone',
-      at: new Date('2026-11-24T03:10:22.000Z'),
+    const error = await readResponse(res).catch((error_: unknown) => error_)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toMatchObject({
+      status: 410,
+      value: { message: 'gone', at: new Date('2026-11-24T03:10:22.000Z') },
     })
   })
+
+  // A falsy JSON body is still an error: SWR reads a falsy rejection as no error at all.
+  it.each([null, 0, false, ''])(
+    'a falsy JSON error body %p rejects with an Error',
+    async (body) => {
+      const { readResponse } = await importHelpers()
+      const error = await readResponse(Response.json(body, { status: 400 })).catch(
+        (error_: unknown) => error_,
+      )
+      expect(error).toBeInstanceOf(Error)
+      expect(error).toMatchObject({ status: 400, value: body })
+    },
+  )
 
   // A proxy's HTML page or an empty `404` is not JSON: the error says so by its status and text
   // rather than by the `SyntaxError` of a failed parse.
@@ -3968,6 +3985,89 @@ describe('fetch fallback', () => {
     expect(error).toBeInstanceOf(Error)
     expect(error).not.toBeInstanceOf(SyntaxError)
     expect(error).toMatchObject({ status, value: body })
+  })
+
+  // A `200` of an HTML page where JSON is declared rejects the same way, not with a `SyntaxError`.
+  it('a successful body that is not JSON rejects with the status and the text', async () => {
+    const { readResponse } = await importHelpers()
+    const error = await readResponse(new Response('<html>app</html>', { status: 200 })).catch(
+      (error_: unknown) => error_,
+    )
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(SyntaxError)
+    expect(error).toMatchObject({ status: 200, value: '<html>app</html>' })
+  })
+
+  // What fails before the response is read rejects with the same shape, its status 0; an abort is
+  // the library's own cancellation and is kept as it is.
+  it('turns a network error into a FetchError and keeps an abort', async () => {
+    const { toFetchError } = await importHelpers()
+    const network = new TypeError('Failed to fetch')
+    const error = toFetchError(network)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toMatchObject({ status: 0, value: network, message: 'Failed to fetch' })
+    const abort = new DOMException('aborted', 'AbortError')
+    expect(toFetchError(abort)).toBe(abort)
+    const kept = Object.assign(new Error('410 Gone'), { status: 410, value: 'gone' })
+    expect(toFetchError(kept)).toBe(kept)
+  })
+
+  // The read is awaited inside the guard: a body that fails while it is read is caught there too.
+  it('turns a body that fails while it is read into a FetchError', async () => {
+    const { readResponse, toFetchError } = await importHelpers()
+    const broken = new Response(
+      new ReadableStream({
+        pull(controller) {
+          controller.error(new TypeError('terminated'))
+        },
+      }),
+    )
+    const guarded = async () => {
+      try {
+        return await readResponse(broken)
+      } catch (error) {
+        throw toFetchError(error)
+      }
+    }
+    expect(await guarded().catch((error: unknown) => error)).toMatchObject({ status: 0 })
+    const code = await generateAndRead('tanstack-query')
+    expect(code).toContain('return await readResponse(res)')
+    expect(code).not.toContain('return readResponse(res')
+  })
+
+  it('says a successful body is not JSON', async () => {
+    const { readResponse } = await importHelpers()
+    const error = await readResponse(new Response('<html>app</html>', { status: 200 })).catch(
+      (error_: unknown) => error_,
+    )
+    expect(error).toMatchObject({ message: '200: the body is not JSON' })
+  })
+
+  it('guards every fetch, and types a stream-only hook as FetchError too', async () => {
+    const code = await generateAndRead('tanstack-query', {
+      ...api,
+      paths: {
+        '/events.txt': {
+          get: {
+            operationId: 'getEvents',
+            responses: { '200': { description: 'OK', content: { 'text/event-stream': {} } } },
+          },
+        },
+      },
+    })
+    expect(code).toContain('export type FetchError')
+    expect(code).toContain('TError = FetchError')
+    expect(code).not.toContain('function toFetchError')
+    const fetching = await generateAndRead('tanstack-query')
+    expect(fetching).toContain('throw toFetchError(error)')
+  })
+
+  it("types a fetch hook's error as FetchError", async () => {
+    const code = await generateAndRead('tanstack-query')
+    expect(code).toContain(
+      'export type FetchError = Error & { readonly status: number; readonly value: unknown }',
+    )
+    expect(code).toContain('TError = FetchError')
   })
 
   // Eden Treaty sends a `Date` as its ISO string, which a `format: date-time` parameter reads.
@@ -4028,7 +4128,7 @@ describe('fetch fallback', () => {
 
   it('the reviver turns the date strings Eden does into a Date and leaves the rest', async () => {
     const code = await generateAndRead('tanstack-query')
-    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export '))
+    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export function'))
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-reviver-'))
     const file = path.join(dir, 'reviver.ts')
     writeFileSync(file, `${source}\nexport { reviveDate }\n`)
