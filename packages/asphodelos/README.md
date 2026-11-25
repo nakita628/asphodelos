@@ -302,9 +302,9 @@ are read (JSON, then bytes, then text). An event stream (`text/event-stream`) is
 supported: a hook whose successful responses declare nothing else rejects with an `Error` that
 says so without sending the request, and is typed `unknown`.
 
-A JSON response without a body — a `204`, an empty `200` — resolves with `undefined`. TanStack Query
-does not take `undefined` as a query's data, so there a query hook, unlike a mutation hook, reports
-such a response as an error. A failed response
+A JSON response without a body — a `204`, an empty `200`, any `HEAD` — resolves with `null`, and
+its data is typed `null`: TanStack Query does not take `undefined` as a query's data, so every
+library and hook kind resolves the same. A failed response
 rejects with its JSON body, parsed the same way; when the body is not JSON (a proxy's HTML `502`,
 an empty `404`) it rejects with an `Error` that carries the `status` and the text as `value`. The
 `query` is written the way treaty writes it: a `Date` as its ISO string, an object as its JSON, an

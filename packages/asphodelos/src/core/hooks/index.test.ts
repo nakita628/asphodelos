@@ -3553,10 +3553,11 @@ describe('fetch fallback', () => {
   )
 
   // A response without content is typed `void`: there is no JSON in it to parse.
-  it('a response without a body resolves with undefined', async () => {
+  // TanStack Query does not take `undefined` as a query's data: every hook resolves with `null`.
+  it('a response without a body resolves with null', async () => {
     const { readResponse } = await importHelpers()
-    expect(await readResponse(new Response(null, { status: 204 }))).toBeUndefined()
-    expect(await readResponse(new Response('', { status: 200 }))).toBeUndefined()
+    expect(await readResponse(new Response(null, { status: 204 }))).toBeNull()
+    expect(await readResponse(new Response('', { status: 200 }))).toBeNull()
   })
 
   it('a JSON response resolves with its dates revived', async () => {
@@ -3745,7 +3746,7 @@ describe('fetch fallback', () => {
         '200': { description: 'OK' },
         '206': { description: 'Partial', content: { 'application/octet-stream': {} } },
       },
-      dataT: 'void | ArrayBuffer',
+      dataT: 'null | ArrayBuffer',
       read: "readResponse(res, { '200': 'json', '206': 'bytes', default: 'bytes' })",
     },
     {
@@ -3840,7 +3841,7 @@ describe('fetch fallback', () => {
   })
 
   // `default` is an error body more often than not: beside another status it is not the data.
-  it('types an operation with default beside an error status as void', async () => {
+  it('types an operation with default beside an error status as null', async () => {
     const code = await generateAndRead('tanstack-query', {
       ...api,
       paths: {
@@ -3859,7 +3860,7 @@ describe('fetch fallback', () => {
       },
       components: { schemas: { Job: { type: 'object' } } },
     })
-    expect(code).toContain('TData = void,')
+    expect(code).toContain('TData = null,')
     expect(code).not.toContain('JobSchema')
   })
 
@@ -3915,9 +3916,9 @@ describe('fetch fallback', () => {
     expect(code).toContain('TData = unknown,')
   })
 
-  it('a response without content stays typed void', async () => {
+  it('a response without content is typed null', async () => {
     const code = await generateAndRead('tanstack-query')
-    expect(code).toContain('TData = void,')
+    expect(code).toContain('TData = null,')
   })
 
   it('a JSON error body rejects with the body, its dates revived', async () => {
