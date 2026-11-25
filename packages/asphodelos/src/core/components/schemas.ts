@@ -10,6 +10,9 @@ import { collectSchemaRefs, sccSchemas } from '../../helper/schema.js'
 import type { Components, Schema } from '../../openapi/index.js'
 import { pascalCase, uncapitalize } from '../../utils/index.js'
 
+// The rename every generator's document goes through before its jobs are made.
+export { uniqueSchemaKeys } from '../../generator/components/index.js'
+
 function fileNameOf(group: readonly { name: string; schema: Schema }[]) {
   return uncapitalize(group.map((member) => member.name).toSorted()[0] ?? 'schema')
 }

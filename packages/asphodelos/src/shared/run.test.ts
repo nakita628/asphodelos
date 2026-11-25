@@ -75,6 +75,7 @@ async function runJobs(
   config: { [key: string]: unknown },
   seed?: (dir: string) => void,
   cwd = '.',
+  openAPI = OPENAPI,
 ) {
   const dir = mkdtempSync(path.join(PKG_ROOT, 'tmp-jobs-'))
   workdirs.push(dir)
@@ -84,7 +85,7 @@ async function runJobs(
   process.chdir(path.join(dir, cwd))
   try {
     const decoded = Effect.runSync(parseConfig({ input: 'openapi.yaml', ...config }))
-    const jobs = makeJob(OPENAPI, decoded)
+    const jobs = makeJob(openAPI, decoded)
     // Every job runs to its end before a failure is reported: the jobs write relative to the
     // working directory, and one still writing after it is restored would land in the package.
     const results = await Effect.runPromise(
@@ -510,5 +511,87 @@ describe('makeJob — every job actually runs', () => {
     })
     expect(run.logs.length).toBe(run.names.length)
     for (const line of run.logs) expect(line).toContain('Generated')
+  })
+})
+
+// Keys that differ only in case share a pascal-cased name, and every generator names a schema by
+// its key. The second key is renamed once, over the whole document, so they all name it alike.
+describe('makeJob — schema keys that differ only in case', () => {
+  const COLLIDING = {
+    openapi: '3.1.0',
+    info: { title: 'Collide', version: '1.0.0' },
+    paths: {
+      '/accounts': {
+        get: {
+          operationId: 'getAccount',
+          responses: {
+            '200': {
+              description: 'OK',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } },
+            },
+          },
+        },
+      },
+      '/users': {
+        get: {
+          operationId: 'getUser',
+          responses: {
+            '200': {
+              description: 'OK',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/user' } } },
+            },
+            '404': { $ref: '#/components/responses/Missing' },
+          },
+        },
+      },
+    },
+    components: {
+      schemas: {
+        User: { type: 'object', required: ['name'], properties: { name: { type: 'string' } } },
+        user: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
+      },
+      responses: {
+        Missing: {
+          description: 'missing',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/user' } } },
+        },
+      },
+    },
+  } as unknown as OpenAPI
+
+  it('every generator names the second key by its suffixed name', async () => {
+    const run = await runJobs(
+      {
+        output: 'src/index.ts',
+        types: { output: 'src/types.ts' },
+        mock: { output: 'src/mock.ts' },
+      },
+      undefined,
+      '.',
+      COLLIDING,
+    )
+    const schemas = run.read('src/components/schemas.ts')
+    expect(schemas).toContain('export const UserSchema = t.Object({ name: t.String() })')
+    expect(schemas).toContain('export const User2Schema = t.Object({ id: t.Integer(')
+    // A route that answers with `user` registers and names the model written for it …
+    const users = run.read('src/modules/users/index.ts')
+    expect(users).toContain("import { User2Schema } from '../../components/schemas'")
+    expect(users).toContain('.model({ User2: User2Schema })')
+    expect(users).toContain("response: { 200: 'User2', 404: 'User2' }")
+    // … and one that answers with `User` keeps the plain one.
+    const accounts = run.read('src/modules/accounts/index.ts')
+    expect(accounts).toContain('.model({ User: UserSchema })')
+    expect(accounts).toContain("response: { 200: 'User' }")
+    // The other component sections, the types and the mock follow.
+    expect(run.read('src/components/responses.ts')).toContain(
+      'export const MissingResponseSchema = User2Schema',
+    )
+    const types = run.read('src/types.ts')
+    expect(types).toContain('type User = { name: string }')
+    expect(types).toContain('type User2 = { id: number }')
+    expect(types).toContain('200: User2')
+    const mock = run.read('src/mock.ts')
+    expect(mock).toContain('function mockUser2() {')
+    expect(mock).toContain('return mockUser2()')
   })
 })

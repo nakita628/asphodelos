@@ -24,6 +24,7 @@ import {
   schemas,
   securitySchemes,
   types,
+  uniqueSchemaKeys,
 } from '../core/index.js'
 import { GenerateError } from '../error/index.js'
 import { readdir, unlink } from '../fsp/index.js'
@@ -201,7 +202,9 @@ function viewFrom(
   })
 }
 
-export function makeJob(openAPI: OpenAPI, config: Config) {
+export function makeJob(document: OpenAPI, config: Config) {
+  // Schema keys that differ only in case are told apart once, here, for every generator.
+  const openAPI = uniqueSchemaKeys(document)
   const { client: clientConfig, eden: edenConfig } = config
   const appOutput = config.output ?? 'src/index.ts'
   const baseDir = posix.normalize(posix.dirname(appOutput))
