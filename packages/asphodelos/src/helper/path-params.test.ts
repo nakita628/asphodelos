@@ -117,6 +117,32 @@ describe('isElysiaRoutePath', () => {
       warn.mockRestore()
     }
   })
+
+  // Elysia reads `:Sid.json` as the parameter `Sid.json`, so the params model rejects every request.
+  it('refuses static text after a path parameter in its segment, warning once per key', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(isElysiaRoutePath('/Accounts/{Sid}.json')).toBe(false)
+      expect(isElysiaRoutePath('/Accounts/{Sid}.json')).toBe(false)
+      expect(isElysiaRoutePath('/files/{name}{ext}')).toBe(false)
+      expect(warn.mock.calls).toStrictEqual([
+        [
+          "[asphodelos] path '/Accounts/{Sid}.json' has static text after a path parameter in its segment, which Elysia reads as part of the parameter name; it is left out of the app, its types, the mock, the Eden wrappers and the hooks",
+        ],
+        [
+          "[asphodelos] path '/files/{name}{ext}' has static text after a path parameter in its segment, which Elysia reads as part of the parameter name; it is left out of the app, its types, the mock, the Eden wrappers and the hooks",
+        ],
+      ])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  // The app routes a parameter after static text, `/v:version`, as the document means it.
+  it('accepts static text before a path parameter in its segment', () => {
+    expect(isElysiaRoutePath('/v{version}/items')).toBe(true)
+    expect(isElysiaRoutePath('/Accounts/{AccountSid}/Calls.json')).toBe(true)
+  })
 })
 
 // The spelling the controller registers a route by and the Eden chain is read off: Elysia reads a

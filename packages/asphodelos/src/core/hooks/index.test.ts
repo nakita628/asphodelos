@@ -647,37 +647,44 @@ export function useDeleteItemsId<
     expect(result).toStrictEqual('No operations found')
   })
 
-  // A segment that mixes a parameter with static text is the parameter Elysia names, `Sid.json`:
-  // the hook is typed by the client like any other, with nothing imported from the schemas.
-  it('types a parameter with static text after it by the client', async () => {
-    const code = await generateAndRead({
-      openapi: '3.1.0',
-      info: { title: 'T', version: '0' },
-      paths: {
-        '/Accounts/{Sid}.json': {
-          get: {
-            operationId: 'fetchAccount',
-            parameters: [{ name: 'Sid', in: 'path', required: true, schema: { type: 'string' } }],
-            responses: {
-              '200': {
-                description: 'ok',
-                content: {
-                  'application/json': { schema: { $ref: '#/components/schemas/Account' } },
-                },
-              },
+  // Elysia reads `/:Sid.json` as the parameter `Sid.json`, so the app leaves the key out, and with it
+  // the hook; a parameter with static text before it, `/v{version}`, stays.
+  it('leaves out a parameter with static text after it', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const code = await generateAndRead({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/Records/{Sid}.json': {
+            get: {
+              operationId: 'fetchAccount',
+              parameters: [{ name: 'Sid', in: 'path', required: true, schema: { type: 'string' } }],
+              responses: { '200': { description: 'ok' } },
+            },
+          },
+          '/Records/{AccountSid}/Calls.json': {
+            get: {
+              operationId: 'listCalls',
+              parameters: [
+                { name: 'AccountSid', in: 'path', required: true, schema: { type: 'string' } },
+              ],
+              responses: { '200': { description: 'ok' } },
             },
           },
         },
-      },
-      components: { schemas: { Account: { type: 'object' } } },
-    })
-    expect(code).toContain('params: Parameters<typeof client.Accounts>[0]')
-    expect(code).toMatch(
-      /Extract<\s*Awaited<ReturnType<ReturnType<typeof client\.Accounts>\['get'\]>>,\s*\{ error: null \}\s*>\['data'\]/u,
-    )
-    expect(code).toMatch(/await client\s*\.Accounts\(params\)\s*\.get\(clientOptions\)/u)
-    expect(code).not.toContain('Static')
-    expect(code).not.toContain('AccountSchema')
+      })
+      expect(code).toMatch(/await client\s*\.Records\(params\)\s*\['Calls\.json'\]\s*\.get\(/u)
+      expect(code).not.toContain('Sid.json')
+      expect(code).not.toContain('RecordsSidJson')
+      expect(warn.mock.calls).toStrictEqual([
+        [
+          "[asphodelos] path '/Records/{Sid}.json' has static text after a path parameter in its segment, which Elysia reads as part of the parameter name; it is left out of the app, its types, the mock, the Eden wrappers and the hooks",
+        ],
+      ])
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 
@@ -3442,8 +3449,7 @@ export function injectPostItems<
 })
 
 // Every hook calls the Eden treaty client, as treaty types the route the app registers: a segment
-// with a `.` is a bracketed property, a parameter with static text after it is the parameter
-// Elysia names, and the hooks file declares nothing of its own beside the hooks.
+// with a `.` is a bracketed property, and the hooks file declares nothing of its own beside the hooks.
 describe('the Eden client for every path', () => {
   const api: OpenAPI = {
     openapi: '3.1.0',
@@ -3453,13 +3459,6 @@ describe('the Eden client for every path', () => {
         get: { operationId: 'getWidget', responses: { '200': { description: 'OK' } } },
         head: { operationId: 'headWidget', responses: { '200': { description: 'OK' } } },
         post: { operationId: 'postWidget', responses: { '200': { description: 'OK' } } },
-      },
-      '/Accounts/{Sid}.json': {
-        get: {
-          operationId: 'fetchAccount',
-          parameters: [{ name: 'Sid', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: { '200': { description: 'OK' } },
-        },
       },
       '/Users/{AccountSid}/Calls.json': {
         get: {
@@ -3504,18 +3503,6 @@ describe('the Eden client for every path', () => {
       expect(code).toMatch(
         /await client\s*\.Users\((?:params|toValue\(params\))\)\s*\['Calls\.json'\]\s*\.get\(/u,
       )
-    },
-  )
-
-  // Elysia reads `/Accounts/:Sid.json` as the parameter `Sid.json`, and treaty is called with it:
-  // the hook takes the parameter as treaty types it, and its value is the whole segment.
-  it.each(libraries)(
-    '%s: a parameter with static text after it is called as Elysia names it',
-    async (library) => {
-      const code = await generateAndRead(library)
-      expect(code).toContain('Parameters<typeof client.Accounts>[0]')
-      expect(code).toMatch(/await client\s*\.Accounts\((?:params|toValue\(params\))\)\s*\.get\(/u)
-      expect(code).not.toMatch(/client\s*\.Accounts\s*\[/u)
     },
   )
 
