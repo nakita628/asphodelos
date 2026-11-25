@@ -3528,7 +3528,7 @@ describe('fetch fallback', () => {
     const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export function'))
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-helpers-'))
     const file = path.join(dir, 'helpers.ts')
-    writeFileSync(file, `${source}\nexport { readResponse, toSearch }\n`)
+    writeFileSync(file, `${source}\nexport { readResponse, toSearch, toFetchError }\n`)
     try {
       return (await import(file)) as {
         readonly readResponse: (
@@ -3536,6 +3536,7 @@ describe('fetch fallback', () => {
           as?: 'json' | 'text' | 'bytes' | 'stream' | { readonly [status: string]: string },
         ) => Promise<unknown>
         readonly toSearch: (query: { [key: string]: unknown } | undefined) => URLSearchParams
+        readonly toFetchError: (error: unknown) => unknown
       }
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -3884,7 +3885,7 @@ describe('fetch fallback', () => {
         },
       })
       expect(code).toContain(
-        "throw new Error('A text/event-stream response is not supported by a fetch hook')",
+        "new Error('A text/event-stream response is not supported by a fetch hook')",
       )
       expect(code).not.toContain('await fetch(')
       expect(code).not.toContain('clientOrigin')
@@ -3995,6 +3996,47 @@ describe('fetch fallback', () => {
     expect(error).toBeInstanceOf(Error)
     expect(error).not.toBeInstanceOf(SyntaxError)
     expect(error).toMatchObject({ status: 200, value: '<html>app</html>' })
+  })
+
+  // What fails before the response is read rejects with the same shape, its status 0; an abort is
+  // the library's own cancellation and is kept as it is.
+  it('turns a network error into a FetchError and keeps an abort', async () => {
+    const { toFetchError } = await importHelpers()
+    const network = new TypeError('Failed to fetch')
+    const error = toFetchError(network)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toMatchObject({ status: 0, value: network, message: 'Failed to fetch' })
+    const abort = new DOMException('aborted', 'AbortError')
+    expect(toFetchError(abort)).toBe(abort)
+    const kept = Object.assign(new Error('410 Gone'), { status: 410, value: 'gone' })
+    expect(toFetchError(kept)).toBe(kept)
+  })
+
+  it('says a successful body is not JSON', async () => {
+    const { readResponse } = await importHelpers()
+    const error = await readResponse(new Response('<html>app</html>', { status: 200 })).catch(
+      (error_: unknown) => error_,
+    )
+    expect(error).toMatchObject({ message: '200: the body is not JSON' })
+  })
+
+  it('guards every fetch, and types a stream-only hook as FetchError too', async () => {
+    const code = await generateAndRead('tanstack-query', {
+      ...api,
+      paths: {
+        '/events.txt': {
+          get: {
+            operationId: 'getEvents',
+            responses: { '200': { description: 'OK', content: { 'text/event-stream': {} } } },
+          },
+        },
+      },
+    })
+    expect(code).toContain('export type FetchError')
+    expect(code).toContain('TError = FetchError')
+    expect(code).not.toContain('function toFetchError')
+    const fetching = await generateAndRead('tanstack-query')
+    expect(fetching).toContain('throw toFetchError(error)')
   })
 
   it("types a fetch hook's error as FetchError", async () => {

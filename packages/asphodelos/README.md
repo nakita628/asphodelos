@@ -310,7 +310,9 @@ declared without content, and every `HEAD`, is typed `null`: TanStack Query does
 `FetchError`, exported from the hooks file and the hooks' default `TError`: an `Error` that carries
 the `status` and the body as `value`, the two members of Eden's error. `value` is the body parsed as
 JSON, dates revived, or its text when it is not JSON (a proxy's HTML `502`, an empty `404`). A
-successful response whose body is not the JSON it declares rejects the same way. The
+successful response whose body is not the JSON it declares rejects the same way, and so does
+whatever fails before a response is read — the network, an event stream the hook does not send —
+with `status` 0 and the error as `value`. Only an abort is left to the library as it is. The
 `query` is written the way treaty writes it: a `Date` as its ISO string, an object as its JSON, an
 array as its key repeated, and `null` and `undefined` left out.
 

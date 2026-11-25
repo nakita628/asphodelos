@@ -135,6 +135,8 @@ type Target = {
   readonly usesFetch: boolean
   /** Whether a `fetch` fallback builds a search string from the options' query. */
   readonly usesSearch: boolean
+  /** Whether a `fetch` fallback rejects with a `FetchError`, whose type the hooks file declares. */
+  readonly usesFetchError?: boolean
 }
 
 // Eden treaty projects a path onto a property/function tree, so a segment it cannot turn into a
@@ -353,13 +355,28 @@ const READER = 'readResponse'
 // and the body as `value`, parsed as JSON with its dates revived when it is JSON and the text
 // otherwise. These are the two members of Eden's error, the error is never falsy, and it has one
 // shape whatever the body is.
-const READER_CODE = `async function ${READER}(res:Response,as:Read|{readonly[status:string]:Read}='json'){const read=typeof as==='string'?as:(as[res.status]??as[\`\${String(res.status)[0]}XX\`]??as.default??'json');if(res.ok&&read==='stream'){await res.body?.cancel().catch(()=>{});throw Object.assign(new Error('A text/event-stream response is not supported by a fetch hook'),{status:res.status,value:undefined})}if(res.ok&&read==='bytes')return res.arrayBuffer();const text=await res.text();const fail=(value:unknown):FetchError=>Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value});if(res.ok){if(read==='text')return text;if(text.trim()==='')return null;try{return JSON.parse(text,${REVIVER})}catch{throw fail(text)}}let value:unknown;try{value=JSON.parse(text,${REVIVER})}catch{value=text}throw fail(value)}`
+const READER_CODE = `async function ${READER}(res:Response,as:Read|{readonly[status:string]:Read}='json'){const read=typeof as==='string'?as:(as[res.status]??as[\`\${String(res.status)[0]}XX\`]??as.default??'json');if(res.ok&&read==='stream'){await res.body?.cancel().catch(()=>{});throw Object.assign(new Error('A text/event-stream response is not supported by a fetch hook'),{status:res.status,value:undefined})}if(res.ok&&read==='bytes')return res.arrayBuffer();const text=await res.text();const fail=(value:unknown,note=''):FetchError=>Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()+note),{status:res.status,value});if(res.ok){if(read==='text')return text;if(text.trim()==='')return null;try{return JSON.parse(text,${REVIVER})}catch{throw fail(text,': the body is not JSON')}}let value:unknown;try{value=JSON.parse(text,${REVIVER})}catch{value=text}throw fail(value)}`
 
 /** How the reader reads a successful response, declared beside it. */
 const READ_TYPE_CODE = `type Read='json'|'text'|'bytes'|'stream'`
 
 /** What a `fetch` fallback rejects with: Eden's error, as an `Error`. */
 const ERROR_TYPE_CODE = `export type FetchError=Error&{readonly status:number;readonly value:unknown}`
+
+/** What turns anything a `fetch` fallback throws into a `FetchError`. */
+const TO_FETCH_ERROR = 'toFetchError'
+
+// A `FetchError` from the reader is kept. An abort is the library's own cancellation and is kept as
+// it is. Anything else (a network `TypeError`, a body that cannot be written) becomes a `FetchError`
+// with `status` 0 and the error as `value`, so every rejection has the shape the hooks' `TError`
+// says.
+const TO_FETCH_ERROR_CODE = `function ${TO_FETCH_ERROR}(error:unknown):unknown{if(error instanceof Error&&'status' in error&&'value' in error)return error;if(error instanceof Error&&error.name==='AbortError')return error;return Object.assign(new Error(error instanceof Error?error.message:String(error)),{status:0,value:error})}`
+
+// Whatever fails before the response is read (the network, a body `JSON.stringify` cannot write)
+// rejects with a `FetchError` too, its `status` 0 and the error as `value`.
+function guard(body: string) {
+  return `try{${body}}catch(error){throw ${TO_FETCH_ERROR}(error)}`
+}
 
 /** What builds a `fetch` fallback's search string from the options' query. */
 const SEARCH = 'toSearch'
@@ -403,7 +420,7 @@ function fetchTarget(
   // An operation that answers with nothing but an event stream cannot be read: the hook rejects
   // without opening the stream, so a library's retries do not open it again and again.
   const streamOnly = reads === 'stream'
-  const unsupported = `throw new Error('A text/event-stream response is not supported by a fetch hook')`
+  const unsupported = `throw Object.assign(new Error('A text/event-stream response is not supported by a fetch hook'),{status:0,value:undefined})`
   const url = (exprs: readonly string[]) => {
     const inner = fullPath.replaceAll(/\{([^}]+)\}/gu, (_, n: string) => {
       const index = names.indexOf(n)
@@ -423,22 +440,26 @@ function fetchTarget(
     hasKeyArgs: hasQuery,
     keyDrops: ['headers'],
     dataT,
-    // A hook that sends no request rejects with the plain `Error` that says why.
-    errorT: streamOnly ? 'Error' : 'FetchError',
+    errorT: 'FetchError',
     ...(withBody ? { bodyType: 'unknown' } : {}),
     bodyRequired: false,
     queryBody: (exprs, options, signal) =>
       streamOnly
         ? unsupported
-        : `${search(options)}const res=await fetch(${url(exprs)},{${method === 'head' ? "method:'HEAD'," : ''}headers:${options}?.headers${signal ? ',signal' : ''}});${read}`,
+        : guard(
+            `${search(options)}const res=await fetch(${url(exprs)},{${method === 'head' ? "method:'HEAD'," : ''}headers:${options}?.headers${signal ? ',signal' : ''}});${read}`,
+          ),
     mutationBody: (exprs, body, options) =>
       streamOnly
         ? unsupported
-        : `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});${read}`,
+        : guard(
+            `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});${read}`,
+          ),
     fetchTypes: importNames,
     // A hook that sends no request needs neither the client's origin nor the helpers.
     usesFetch: !streamOnly,
     usesSearch: hasQuery && !streamOnly,
+    usesFetchError: true,
   }
 }
 
@@ -918,6 +939,7 @@ function operationCode(
     fetchTypes: target.fetchTypes,
     usesFetch: target.usesFetch,
     usesSearch: target.usesSearch,
+    usesFetchError: target.usesFetchError === true,
   }
 }
 
@@ -1046,7 +1068,8 @@ export function makeQueryHooks(
     if (operations.length === 0) return 'No operations found'
     const usesFetch = operations.some((op) => op.usesFetch)
     const body = `${[
-      ...(usesFetch ? [REVIVER_CODE, READ_TYPE_CODE, ERROR_TYPE_CODE, READER_CODE] : []),
+      ...(operations.some((op) => op.usesFetchError) ? [ERROR_TYPE_CODE] : []),
+      ...(usesFetch ? [REVIVER_CODE, READ_TYPE_CODE, READER_CODE, TO_FETCH_ERROR_CODE] : []),
       ...(operations.some((op) => op.usesSearch) ? [SEARCH_CODE] : []),
       ...makePrefixKeyCodes(openAPI, prefix),
       ...operations.map((op) => op.code),
