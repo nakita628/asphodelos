@@ -128,28 +128,17 @@ function edenRun(
   })
 }
 
-/**
- * A hooks job's run: one library's hooks, importing the client from where `importPath` answers
- * and the schemas from where `view` says.
- */
+/** A hooks job's run: one library's hooks, importing the client from where `importPath` answers. */
 function hooksRun(
   openAPI: OpenAPI,
   output: string,
   importPath: Import,
   library: (typeof HOOK_KINDS)[number],
-  view: Effect.Effect<View, never, FileSystem.FileSystem>,
-  componentsOutput: string | undefined,
-  options: Omit<Parameters<typeof hooks>[4], 'schemas'>,
+  options: Parameters<typeof hooks>[4],
 ) {
   return Effect.gen(function* () {
-    const [specifier, seen] = yield* Effect.all([importPath, view])
-    // Where the schemas end up: the single components file, or the schemas target — the same
-    // answer the app generator gives, from where the hooks are written.
-    const schemasTarget =
-      componentsOutput === undefined
-        ? seen.targets.schemas
-        : { output: componentsOutput, import: seen.componentsImport }
-    return yield* hooks(openAPI, output, specifier, library, { ...options, schemas: schemasTarget })
+    const specifier = yield* importPath
+    return yield* hooks(openAPI, output, specifier, library, options)
   })
 }
 
@@ -372,15 +361,10 @@ export function makeJob(document: OpenAPI, config: Config) {
             output: cfg.output,
             split: false,
             run: (output: string) =>
-              hooksRun(
-                openAPI,
-                output,
-                clientImport(library, output),
-                library,
-                view(output),
-                componentsOutput,
-                { client: 'client', basePath: config.prefix },
-              ),
+              hooksRun(openAPI, output, clientImport(library, output), library, {
+                client: 'client',
+                basePath: config.prefix,
+              }),
           }
         : undefined
     }),

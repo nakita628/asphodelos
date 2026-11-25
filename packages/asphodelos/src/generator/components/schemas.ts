@@ -101,23 +101,6 @@ function resolveUniqueNames(keys: readonly string[]): ReadonlyMap<string, string
   ).map
 }
 
-/**
- * The schema const the schemas generator writes for each `components.schemas` key, so a generator
- * that names a component from outside (a hook typing its data by one) names the const that was
- * actually written. The names are resolved over the whole document, whether the output is one
- * file or split: a split output writes the same consts, one file per group.
- */
-export function schemaConstNames(
-  schemas: { readonly [k: string]: Schema } | undefined,
-): ReadonlyMap<string, string> {
-  if (!schemas) return new Map()
-  return new Map(
-    [...resolveUniqueNames(Object.keys(schemas))].map(
-      ([key, unique]) => [key, `${unique}Schema`] as const,
-    ),
-  )
-}
-
 // What a schema carries as data rather than as schemas: a `$ref` member in there is a value.
 // A link's `parameters` and `requestBody` are runtime expressions or literal values, and an `x-`
 // extension is the user's own data.
@@ -260,7 +243,7 @@ export function uniqueSchemaKeys(openAPI: OpenAPI): OpenAPI {
  * its unique name (`User2`), and every `$ref` to it pointed at the new key. Everything that names
  * a schema by its key — the const and the type, a `$ref` rendered as a const, a sibling file's
  * import, the file a split output writes it to — then names the one that was written for it. The
- * names are those of {@link schemaConstNames}, so the rename has to be made over the whole
+ * names are those of {@link resolveUniqueNames}, so the rename has to be made over the whole
  * document, before it is split into files. A document without colliding keys is returned as it is.
  */
 export function uniqueSchemas(schemas: { readonly [k: string]: Schema }): {

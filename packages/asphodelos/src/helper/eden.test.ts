@@ -99,6 +99,33 @@ describe('edenChain', () => {
     })
   })
 
+  // Treaty keys a route on the path as Elysia registers it: a parameter runs from its `:` to the
+  // end of the segment, so static text after it is part of the parameter's name.
+  it('calls a parameter with static text after it as the parameter Elysia names', () => {
+    expect(edenChain('/Accounts/{Sid}.json', 'app', 'get')).toStrictEqual({
+      callExpr: 'app.Accounts(params).get',
+      methodHostTypeExpr: "ReturnType<typeof app.Accounts>['get']",
+      paramArgs: [{ name: 'params', typeExpr: 'Parameters<typeof app.Accounts>[0]' }],
+    })
+  })
+
+  // A segment that starts with static text is a property, however much of it is a parameter.
+  it('reads a segment with a parameter after its start as a property of its Elysia spelling', () => {
+    expect(edenChain('/v{version}/items', 'app', 'get')).toStrictEqual({
+      callExpr: "app['v:version'].items.get",
+      methodHostTypeExpr: "typeof app['v:version']['items']['get']",
+      paramArgs: [],
+    })
+  })
+
+  it('reads a segment with a `.` after a path param as a bracketed property', () => {
+    expect(edenChain('/Users/{AccountSid}/Calls.json', 'app', 'post')).toStrictEqual({
+      callExpr: "app.Users(params)['Calls.json'].post",
+      methodHostTypeExpr: "ReturnType<typeof app.Users>['Calls.json']['post']",
+      paramArgs: [{ name: 'params', typeExpr: 'Parameters<typeof app.Users>[0]' }],
+    })
+  })
+
   it('escapes single quotes in non-identifier segments', () => {
     expect(edenChain("/a'b", 'app', 'get')).toStrictEqual({
       callExpr: "app['a\\'b'].get",

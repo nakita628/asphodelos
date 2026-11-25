@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { describe, expect, it, spyOn } from 'bun:test'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -7,8 +7,8 @@ import { Effect } from 'effect'
 
 import { fileSystemLayer } from '../../fsp/index.js'
 import { makeQueryHooks } from '../../helper/query.js'
-import type { Content, OpenAPI, Operation } from '../../openapi/index.js'
-import { HOOK_CONFIGS, hooks } from './index.js'
+import type { OpenAPI } from '../../openapi/index.js'
+import { HOOK_CONFIGS } from './index.js'
 
 describe('swr generator', () => {
   const swr = (
@@ -355,24 +355,36 @@ export function useInfiniteGetItems<
     expect(code).toBe(expected)
   })
 
-  it('GET on a path key with its own query string: the fetch fallback appends the query with `&`', async () => {
-    const code = await generateAndRead({
-      openapi: '3.1.0',
-      info: { title: 'T', version: '0' },
-      paths: {
-        '/jobs/{id}?beta=true': {
-          get: {
-            operationId: 'getJobBeta',
-            parameters: [
-              { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
-              { name: 'limit', in: 'query', schema: { type: 'integer' } },
-            ],
-            responses: { '204': { description: 'ok' } },
+  // Elysia reads `:id?` as an optional parameter, so the key is not in the app and treaty has no
+  // route for it; the path beside it keeps its hook.
+  it('GET on a path key with its own query string after a parameter: no hook', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const code = await generateAndRead({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/jobs/{id}?beta=true': {
+            get: {
+              operationId: 'getJobBeta',
+              parameters: [
+                { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+                { name: 'limit', in: 'query', schema: { type: 'integer' } },
+              ],
+              responses: { '204': { description: 'ok' } },
+            },
+          },
+          '/jobs/{id}': {
+            get: { operationId: 'getJob', responses: { '200': { description: 'ok' } } },
           },
         },
-      },
-    })
-    expect(code).toContain('?beta=true${search.size ? `&${search}`')
+      })
+      expect(code).toContain('export function useGetJobsId<')
+      expect(code).toContain('await client.jobs(params).get(clientOptions)')
+      expect(code).not.toContain('beta')
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('GET with path parameter: keyGetter + hook thread `params` ahead of `options`', async () => {
@@ -635,58 +647,37 @@ export function useDeleteItemsId<
     expect(result).toStrictEqual('No operations found')
   })
 
-  // Eden cannot type a segment that mixes a parameter with static text, so the hook falls back
-  // to `fetch` and types its data by the response's component — whose schema const has to be
-  // imported from the schemas module the config writes. Only the const is exported by default
-  // (its type alias, `Account`, needs `exportTypes`), so the data is `Static` of it.
-  it('imports the response component a fetch fallback hook is typed by', async () => {
-    const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-swr-fetch-'))
-    process.chdir(dir)
-    try {
-      await Effect.runPromise(
-        makeQueryHooks(
-          {
-            openapi: '3.1.0',
-            info: { title: 'T', version: '0' },
-            paths: {
-              '/Accounts/{Sid}.json': {
-                get: {
-                  operationId: 'fetchAccount',
-                  parameters: [
-                    { name: 'Sid', in: 'path', required: true, schema: { type: 'string' } },
-                  ],
-                  responses: {
-                    '200': {
-                      description: 'ok',
-                      content: {
-                        'application/json': {
-                          schema: { $ref: '#/components/schemas/Account' },
-                        },
-                      },
-                    },
-                  },
+  // A segment that mixes a parameter with static text is the parameter Elysia names, `Sid.json`:
+  // the hook is typed by the client like any other, with nothing imported from the schemas.
+  it('types a parameter with static text after it by the client', async () => {
+    const code = await generateAndRead({
+      openapi: '3.1.0',
+      info: { title: 'T', version: '0' },
+      paths: {
+        '/Accounts/{Sid}.json': {
+          get: {
+            operationId: 'fetchAccount',
+            parameters: [{ name: 'Sid', in: 'path', required: true, schema: { type: 'string' } }],
+            responses: {
+              '200': {
+                description: 'ok',
+                content: {
+                  'application/json': { schema: { $ref: '#/components/schemas/Account' } },
                 },
               },
             },
-            components: { schemas: { Account: { type: 'object' } } },
           },
-          'src/hooks/swr.ts',
-          '../client',
-          HOOK_CONFIGS.swr,
-          'client',
-          undefined,
-          '../components/schemas',
-        ).pipe(Effect.provide(fileSystemLayer)),
-      )
-      const code = readFileSync(path.join(dir, 'src/hooks/swr.ts'), 'utf8')
-      expect(code).toContain("import type { Static } from 'elysia'")
-      expect(code).toContain("import type { AccountSchema } from '../components/schemas'")
-      expect(code).toContain('useSWR<Static<typeof AccountSchema>, TError>')
-    } finally {
-      process.chdir(cwd)
-      rmSync(dir, { recursive: true, force: true })
-    }
+        },
+      },
+      components: { schemas: { Account: { type: 'object' } } },
+    })
+    expect(code).toContain('params: Parameters<typeof client.Accounts>[0]')
+    expect(code).toMatch(
+      /Extract<\s*Awaited<ReturnType<ReturnType<typeof client\.Accounts>\['get'\]>>,\s*\{ error: null \}\s*>\['data'\]/u,
+    )
+    expect(code).toMatch(/await client\s*\.Accounts\(params\)\s*\.get\(clientOptions\)/u)
+    expect(code).not.toContain('Static')
+    expect(code).not.toContain('AccountSchema')
   })
 })
 
@@ -3450,26 +3441,32 @@ export function injectPostItems<
   })
 })
 
-// A path Eden cannot type falls back to `fetch`. Its URL starts at the origin the client module
-// exports, so the request goes where the client's do — not to the page's origin, and not to a
-// bare path that a runtime without a page rejects. Its path parameters are named the way the
-// Eden hooks name theirs, so one the document calls `clientOrigin` or `search` hides nothing.
-describe('fetch fallback', () => {
+// Every hook calls the Eden treaty client, as treaty types the route the app registers: a segment
+// with a `.` is a bracketed property, a parameter with static text after it is the parameter
+// Elysia names, and the hooks file declares nothing of its own beside the hooks.
+describe('the Eden client for every path', () => {
   const api: OpenAPI = {
     openapi: '3.1.0',
     info: { title: 'Widget', version: '1' },
     paths: {
       '/widget.json': {
         get: { operationId: 'getWidget', responses: { '200': { description: 'OK' } } },
+        head: { operationId: 'headWidget', responses: { '200': { description: 'OK' } } },
         post: { operationId: 'postWidget', responses: { '200': { description: 'OK' } } },
       },
-      '/files/{clientOrigin}/{search}.txt': {
+      '/Accounts/{Sid}.json': {
         get: {
-          operationId: 'getFile',
+          operationId: 'fetchAccount',
+          parameters: [{ name: 'Sid', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+      '/Users/{AccountSid}/Calls.json': {
+        get: {
+          operationId: 'listCalls',
           parameters: [
-            { name: 'clientOrigin', in: 'path', required: true, schema: { type: 'string' } },
-            { name: 'search', in: 'path', required: true, schema: { type: 'string' } },
-            { name: 'raw', in: 'query', schema: { type: 'boolean' } },
+            { name: 'AccountSid', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'page', in: 'query', schema: { type: 'integer' } },
           ],
           responses: { '200': { description: 'OK' } },
         },
@@ -3479,7 +3476,7 @@ describe('fetch fallback', () => {
 
   const generateAndRead = async (library: keyof typeof HOOK_CONFIGS, openAPI = api) => {
     const cwd = process.cwd()
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-eden-'))
     process.chdir(dir)
     try {
       await Effect.runPromise(
@@ -3494,745 +3491,109 @@ describe('fetch fallback', () => {
     }
   }
 
-  it.each(['tanstack-query', 'swr'] as const)(
-    '%s: queries and mutations fetch from the origin the client module exports',
+  const libraries = Object.keys(HOOK_CONFIGS) as (keyof typeof HOOK_CONFIGS)[]
+
+  // The formatter may break a long chain before a member: `client\n  .Users(params)\n  [...]`.
+  it.each(libraries)(
+    '%s: a segment with a `.` is a bracketed property of the client',
     async (library) => {
       const code = await generateAndRead(library)
-      expect(code).toContain("import { client, clientOrigin } from './lib'")
-      expect(code).toContain('await fetch(`${clientOrigin}/widget.json`, {')
+      expect(code).toMatch(/await client\s*\['widget\.json'\]\s*\.get\(/u)
+      expect(code).toMatch(/await client\s*\['widget\.json'\]\s*\.head\(/u)
+      expect(code).toMatch(/await client\s*\['widget\.json'\]\s*\.post\(/u)
       expect(code).toMatch(
-        /await fetch\(\s*`\$\{clientOrigin\}\/files\/\$\{encodeURIComponent\(params\)\}\/\$\{encodeURIComponent\(params2\)\}\.txt\$\{search\.size/u,
+        /await client\s*\.Users\((?:params|toValue\(params\))\)\s*\['Calls\.json'\]\s*\.get\(/u,
       )
-      expect(code).toContain('params: string,\n  params2: string,')
-      expect(code).not.toMatch(/fetch\(`\//u)
     },
   )
 
-  // Eden Treaty turns a date string in a JSON response into a `Date`, and `Static` of a response
-  // component says `Date` for a `format: date-time` string. The fallback parses with a reviver of
-  // its own, so it hands over what the Eden hooks do and what its type says.
-  it.each(['tanstack-query', 'swr'] as const)(
-    '%s: a response is parsed with the date reviver',
+  // Elysia reads `/Accounts/:Sid.json` as the parameter `Sid.json`, and treaty is called with it:
+  // the hook takes the parameter as treaty types it, and its value is the whole segment.
+  it.each(libraries)(
+    '%s: a parameter with static text after it is called as Elysia names it',
     async (library) => {
       const code = await generateAndRead(library)
-      expect(code).toContain('function reviveDate(_key: string, value: unknown) {')
-      expect(code).toContain('JSON.parse(text, reviveDate)')
-      expect(code).not.toContain('JSON.parse(text)')
-      expect(code).not.toContain('res.json()')
+      expect(code).toContain('Parameters<typeof client.Accounts>[0]')
+      expect(code).toMatch(/await client\s*\.Accounts\((?:params|toValue\(params\))\)\s*\.get\(/u)
+      expect(code).not.toMatch(/client\s*\.Accounts\s*\[/u)
     },
   )
 
-  // The helpers the fallback hooks call, as the hooks file carries them.
-  const importHelpers = async () => {
-    const code = await generateAndRead('tanstack-query')
-    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export function'))
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-helpers-'))
-    const file = path.join(dir, 'helpers.ts')
-    writeFileSync(file, `${source}\nexport { readResponse, toSearch, toFetchError }\n`)
+  // The data, the error and the request options are treaty's, so the hooks file needs nothing but
+  // the library and the client: no request of its own, no reader, no helper.
+  it.each(libraries)(
+    '%s: the hooks file imports the client alone and declares no helper',
+    async (library) => {
+      const code = await generateAndRead(library)
+      expect(code).toContain("import { client } from './lib'")
+      expect(code).not.toMatch(/\bfetch\(/u)
+      expect(code).not.toContain('clientOrigin')
+      expect(code).not.toContain('JSON.parse')
+      expect(code).not.toContain("from 'elysia'")
+      expect(code).not.toMatch(/^(?:async\s+)?function\s|^(?:const|let|type|class)\s/mu)
+    },
+  )
+
+  // A path key with a query string after a path parameter is not in the app, so treaty has no
+  // route for it: it has no hook, and no prefix key that only it would name.
+  it('leaves out a path key with a query string after a path parameter', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
     try {
-      return (await import(file)) as {
-        readonly readResponse: (
-          res: Response,
-          as?: 'json' | 'text' | 'bytes' | 'stream' | { readonly [status: string]: string },
-        ) => Promise<unknown>
-        readonly toSearch: (query: { [key: string]: unknown } | undefined) => URLSearchParams
-        readonly toFetchError: (error: unknown) => unknown
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-
-  it.each(['tanstack-query', 'swr'] as const)(
-    '%s: queries and mutations read the response and build the search string with the helpers',
-    async (library) => {
-      const code = await generateAndRead(library)
-      expect(code).toContain('return await readResponse(res)')
-      expect(code).toMatch(/const search = toSearch\(\w+\?\.query\)/u)
-      expect(code).not.toContain('String(v)')
-    },
-  )
-
-  // A response without content is typed `null`: there is no JSON in it to parse.
-  // TanStack Query does not take `undefined` as a query's data: every hook resolves with `null`.
-  it('a response without a body resolves with null', async () => {
-    const { readResponse } = await importHelpers()
-    expect(await readResponse(new Response(null, { status: 204 }))).toBeNull()
-    expect(await readResponse(new Response('', { status: 200 }))).toBeNull()
-    expect(await readResponse(new Response('\n', { status: 200 }))).toBeNull()
-  })
-
-  it('a JSON response resolves with its dates revived', async () => {
-    const { readResponse } = await importHelpers()
-    expect(
-      await readResponse(Response.json({ id: 1, at: '2026-11-24T03:10:22.000Z' })),
-    ).toStrictEqual({ id: 1, at: new Date('2026-11-24T03:10:22.000Z') })
-  })
-
-  // A path with a `.txt` or `.pdf` segment is the kind that falls back, and its body is not JSON:
-  // a response the document declares as text or as another media type is read as declared.
-  it('a response read as text resolves with its text, as it is', async () => {
-    const { readResponse } = await importHelpers()
-    const text = (body: string) => readResponse(new Response(body), 'text')
-    expect(await text('id,name\n1,Alice\n')).toBe('id,name\n1,Alice\n')
-    // The text is what the hook's `string` says: not a number, not JSON, and not `undefined`.
-    expect(await text('42')).toBe('42')
-    expect(await text('{"id":1}')).toBe('{"id":1}')
-    expect(await text('')).toBe('')
-  })
-
-  it('a response read as bytes resolves with its bytes, empty or not', async () => {
-    const { readResponse } = await importHelpers()
-    const bytes = async (body: Uint8Array) => [
-      ...new Uint8Array((await readResponse(new Response(body), 'bytes')) as ArrayBuffer),
-    ]
-    expect(await bytes(new Uint8Array([0, 159, 255]))).toStrictEqual([0, 159, 255])
-    expect(await bytes(new Uint8Array())).toStrictEqual([])
-  })
-
-  it('a failed response rejects the same way however it is read', async () => {
-    const { readResponse } = await importHelpers()
-    for (const as of ['text', 'bytes'] as const) {
-      const res = new Response('gone', { status: 410 })
-      expect(await readResponse(res, as).catch((error: unknown) => error)).toMatchObject({
-        status: 410,
-        value: 'gone',
-      })
-    }
-  })
-
-  // The hook reads the response as the document declares it, and types its data as what is read.
-  const declared: readonly {
-    name: string
-    content: Content
-    dataT: string
-    read: string
-  }[] = [
-    {
-      name: 'text/plain',
-      content: { 'text/plain': { schema: { type: 'string' } } },
-      dataT: 'string',
-      read: "readResponse(res, 'text')",
-    },
-    {
-      name: 'text/csv with a charset',
-      content: { 'text/csv; charset=utf-8': {} },
-      dataT: 'string',
-      read: "readResponse(res, 'text')",
-    },
-    {
-      name: 'application/octet-stream',
-      content: { 'application/octet-stream': {} },
-      dataT: 'ArrayBuffer',
-      read: "readResponse(res, 'bytes')",
-    },
-    {
-      name: 'application/pdf',
-      content: { 'application/pdf': {} },
-      dataT: 'ArrayBuffer',
-      read: "readResponse(res, 'bytes')",
-    },
-    {
-      name: 'text beside another media type',
-      content: { 'text/csv': {}, 'application/pdf': {} },
-      dataT: 'ArrayBuffer',
-      read: "readResponse(res, 'bytes')",
-    },
-    {
-      name: 'a JSON media type without a schema',
-      content: { 'application/problem+json': {}, 'text/plain': {} },
-      dataT: 'unknown',
-      read: 'readResponse(res)',
-    },
-    {
-      name: 'text in a charset other than UTF-8',
-      content: { 'text/csv; charset=Shift_JIS': {} },
-      dataT: 'ArrayBuffer',
-      read: "readResponse(res, 'bytes')",
-    },
-    {
-      name: 'text in UTF-8, spelled out',
-      content: { 'text/csv;charset="UTF-8"': {} },
-      dataT: 'string',
-      read: "readResponse(res, 'text')",
-    },
-    {
-      name: 'a media range',
-      content: { '*/*': { schema: { type: 'object' } } },
-      dataT: 'unknown',
-      read: 'readResponse(res)',
-    },
-    {
-      name: 'a JSON type under another name',
-      content: { 'text/json': {} },
-      dataT: 'unknown',
-      read: 'readResponse(res)',
-    },
-    {
-      name: 'an event stream beside JSON',
-      content: { 'text/event-stream': {}, 'application/json': {} },
-      dataT: 'unknown',
-      read: 'readResponse(res)',
-    },
-  ]
-  it.each(declared)(
-    'a response declared as $name is typed $dataT',
-    async ({ content, dataT, read }) => {
-      for (const library of ['tanstack-query', 'swr'] as const) {
-        const code = await generateAndRead(library, {
-          ...api,
-          paths: {
-            '/report.txt': {
-              get: {
-                operationId: 'getReport',
-                responses: { '200': { description: 'OK', content } },
-              },
-            },
-          },
-        })
-        expect(code).toContain(`return await ${read}\n`)
-        expect(code).toContain(library === 'swr' ? `useSWR<${dataT}, TError>` : `TData = ${dataT},`)
-      }
-    },
-  )
-
-  // Where the statuses are declared as different media types, each response is read by its own.
-  it('a response read by status follows the exact code, then its range, then JSON', async () => {
-    const { readResponse } = await importHelpers()
-    const as = { '200': 'text', '206': 'bytes', '2XX': 'text' }
-    expect(await readResponse(new Response('{"id":1}'), as)).toBe('{"id":1}')
-    const partial = await readResponse(new Response(new Uint8Array([1, 2]), { status: 206 }), as)
-    expect([...new Uint8Array(partial as ArrayBuffer)]).toStrictEqual([1, 2])
-    expect(await readResponse(new Response('a,b', { status: 203 }), as)).toBe('a,b')
-    expect(
-      await readResponse(new Response('{"id":1}', { status: 202 }), { '200': 'text' }),
-    ).toStrictEqual({ id: 1 }) // A status no entry lists is read the widest way they are, given as `default`.
-    const fallback = { '200': 'text', '206': 'bytes', default: 'bytes' }
-    const other = await readResponse(new Response('a,b', { status: 203 }), fallback)
-    expect(new TextDecoder().decode(other as ArrayBuffer)).toBe('a,b')
-  })
-
-  it('an event stream rejects with an Error that says it is not supported', async () => {
-    const { readResponse } = await importHelpers()
-    const error = await readResponse(new Response('data: 1\n\n'), 'stream').catch(
-      (error_: unknown) => error_,
-    )
-    expect(error).toBeInstanceOf(Error)
-    expect(error).toMatchObject({
-      status: 200,
-      message: 'A text/event-stream response is not supported by a fetch hook',
-    })
-  })
-
-  const statuses: readonly {
-    name: string
-    responses: Operation['responses']
-    dataT: string
-    read: string
-  }[] = [
-    {
-      name: 'text beside a JSON schema on another status',
-      responses: {
-        '200': { description: 'OK', content: { 'text/csv': {} } },
-        '202': {
-          description: 'Accepted',
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
-        },
-      },
-      dataT: 'string | Static<typeof JobSchema>',
-      read: "readResponse(res, { '200': 'text', '202': 'json' })",
-    },
-    {
-      name: 'no content beside bytes on another status',
-      responses: {
-        '200': { description: 'OK' },
-        '206': { description: 'Partial', content: { 'application/octet-stream': {} } },
-      },
-      dataT: 'null | ArrayBuffer',
-      read: "readResponse(res, { '200': 'json', '206': 'bytes', default: 'bytes' })",
-    },
-    {
-      name: 'text on default alone',
-      responses: { default: { description: 'Any', content: { 'text/plain': {} } } },
-      dataT: 'string',
-      read: "readResponse(res, 'text')",
-    },
-    {
-      name: 'text beside bytes on another status',
-      responses: {
-        '200': { description: 'OK', content: { 'text/csv': {} } },
-        '206': { description: 'Partial', content: { 'application/octet-stream': {} } },
-      },
-      dataT: 'string | ArrayBuffer',
-      read: "readResponse(res, { '200': 'text', '206': 'bytes', default: 'bytes' })",
-    },
-    {
-      name: 'an exact JSON code beside a range of text',
-      responses: {
-        '200': {
-          description: 'OK',
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
-        },
-        '2XX': { description: 'Other', content: { 'text/plain': {} } },
-      },
-      dataT: 'Static<typeof JobSchema> | string',
-      read: "readResponse(res, { '200': 'json', '2XX': 'text' })",
-    },
-    {
-      name: 'a schema beside an inline one',
-      responses: {
-        '200': {
-          description: 'OK',
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
-        },
-        '201': {
-          description: 'Created',
-          content: { 'application/json': { schema: { type: 'object' } } },
-        },
-      },
-      dataT: 'unknown',
-      read: 'readResponse(res)',
-    },
-    {
-      name: 'text on every status',
-      responses: {
-        '200': { description: 'OK', content: { 'text/plain': {} } },
-        '2xx': { description: 'Other', content: { 'text/csv': {} } },
-      },
-      dataT: 'string',
-      read: "readResponse(res, 'text')",
-    },
-  ]
-  it.each(statuses)('a response with $name is typed $dataT', async ({ responses, dataT, read }) => {
-    for (const library of ['tanstack-query', 'swr'] as const) {
-      const code = await generateAndRead(library, {
-        ...api,
-        paths: { '/report.txt': { get: { operationId: 'getReport', responses } } },
-        components: {
-          schemas: { Job: { type: 'object', properties: { id: { type: 'string' } } } },
-        },
-      })
-      expect(code).toContain(`return await ${read}\n`)
-      expect(code).toContain(library === 'swr' ? `useSWR<${dataT}, TError>` : `TData = ${dataT},`)
-    }
-  })
-
-  it('imports a schema const only when its type is spelled out', async () => {
-    const code = await generateAndRead('tanstack-query', {
-      ...api,
-      paths: {
-        '/report.txt': {
-          get: {
-            operationId: 'getReport',
-            responses: {
-              '200': {
-                description: 'OK',
-                content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
-              },
-              '201': {
-                description: 'Created',
-                content: { 'application/json': { schema: { type: 'object' } } },
-              },
-            },
-          },
-        },
-      },
-      components: { schemas: { Job: { type: 'object' } } },
-    })
-    expect(code).not.toContain('JobSchema')
-  })
-
-  // `default` is an error body more often than not: beside another status it is not the data.
-  it('types an operation with default beside an error status as null', async () => {
-    const code = await generateAndRead('tanstack-query', {
-      ...api,
-      paths: {
-        '/report.txt': {
-          get: {
-            operationId: 'getReport',
-            responses: {
-              '302': { description: 'Found' },
-              default: {
-                description: 'Error',
-                content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
-              },
-            },
-          },
-        },
-      },
-      components: { schemas: { Job: { type: 'object' } } },
-    })
-    expect(code).toContain('TData = null,')
-    expect(code).not.toContain('JobSchema')
-  })
-
-  // A hook that can never read its stream rejects without opening it, so a retry costs nothing.
-  it('rejects an operation that answers with only an event stream without a request', async () => {
-    for (const library of ['tanstack-query', 'swr'] as const) {
-      const code = await generateAndRead(library, {
+      const code = await generateAndRead('tanstack-query', {
         ...api,
         paths: {
-          '/events.txt': {
+          '/archives/{archive_id}?legacy=true': {
             get: {
-              operationId: 'getEvents',
-              responses: { '200': { description: 'OK', content: { 'text/event-stream': {} } } },
+              operationId: 'getArchiveLegacy',
+              parameters: [
+                { name: 'archive_id', in: 'path', required: true, schema: { type: 'string' } },
+              ],
+              responses: { '200': { description: 'OK' } },
             },
-            post: {
-              operationId: 'postEvents',
-              responses: { '200': { description: 'OK', content: { 'text/event-stream': {} } } },
-            },
+          },
+          '/reports': {
+            get: { operationId: 'listReports', responses: { '200': { description: 'OK' } } },
           },
         },
       })
-      expect(code).toContain(
-        "new Error('A text/event-stream response is not supported by a fetch hook')",
-      )
-      expect(code).not.toContain('await fetch(')
-      expect(code).not.toContain('clientOrigin')
-      expect(code).not.toContain('readResponse')
+      expect(code).toContain('export function useReports<')
+      expect(code).not.toContain('legacy')
+      expect(code).not.toContain('getArchivesKey')
+      expect(warn.mock.calls).toStrictEqual([
+        [
+          "[asphodelos] path '/archives/{archive_id}?legacy=true' has a query string after a path parameter, which Elysia reads as an optional parameter; it is left out of the app, its types, the mock, the Eden wrappers and the hooks",
+        ],
+      ])
+    } finally {
+      warn.mockRestore()
     }
   })
 
-  // A JSON schema beside another media type is read as JSON, as it was.
-  it('a response with a JSON schema is parsed as JSON whatever else it declares', async () => {
-    const code = await generateAndRead('tanstack-query', {
-      ...api,
-      paths: {
-        '/report.txt': {
-          get: {
-            operationId: 'getReport',
-            responses: {
-              '200': {
-                description: 'OK',
-                content: {
-                  'application/json': { schema: { type: 'object' } },
-                  'text/plain': {},
+  it('writes no file for a document whose only path key the app leaves out', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const result = await Effect.runPromise(
+        makeQueryHooks(
+          {
+            ...api,
+            paths: {
+              '/drafts/{draft_id}?preview=true': {
+                get: {
+                  operationId: 'getDraftPreview',
+                  responses: { '200': { description: 'OK' } },
                 },
               },
             },
           },
-        },
-      },
-    })
-    expect(code).toContain('return await readResponse(res)\n')
-    expect(code).toContain('TData = unknown,')
-  })
-
-  // A `HEAD` answers with headers alone, whatever its `2xx` declares.
-  it('types a HEAD as null whatever its 2xx declares', async () => {
-    const code = await generateAndRead('tanstack-query', {
-      ...api,
-      paths: {
-        '/report.txt': {
-          head: {
-            operationId: 'headReport',
-            responses: {
-              '200': {
-                description: 'OK',
-                content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
-              },
-            },
-          },
-        },
-      },
-      components: { schemas: { Job: { type: 'object' } } },
-    })
-    expect(code).toContain('TData = null,')
-    expect(code).not.toContain('JobSchema')
-    expect(code).toContain('return await readResponse(res)\n')
-  })
-
-  it('a response without content is typed null', async () => {
-    const code = await generateAndRead('tanstack-query')
-    expect(code).toContain('TData = null,')
-  })
-
-  // A failed response rejects with one shape, Eden's: an `Error` with the `status` and the body.
-  it('a JSON error body rejects with the status and the body, its dates revived', async () => {
-    const { readResponse } = await importHelpers()
-    const res = Response.json({ message: 'gone', at: '2026-11-24T03:10:22.000Z' }, { status: 410 })
-    const error = await readResponse(res).catch((error_: unknown) => error_)
-    expect(error).toBeInstanceOf(Error)
-    expect(error).toMatchObject({
-      status: 410,
-      value: { message: 'gone', at: new Date('2026-11-24T03:10:22.000Z') },
-    })
-  })
-
-  // A falsy JSON body is still an error: SWR reads a falsy rejection as no error at all.
-  it.each([null, 0, false, ''])(
-    'a falsy JSON error body %p rejects with an Error',
-    async (body) => {
-      const { readResponse } = await importHelpers()
-      const error = await readResponse(Response.json(body, { status: 400 })).catch(
-        (error_: unknown) => error_,
+          'src/hooks.ts',
+          './lib',
+          HOOK_CONFIGS['tanstack-query'],
+          'client',
+        ).pipe(Effect.provide(fileSystemLayer)),
       )
-      expect(error).toBeInstanceOf(Error)
-      expect(error).toMatchObject({ status: 400, value: body })
-    },
-  )
-
-  // A proxy's HTML page or an empty `404` is not JSON: the error says so by its status and text
-  // rather than by the `SyntaxError` of a failed parse.
-  it.each([
-    { name: 'an HTML page', body: '<html>Bad Gateway</html>', status: 502 },
-    { name: 'an empty body', body: '', status: 404 },
-  ])('an error with $name rejects with the status and the text', async ({ body, status }) => {
-    const { readResponse } = await importHelpers()
-    const error = await readResponse(new Response(body, { status })).catch(
-      (error_: unknown) => error_,
-    )
-    expect(error).toBeInstanceOf(Error)
-    expect(error).not.toBeInstanceOf(SyntaxError)
-    expect(error).toMatchObject({ status, value: body })
-  })
-
-  // A `200` of an HTML page where JSON is declared rejects the same way, not with a `SyntaxError`.
-  it('a successful body that is not JSON rejects with the status and the text', async () => {
-    const { readResponse } = await importHelpers()
-    const error = await readResponse(new Response('<html>app</html>', { status: 200 })).catch(
-      (error_: unknown) => error_,
-    )
-    expect(error).toBeInstanceOf(Error)
-    expect(error).not.toBeInstanceOf(SyntaxError)
-    expect(error).toMatchObject({ status: 200, value: '<html>app</html>' })
-  })
-
-  // What fails before the response is read rejects with the same shape, its status 0; an abort is
-  // the library's own cancellation and is kept as it is.
-  it('turns a network error into a FetchError and keeps an abort', async () => {
-    const { toFetchError } = await importHelpers()
-    const network = new TypeError('Failed to fetch')
-    const error = toFetchError(network)
-    expect(error).toBeInstanceOf(Error)
-    expect(error).toMatchObject({ status: 0, value: network, message: 'Failed to fetch' })
-    const abort = new DOMException('aborted', 'AbortError')
-    expect(toFetchError(abort)).toBe(abort)
-    const kept = Object.assign(new Error('410 Gone'), { status: 410, value: 'gone' })
-    expect(toFetchError(kept)).toBe(kept)
-  })
-
-  // The read is awaited inside the guard: a body that fails while it is read is caught there too.
-  it('turns a body that fails while it is read into a FetchError', async () => {
-    const { readResponse, toFetchError } = await importHelpers()
-    const broken = new Response(
-      new ReadableStream({
-        pull(controller) {
-          controller.error(new TypeError('terminated'))
-        },
-      }),
-    )
-    const guarded = async () => {
-      try {
-        return await readResponse(broken)
-      } catch (error) {
-        throw toFetchError(error)
-      }
+      expect(result).toBe('No operations found')
+    } finally {
+      warn.mockRestore()
     }
-    expect(await guarded().catch((error: unknown) => error)).toMatchObject({ status: 0 })
-    const code = await generateAndRead('tanstack-query')
-    expect(code).toContain('return await readResponse(res)')
-    expect(code).not.toContain('return readResponse(res')
-  })
-
-  it('says a successful body is not JSON', async () => {
-    const { readResponse } = await importHelpers()
-    const error = await readResponse(new Response('<html>app</html>', { status: 200 })).catch(
-      (error_: unknown) => error_,
-    )
-    expect(error).toMatchObject({ message: '200: the body is not JSON' })
-  })
-
-  it('guards every fetch, and types a stream-only hook as FetchError too', async () => {
-    const code = await generateAndRead('tanstack-query', {
-      ...api,
-      paths: {
-        '/events.txt': {
-          get: {
-            operationId: 'getEvents',
-            responses: { '200': { description: 'OK', content: { 'text/event-stream': {} } } },
-          },
-        },
-      },
-    })
-    expect(code).toContain('export type FetchError')
-    expect(code).toContain('TError = FetchError')
-    expect(code).not.toContain('function toFetchError')
-    const fetching = await generateAndRead('tanstack-query')
-    expect(fetching).toContain('throw toFetchError(error)')
-  })
-
-  it("types a fetch hook's error as FetchError", async () => {
-    const code = await generateAndRead('tanstack-query')
-    expect(code).toContain(
-      'export type FetchError = Error & { readonly status: number; readonly value: unknown }',
-    )
-    expect(code).toContain('TError = FetchError')
-  })
-
-  // Eden Treaty sends a `Date` as its ISO string, which a `format: date-time` parameter reads.
-  it('a Date in the query is sent as its ISO string', async () => {
-    const { toSearch } = await importHelpers()
-    const at = new Date('2026-11-24T03:10:22.000Z')
-    const search = toSearch({ at, between: [at, 'now'], raw: true, limit: 3 })
-    expect([...search]).toStrictEqual([
-      ['at', '2026-11-24T03:10:22.000Z'],
-      ['between', '2026-11-24T03:10:22.000Z'],
-      ['between', 'now'],
-      ['raw', 'true'],
-      ['limit', '3'],
-    ])
-    expect([...toSearch(undefined)]).toStrictEqual([])
-  })
-
-  // The rest of what Eden Treaty does with a query value: `null` and `undefined` are left out,
-  // as a value and as an item, and an object goes out as its JSON.
-  it('the query leaves out null and undefined and sends an object as its JSON', async () => {
-    const { toSearch } = await importHelpers()
-    const search = toSearch({
-      skip: undefined,
-      cursor: null,
-      ids: [1, undefined, null, 2],
-      filter: { name: 'a' },
-    })
-    expect([...search]).toStrictEqual([
-      ['ids', '1'],
-      ['ids', '2'],
-      ['filter', '{"name":"a"}'],
-    ])
-  })
-
-  it.each(['tanstack-query', 'swr'] as const)(
-    '%s: a HEAD operation is sent as HEAD',
-    async (library) => {
-      const code = await generateAndRead(library, {
-        ...api,
-        paths: {
-          '/widget.json': {
-            head: { operationId: 'headWidget', responses: { '200': { description: 'OK' } } },
-          },
-        },
-      })
-      expect(code).toMatch(/await fetch\(`\$\{clientOrigin\}\/widget\.json`, \{\s*method: 'HEAD',/u)
-    },
-  )
-
-  it('a document whose fallbacks take no query carries no search helper', async () => {
-    const code = await generateAndRead('tanstack-query', {
-      ...api,
-      paths: { '/widget.json': api.paths?.['/widget.json'] ?? {} },
-    })
-    expect(code).toContain('async function readResponse(')
-    expect(code).not.toContain('toSearch')
-  })
-
-  it('the reviver turns the date strings Eden does into a Date and leaves the rest', async () => {
-    const code = await generateAndRead('tanstack-query')
-    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export function'))
-    const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-reviver-'))
-    const file = path.join(dir, 'reviver.ts')
-    writeFileSync(file, `${source}\nexport { reviveDate }\n`)
-    const { reviveDate } = (await import(file)) as {
-      readonly reviveDate: (key: string, value: unknown) => unknown
-    }
-    rmSync(dir, { recursive: true, force: true })
-    const parse = (value: unknown) => JSON.parse(JSON.stringify(value), reviveDate)
-    expect(
-      parse({
-        at: '2026-11-24T03:10:22.000Z',
-        offset: '2026-11-24T03:10:22+09:00',
-        day: '2026-11-24',
-        nested: [{ at: '2026-11-24T03:10Z' }],
-      }),
-    ).toStrictEqual({
-      at: new Date('2026-11-24T03:10:22.000Z'),
-      offset: new Date('2026-11-24T03:10:22+09:00'),
-      day: new Date('2026-11-24'),
-      nested: [{ at: new Date('2026-11-24T03:10Z') }],
-    })
-    // Eden's patterns, and so its misses: a date-time without an offset and a year outside
-    // 1900–2099 stay strings, as they do behind the Eden hooks.
-    const plain = {
-      name: 'Alice',
-      id: '2026',
-      count: 3,
-      when: '2026-13-45T99:99:99Z',
-      naive: '2026-11-24T03:10:22',
-      never: '9999-12-31',
-      none: null,
-    }
-    expect(parse(plain)).toStrictEqual(plain)
-  })
-
-  // Keys that differ only in case share a pascal-cased name, so the schemas generator writes all
-  // but the first under a suffixed const. The hook names the const that was written, which is the
-  // same one whether the schemas are one file or split.
-  describe('a response component whose key collides in case', () => {
-    const colliding: OpenAPI = {
-      openapi: '3.1.0',
-      info: { title: 'Collide', version: '1' },
-      paths: {
-        '/user.json': {
-          get: {
-            operationId: 'getUser',
-            responses: {
-              '200': {
-                description: 'OK',
-                content: { 'application/json': { schema: { $ref: '#/components/schemas/user' } } },
-              },
-            },
-          },
-        },
-      },
-      components: { schemas: { User: { type: 'object' }, user: { type: 'object' } } },
-    }
-
-    const generate = async (split: boolean) => {
-      const cwd = process.cwd()
-      const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-names-'))
-      process.chdir(dir)
-      try {
-        await Effect.runPromise(
-          hooks(colliding, 'src/hooks.ts', './lib', 'tanstack-query', {
-            client: 'client',
-            schemas: { output: 'src/schemas.ts', split },
-          }).pipe(Effect.provide(fileSystemLayer)),
-        )
-        return readFileSync(path.join(dir, 'src/hooks.ts'), 'utf8')
-      } finally {
-        process.chdir(cwd)
-        rmSync(dir, { recursive: true, force: true })
-      }
-    }
-
-    it('is typed by the suffixed const the schemas file exports', async () => {
-      const code = await generate(false)
-      expect(code).toContain("import type { User2Schema } from './schemas'")
-      expect(code).toContain('Static<typeof User2Schema>')
-      expect(code).not.toMatch(/\bUserSchema\b/u)
-    })
-
-    it('is typed by the same const when the schemas are split', async () => {
-      const code = await generate(true)
-      expect(code).toContain("import type { User2Schema } from './schemas'")
-      expect(code).toContain('Static<typeof User2Schema>')
-      expect(code).not.toMatch(/\bUserSchema\b/u)
-    })
-  })
-
-  it('a document Eden types throughout imports the client alone', async () => {
-    const code = await generateAndRead('tanstack-query', {
-      ...api,
-      paths: {
-        '/widgets': {
-          get: { operationId: 'listWidgets', responses: { '200': { description: 'OK' } } },
-        },
-      },
-    })
-    expect(code).toContain("import { client } from './lib'")
-    expect(code).not.toContain('clientOrigin')
-    expect(code).not.toContain('reviveDate')
-    expect(code).not.toContain('readResponse')
-    expect(code).not.toContain('toSearch')
   })
 })

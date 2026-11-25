@@ -1,3 +1,5 @@
+import { elysiaPath } from './path-params.js'
+
 function isIdentifierSegment(seg: string) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(seg)
 }
@@ -10,8 +12,15 @@ function accessSegment(seg: string) {
   return isIdentifierSegment(seg) ? `.${seg}` : bracketKey(seg)
 }
 
+/**
+ * The Eden treaty call of one route, and the types it is read by. Treaty walks the route tree
+ * Elysia keys on the path as the app registers it ({@link elysiaPath}), one key per segment: a
+ * segment that starts with `:` is a parameter, called as a function, and any other is a property
+ * of that spelling. So `/{Sid}.json` is called with the parameter `Sid.json`, and a segment with a
+ * parameter after its start, `/v{version}`, is the property `v:version`.
+ */
 export function edenChain(pathStr: string, client: string, method: string) {
-  const segments = pathStr.split('/').filter(Boolean)
+  const segments = elysiaPath(pathStr).split('/').filter(Boolean)
   const { callChain, typeChain, typeIsValue, typeChainHasBracket, paramArgs } = segments.reduce<{
     callChain: string
     typeChain: string
@@ -20,8 +29,7 @@ export function edenChain(pathStr: string, client: string, method: string) {
     paramArgs: readonly { readonly name: string; readonly typeExpr: string }[]
   }>(
     (acc, seg) => {
-      const m = /^\{([^}]+)\}$/u.exec(seg)
-      if (m) {
+      if (seg.startsWith(':')) {
         const fnType = acc.typeIsValue ? `typeof ${acc.typeChain}` : acc.typeChain
         const name = acc.paramArgs.length === 0 ? 'params' : `params${acc.paramArgs.length + 1}`
         return {

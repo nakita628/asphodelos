@@ -1,7 +1,7 @@
 import { isMediaWithSchema, isRecord, isReference } from '../../guard/index.js'
 import { nonExistentPathValue } from '../../helper/faker.js'
 import { HTTP_METHODS, resolveOperation } from '../../helper/index.js'
-import { isElysiaRoutePath } from '../../helper/path-params.js'
+import { elysiaPath, isElysiaRoutePath } from '../../helper/path-params.js'
 import type { Components, OpenAPI, Operation, Responses, Schema } from '../../openapi/index.js'
 import { collectSchemaRefs, makeMockFunctions, schemaToFaker } from '../faker/index.js'
 import type { FakerOptions } from '../faker/index.js'
@@ -353,7 +353,7 @@ function quoteSingle(s: string) {
 
 // OpenAPI `/users/{userId}` → Elysia `/users/:userId`.
 function routePath(path: string) {
-  return quoteSingle(path.replaceAll(/\{([^}]+)\}/gu, ':$1'))
+  return quoteSingle(elysiaPath(path))
 }
 
 /**

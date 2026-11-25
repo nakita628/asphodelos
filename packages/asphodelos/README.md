@@ -233,24 +233,14 @@ import { treaty } from '@elysiajs/eden'
 
 import type { app } from '../index'
 
-function normalizeOrigin(origin: string) {
-  if (!origin) return origin
-  const url = origin.includes('://')
-    ? origin
-    : `${['localhost', '127.0.0.1', '0.0.0.0'].some((host) => origin.includes(host)) ? 'http' : 'https'}://${origin}`
-  return url.endsWith('/') ? url.slice(0, -1) : url
-}
-
-export const clientOrigin = normalizeOrigin(import.meta.env.VITE_API_URL!)
-
-export const client = treaty<typeof app>(clientOrigin)
+export const client = treaty<typeof app>(import.meta.env.VITE_API_URL!)
 ```
 
 `source: 'process.env'` reads `process.env` instead, for code Node.js or Bun runs:
 
 ```ts
 client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' } }
-// export const clientOrigin = normalizeOrigin(process.env.API_URL!)
+// export const client = treaty<typeof app>(process.env.API_URL!)
 ```
 
 A URL a module exports is read as written — `value` is the export followed by what is read from
@@ -259,7 +249,7 @@ it, a string, and the module answers for it being there:
 ```ts
 client: { output: 'src/lib/client.ts', baseUrl: { import: '@/env', value: 'env.API_URL' } }
 // import { env } from '@/env'
-// export const clientOrigin = normalizeOrigin(env.API_URL)
+// export const client = treaty<typeof app>(env.API_URL)
 ```
 
 `sameOrigin: true` is for an app a host framework such as TanStack Start or Next.js serves beside
@@ -269,52 +259,13 @@ DOM lib.
 
 ```ts
 client: { output: 'src/lib/client.ts', baseUrl: { env: 'API_URL', source: 'process.env' }, sameOrigin: true }
-// export const clientOrigin = normalizeOrigin(
+// export const client = treaty<typeof app>(
 //   typeof window === 'undefined' ? process.env.API_URL! : window.location.origin,
 // )
 ```
 
-`normalizeOrigin` reads the origin the way treaty does: it adds `http://` for a local host or
-`https://` otherwise when there is no scheme, and drops a trailing `/`. The result is exported as
-`clientOrigin`: the hooks of a path Eden cannot type — a segment with a `.` or a partial parameter,
-such as `/widget.json` — call `fetch` with it, so they send where the client does. A package
-entry that `client.package` names exports `clientOrigin` beside `client`.
-
-Such a hook parses a JSON response the way treaty does: a string that looks like a date becomes a
-`Date`, which is what the `t.Date()` of a `format: date` / `date-time` field declares. The match is
-by the value, not by the schema, with treaty's patterns: an ISO 8601 date-time with a `Z` or an
-offset, a `Date.prototype.toString()` string, and a short date in the years 1900–2099 such as
-`2026-01-02` or `01/02/2026`. So a plain string field whose value looks like one of these arrives
-as a `Date` too, and a date the patterns miss — `2026-11-24T03:10:22` without an offset,
-`9999-12-31` — stays a string. What JSON does not carry is not decoded either: a `t.Uint8Array`,
-`t.File` or `t.Transform` field is typed as decoded and holds the value as it was sent.
-
-A response the document declares as something other than JSON is read as declared, and typed as
-what is read: `text/*` alone, in UTF-8 — the `text/csv` of an `/export.csv` — resolves with its
-text as a `string`, which unlike treaty's is not read further (`42` stays a string), and any other
-media type, such as `application/octet-stream`, `application/pdf` or a `text/csv;
-charset=shift_jis`, with its bytes as an `ArrayBuffer`. A response with a JSON media type or a
-range such as `*/*` among them is parsed as JSON. Every `2xx` entry counts, or `default` when it is
-the only response declared: the data is the union of what each resolves with (`string | Static<typeof JobSchema>`),
-and where the entries are read differently each response is read by the entry of its status — the
-exact code (`206`), then its range (`2XX`), and a status none of them lists the widest way they
-are read (JSON, then bytes, then text). An event stream (`text/event-stream`) is not
-supported: a hook whose successful responses declare nothing else rejects with an `Error` that
-says so without sending the request, and is typed `unknown` (a `HEAD` is sent, and typed `null`,
-as below).
-
-A JSON response without a body — a `204`, an empty `200` — resolves with `null`, and a response
-declared without content, and every `HEAD`, is typed `null`: TanStack Query does not take
-`undefined` as a query's data, so every fetch hook resolves the same, whatever its library or kind
-(treaty's hooks resolve a bodiless response with `''`). A failed response rejects with a
-`FetchError`, exported from the hooks file and the hooks' default `TError`: an `Error` that carries
-the `status` and the body as `value`, the two members of Eden's error. `value` is the body parsed as
-JSON, dates revived, or its text when it is not JSON (a proxy's HTML `502`, an empty `404`). A
-successful response whose body is not the JSON it declares rejects the same way, and so does
-whatever fails before a response is read — the network, an event stream the hook does not send —
-with `status` 0 and the error as `value`. Only an abort is left to the library as it is. The
-`query` is written the way treaty writes it: a `Date` as its ISO string, an object as its JSON, an
-array as its key repeated, and `null` and `undefined` left out.
+The origin is handed to treaty as it is: treaty adds `http://` for a local host or `https://`
+otherwise when there is no scheme, and drops a trailing `/`.
 
 The `index.ts` beside the client re-exports it, so it is imported as `./lib` — by `eden`, by the
 hooks, and by your own code:
@@ -329,10 +280,10 @@ The app is imported for its type only, so a browser bundle never pulls the serve
 needs `@elysiajs/eden`, with `elysia` resolving to one copy.
 
 A path key with a query string right after a path parameter, such as `/jobs/{id}?beta=true`, is
-left out of the app, its types, the mock and the Eden wrappers, with a warning: Elysia reads `:id?`
-as an optional parameter, which would hide the routes beside it (`/jobs/{id}/cancel`) from the
-client. The hooks still reach it, with `fetch`. A module generated before keeps its handlers on
-regeneration, so remove such a route from it by hand.
+left out of the app, its types, the mock, the Eden wrappers and the hooks, with a warning: Elysia
+reads `:id?` as an optional parameter, which would hide the routes beside it (`/jobs/{id}/cancel`)
+from the client. A module generated before keeps its handlers on regeneration, so remove such a
+route from it by hand.
 
 ### Imports Between Generated Files
 
@@ -390,7 +341,12 @@ export default defineConfig({
 ```
 
 The hooks are written into one file and import the generated client, so a `client` block comes
-with them.
+with them. Every hook calls that client and nothing else: its data, its error and its request
+options are treaty's, and a response is parsed, and rejected, the way treaty does it. A path
+segment with a `.` is a property of the client, `client['widget.json']`. A path parameter with
+static text after it is the parameter Elysia routes: `/accounts/{sid}.json` is registered as
+`/accounts/:sid.json`, whose parameter is `sid.json`, so its hook takes the whole segment,
+`{ 'sid.json': 'AC1.json' }`.
 
 Every operation is named by its method and path: a GET on `/users/{id}` becomes `useUsersId`, with
 `getUsersIdQueryKey` and `getUsersIdQueryOptions` beside it; a POST on `/users` becomes
