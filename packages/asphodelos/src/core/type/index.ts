@@ -5,7 +5,7 @@ import { Effect } from 'effect'
 import { emit } from '../../emit/index.js'
 import { isMediaWithSchema, isSchemaArray, isStringRef } from '../../guard/index.js'
 import { HTTP_METHODS } from '../../helper/index.js'
-import { isElysiaRoutePath } from '../../helper/path-params.js'
+import { elysiaPath, isElysiaRoutePath } from '../../helper/path-params.js'
 import { collectSchemaRefs, parameterSchema } from '../../helper/schema.js'
 import type {
   Media,
@@ -111,11 +111,12 @@ export function schemaToTs(schema: Schema | undefined): string {
   return wrap('unknown')
 }
 
+// Keyed as the app registers the route ({@link elysiaPath}), so `treaty<App>` walks the same tree as
+// `treaty<typeof app>`: `/v{version}` is the key `v:version`, as Elysia spells it.
 function pathToKeys(pathStr: string) {
-  return pathStr
+  return elysiaPath(pathStr)
     .split('/')
     .filter((s) => s.length > 0)
-    .map((seg) => (seg.startsWith('{') && seg.endsWith('}') ? `:${seg.slice(1, -1)}` : seg))
 }
 
 function responseContentTs(resp: Responses, components: OpenAPI['components']) {

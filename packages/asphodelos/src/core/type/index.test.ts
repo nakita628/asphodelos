@@ -703,3 +703,27 @@ describe('makeAppType — a query string after a path parameter', () => {
     }
   })
 })
+
+// `treaty<App>` and `treaty<typeof app>` agree only when `App` is keyed as the app registers its
+// routes: Elysia registers `/v{version}/items` as `/v:version/items`.
+describe('makeAppType — a segment that mixes a parameter with static text', () => {
+  it('keys the segment as the app registers it', () => {
+    const { appType } = makeAppType({
+      openapi: '3.1.0',
+      info: { title: 'T', version: '0' },
+      paths: {
+        '/v{version}/items': {
+          get: {
+            operationId: 'listItems',
+            parameters: [
+              { name: 'version', in: 'path', required: true, schema: { type: 'string' } },
+            ],
+            responses: { '204': { description: 'ok' } },
+          },
+        },
+      },
+    })
+    expect(appType).toContain('{ "v:version": { "items": { get: ')
+    expect(appType).not.toContain('v{version}')
+  })
+})
