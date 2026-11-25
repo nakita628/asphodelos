@@ -609,7 +609,7 @@ describe('schemasCode — a dependent schema inside its own recursive group', ()
     expect(Value.Decode(TSchema, { k: 'x' })).toStrictEqual({ k: 'x' })
   })
 
-  it('names the const of a spoke of a star', () => {
+  it('names the const of a spoke of a star', async () => {
     const code = schemasCode({
       Hub: {
         type: 'object',
@@ -620,6 +620,9 @@ describe('schemasCode — a dependent schema inside its own recursive group', ()
     } as unknown as { readonly [k: string]: Schema })
     expect(code).toContain('t.Recursive(')
     expect(code).toContain('const depSubs={"k":LeafSchema}')
+    const { HubSchema } = await load(code)
+    if (!HubSchema) throw new Error('HubSchema is not exported')
+    expect(Value.Decode(HubSchema, { k: 'x', leaf: {} })).toStrictEqual({ k: 'x', leaf: {} })
   })
 
   // A raw transform's regex can hold a lone paren; it does not stop the refs after it.

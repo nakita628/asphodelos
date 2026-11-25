@@ -47,7 +47,7 @@ function sub(code: string, from: string, to: string) {
   const parts = code.split(STRING_LITERAL)
   // The closures' bounds alternate open, close: a part is cut at each, and only the pieces
   // outside a closure are rewritten.
-  const marks = closures(parts)
+  const marks = code.includes(DEPENDENT) ? closures(parts) : []
   return parts
     .map((part, i) => {
       if (i % 2 === 1) return part
