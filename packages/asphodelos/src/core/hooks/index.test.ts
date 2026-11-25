@@ -3666,12 +3666,6 @@ describe('fetch fallback', () => {
       read: 'readResponse(res)',
     },
     {
-      name: 'an event stream',
-      content: { 'text/event-stream': {} },
-      dataT: 'unknown',
-      read: "readResponse(res, 'stream')",
-    },
-    {
       name: 'an event stream beside JSON',
       content: { 'text/event-stream': {}, 'application/json': {} },
       dataT: 'unknown',
@@ -3740,7 +3734,7 @@ describe('fetch fallback', () => {
         },
       },
       dataT: 'string | Static<typeof JobSchema>',
-      read: "readResponse(res, { '200': 'text' })",
+      read: "readResponse(res, { '200': 'text', '202': 'json' })",
     },
     {
       name: 'no content beside bytes on another status',
@@ -3749,13 +3743,40 @@ describe('fetch fallback', () => {
         '206': { description: 'Partial', content: { 'application/octet-stream': {} } },
       },
       dataT: 'void | ArrayBuffer',
-      read: "readResponse(res, { '206': 'bytes' })",
+      read: "readResponse(res, { '200': 'json', '206': 'bytes' })",
     },
     {
       name: 'text on default alone',
       responses: { default: { description: 'Any', content: { 'text/plain': {} } } },
       dataT: 'string',
       read: "readResponse(res, 'text')",
+    },
+    {
+      name: 'an exact JSON code beside a range of text',
+      responses: {
+        '200': {
+          description: 'OK',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
+        },
+        '2XX': { description: 'Other', content: { 'text/plain': {} } },
+      },
+      dataT: 'Static<typeof JobSchema> | string',
+      read: "readResponse(res, { '200': 'json', '2XX': 'text' })",
+    },
+    {
+      name: 'a schema beside an inline one',
+      responses: {
+        '200': {
+          description: 'OK',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
+        },
+        '201': {
+          description: 'Created',
+          content: { 'application/json': { schema: { type: 'object' } } },
+        },
+      },
+      dataT: 'unknown',
+      read: 'readResponse(res)',
     },
     {
       name: 'text on every status',
@@ -3778,6 +3799,80 @@ describe('fetch fallback', () => {
       })
       expect(code).toContain(`return ${read}\n`)
       expect(code).toContain(library === 'swr' ? `useSWR<${dataT}, TError>` : `TData = ${dataT},`)
+    }
+  })
+
+  it('imports a schema const only when its type is spelled out', async () => {
+    const code = await generateAndRead('tanstack-query', {
+      ...api,
+      paths: {
+        '/report.txt': {
+          get: {
+            operationId: 'getReport',
+            responses: {
+              '200': {
+                description: 'OK',
+                content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
+              },
+              '201': {
+                description: 'Created',
+                content: { 'application/json': { schema: { type: 'object' } } },
+              },
+            },
+          },
+        },
+      },
+      components: { schemas: { Job: { type: 'object' } } },
+    })
+    expect(code).not.toContain('JobSchema')
+  })
+
+  // `default` is an error body more often than not: beside another status it is not the data.
+  it('types an operation with default beside an error status as void', async () => {
+    const code = await generateAndRead('tanstack-query', {
+      ...api,
+      paths: {
+        '/report.txt': {
+          get: {
+            operationId: 'getReport',
+            responses: {
+              '302': { description: 'Found' },
+              default: {
+                description: 'Error',
+                content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
+              },
+            },
+          },
+        },
+      },
+      components: { schemas: { Job: { type: 'object' } } },
+    })
+    expect(code).toContain('TData = void,')
+    expect(code).not.toContain('JobSchema')
+  })
+
+  // A hook that can never read its stream rejects without opening it, so a retry costs nothing.
+  it('rejects an operation that answers with only an event stream without a request', async () => {
+    for (const library of ['tanstack-query', 'swr'] as const) {
+      const code = await generateAndRead(library, {
+        ...api,
+        paths: {
+          '/events.txt': {
+            get: {
+              operationId: 'getEvents',
+              responses: { '200': { description: 'OK', content: { 'text/event-stream': {} } } },
+            },
+            post: {
+              operationId: 'postEvents',
+              responses: { '200': { description: 'OK', content: { 'text/event-stream': {} } } },
+            },
+          },
+        },
+      })
+      expect(code).toContain(
+        "throw new Error('A text/event-stream response is not supported by a fetch hook')",
+      )
+      expect(code).not.toContain('await fetch(')
     }
   })
 

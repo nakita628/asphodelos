@@ -219,17 +219,25 @@ function successType(
 } {
   const responses = Object.entries(operation.responses ?? {})
   const success = responses.filter(([status]) => status.startsWith('2'))
+  // `default` stands for every status not listed, an error body more often than not: it is the
+  // success only of an operation that declares nothing else.
   const declared =
-    success.length > 0 ? success : responses.filter(([status]) => status === 'default')
+    success.length > 0
+      ? success
+      : responses.length === 1
+        ? responses.filter(([status]) => status === 'default')
+        : []
   if (declared.length === 0) return { dataT: 'void', importNames: [] }
   const entries = declared.map(([status, response]) =>
     Object.assign(entryRead(response, schemaNames), { status: status.toUpperCase() }),
   )
   const types = [...new Set(entries.flatMap((entry) => (entry.dataT ? [entry.dataT] : [])))]
   const dataT = types.length === 0 || types.includes('unknown') ? 'unknown' : types.join(' | ')
-  const importNames = [
-    ...new Set(entries.flatMap((entry) => (entry.importName ? [entry.importName] : []))),
-  ]
+  // A schema const is imported only when its type is spelled out: `unknown` takes in the rest.
+  const importNames =
+    dataT === 'unknown'
+      ? []
+      : [...new Set(entries.flatMap((entry) => (entry.importName ? [entry.importName] : [])))]
   const kinds = new Set(entries.map((entry) => entry.read))
   const [only] = kinds
   if (kinds.size === 1) {
@@ -237,11 +245,8 @@ function successType(
       ? { dataT, importNames }
       : { dataT, importNames, reads: only }
   }
-  const byStatus = Object.fromEntries(
-    entries
-      .filter((entry) => entry.read !== 'json')
-      .map((entry) => [entry.status, entry.read] as const),
-  )
+  // Every entry is listed, JSON too, so an exact code is read by its own entry, not its range's.
+  const byStatus = Object.fromEntries(entries.map((entry) => [entry.status, entry.read] as const))
   return { dataT, importNames, reads: byStatus }
 }
 
@@ -376,6 +381,10 @@ function fetchTarget(
         ? `,'${reads}'`
         : `,${JSON.stringify(reads)}`
   const read = `return ${READER}(res${as})`
+  // An operation that answers with nothing but an event stream cannot be read: the hook rejects
+  // without opening the stream, so a library's retries do not open it again and again.
+  const streamOnly = reads === 'stream'
+  const unsupported = `throw new Error('A text/event-stream response is not supported by a fetch hook')`
   const url = (exprs: readonly string[]) => {
     const inner = fullPath.replaceAll(/\{([^}]+)\}/gu, (_, n: string) => {
       const index = names.indexOf(n)
@@ -399,9 +408,13 @@ function fetchTarget(
     ...(withBody ? { bodyType: 'unknown' } : {}),
     bodyRequired: false,
     queryBody: (exprs, options, signal) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{${method === 'head' ? "method:'HEAD'," : ''}headers:${options}?.headers${signal ? ',signal' : ''}});${read}`,
+      streamOnly
+        ? unsupported
+        : `${search(options)}const res=await fetch(${url(exprs)},{${method === 'head' ? "method:'HEAD'," : ''}headers:${options}?.headers${signal ? ',signal' : ''}});${read}`,
     mutationBody: (exprs, body, options) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});${read}`,
+      streamOnly
+        ? unsupported
+        : `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});${read}`,
     fetchTypes: importNames,
     usesFetch: true,
     usesSearch: hasQuery,
