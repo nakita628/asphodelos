@@ -252,4 +252,18 @@ describe('schemas — split mode, a schema keyed like the barrel', () => {
       "export * from './aB2'\nexport * from './ab'\nexport * from './con2'\n",
     )
   })
+
+  it('suffixes a Windows device name before its first dot', async () => {
+    const files = await generate({ 'Con.Pet': { type: 'string' }, Aux: { type: 'number' } })
+    expect(Object.keys(files)).toStrictEqual(['aux2.ts', 'con2.Pet.ts', 'index.ts'])
+  })
+
+  it('keeps the plain file name for the first key, whatever its $refs', async () => {
+    const files = await generate({
+      ab: { type: 'object', properties: { other: { $ref: '#/components/schemas/aB' } } },
+      aB: { type: 'number' },
+    })
+    expect(Object.keys(files)).toStrictEqual(['aB2.ts', 'ab.ts', 'index.ts'])
+    expect(files['ab.ts']).toContain("import { ABSchema } from './aB2'")
+  })
 })
