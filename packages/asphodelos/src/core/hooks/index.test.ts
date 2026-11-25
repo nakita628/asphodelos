@@ -3525,7 +3525,7 @@ describe('fetch fallback', () => {
   // The helpers the fallback hooks call, as the hooks file carries them.
   const importHelpers = async () => {
     const code = await generateAndRead('tanstack-query')
-    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export '))
+    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export function'))
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-helpers-'))
     const file = path.join(dir, 'helpers.ts')
     writeFileSync(file, `${source}\nexport { readResponse, toSearch }\n`)
@@ -3946,14 +3946,30 @@ describe('fetch fallback', () => {
     expect(code).toContain('TData = null,')
   })
 
-  it('a JSON error body rejects with the body, its dates revived', async () => {
+  // A failed response rejects with one shape, Eden's: an `Error` with the `status` and the body.
+  it('a JSON error body rejects with the status and the body, its dates revived', async () => {
     const { readResponse } = await importHelpers()
     const res = Response.json({ message: 'gone', at: '2026-11-24T03:10:22.000Z' }, { status: 410 })
-    expect(await readResponse(res).catch((error: unknown) => error)).toStrictEqual({
-      message: 'gone',
-      at: new Date('2026-11-24T03:10:22.000Z'),
+    const error = await readResponse(res).catch((error_: unknown) => error_)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toMatchObject({
+      status: 410,
+      value: { message: 'gone', at: new Date('2026-11-24T03:10:22.000Z') },
     })
   })
+
+  // A falsy JSON body is still an error: SWR reads a falsy rejection as no error at all.
+  it.each([null, 0, false, ''])(
+    'a falsy JSON error body %p rejects with an Error',
+    async (body) => {
+      const { readResponse } = await importHelpers()
+      const error = await readResponse(Response.json(body, { status: 400 })).catch(
+        (error_: unknown) => error_,
+      )
+      expect(error).toBeInstanceOf(Error)
+      expect(error).toMatchObject({ status: 400, value: body })
+    },
+  )
 
   // A proxy's HTML page or an empty `404` is not JSON: the error says so by its status and text
   // rather than by the `SyntaxError` of a failed parse.
@@ -3968,6 +3984,25 @@ describe('fetch fallback', () => {
     expect(error).toBeInstanceOf(Error)
     expect(error).not.toBeInstanceOf(SyntaxError)
     expect(error).toMatchObject({ status, value: body })
+  })
+
+  // A `200` of an HTML page where JSON is declared rejects the same way, not with a `SyntaxError`.
+  it('a successful body that is not JSON rejects with the status and the text', async () => {
+    const { readResponse } = await importHelpers()
+    const error = await readResponse(new Response('<html>app</html>', { status: 200 })).catch(
+      (error_: unknown) => error_,
+    )
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(SyntaxError)
+    expect(error).toMatchObject({ status: 200, value: '<html>app</html>' })
+  })
+
+  it("types a fetch hook's error as FetchError", async () => {
+    const code = await generateAndRead('tanstack-query')
+    expect(code).toContain(
+      'export type FetchError = Error & { readonly status: number; readonly value: unknown }',
+    )
+    expect(code).toContain('TError = FetchError')
   })
 
   // Eden Treaty sends a `Date` as its ISO string, which a `format: date-time` parameter reads.
@@ -4028,7 +4063,7 @@ describe('fetch fallback', () => {
 
   it('the reviver turns the date strings Eden does into a Date and leaves the rest', async () => {
     const code = await generateAndRead('tanstack-query')
-    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export '))
+    const source = code.slice(code.indexOf('const ISO8601'), code.indexOf('export function'))
     const dir = mkdtempSync(path.join(tmpdir(), 'asphodelos-fetch-reviver-'))
     const file = path.join(dir, 'reviver.ts')
     writeFileSync(file, `${source}\nexport { reviveDate }\n`)

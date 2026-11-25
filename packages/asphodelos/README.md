@@ -306,9 +306,11 @@ as below).
 A JSON response without a body — a `204`, an empty `200` — resolves with `null`, and a response
 declared without content, and every `HEAD`, is typed `null`: TanStack Query does not take
 `undefined` as a query's data, so every fetch hook resolves the same, whatever its library or kind
-(treaty's hooks resolve a bodiless response with `''`). A failed response
-rejects with its JSON body, parsed the same way; when the body is not JSON (a proxy's HTML `502`,
-an empty `404`) it rejects with an `Error` that carries the `status` and the text as `value`. The
+(treaty's hooks resolve a bodiless response with `''`). A failed response rejects with a
+`FetchError`, exported from the hooks file and the hooks' default `TError`: an `Error` that carries
+the `status` and the body as `value`, the two members of Eden's error. `value` is the body parsed as
+JSON, dates revived, or its text when it is not JSON (a proxy's HTML `502`, an empty `404`). A
+successful response whose body is not the JSON it declares rejects the same way. The
 `query` is written the way treaty writes it: a `Date` as its ISO string, an object as its JSON, an
 array as its key repeated, and `null` and `undefined` left out.
 
