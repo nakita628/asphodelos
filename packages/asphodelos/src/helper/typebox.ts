@@ -533,5 +533,7 @@ export function brand(expr: string, schema: Schema) {
         : undefined
   const base = primary ? TS_BASE_TYPE[primary] : undefined
   if (!base) return expr
-  return `t.Unsafe<${base} & { readonly __brand: '${name}' }>(${expr})`
+  // The brand is a single-quoted literal in the type; a quote or a backslash in it is escaped.
+  const literal = name.replaceAll(/['\\]/gu, '\\$&')
+  return `t.Unsafe<${base} & { readonly __brand: '${literal}' }>(${expr})`
 }

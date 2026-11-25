@@ -4,8 +4,26 @@ import type { OpenAPI, Schema } from '../../openapi/index.js'
 import { pascalCase } from '../../utils/index.js'
 import { typebox } from '../typebox/index.js'
 
+// A string literal of the rendered code (`"…"`, `'…'`, `` `…` ``), escapes included.
+const STRING_LITERAL = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/su
+
+// Every reference to the identifier `from` in `code` replaced with `to`; the text of a string
+// literal, and a longer identifier that contains `from`, are left as they are.
 function sub(code: string, from: string, to: string) {
-  return code.replaceAll(new RegExp(`\\b${from}\\b`, 'gu'), to)
+  const escaped = from.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  const ident = new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`, 'gu')
+  // Split with a capture, the literals sit at the odd indexes, the code between them at the even.
+  return code
+    .split(STRING_LITERAL)
+    .map((part, i) => (i % 2 === 1 ? part : part.replaceAll(ident, () => to)))
+    .join('')
+}
+
+// A `t.Module` entry's key: bare when it is an identifier, quoted otherwise (`"x.y"`), and
+// computed for `__proto__`, which as a plain key sets the literal's prototype instead.
+function moduleKey(name: string) {
+  if (name === '__proto__') return '["__proto__"]'
+  return /^[A-Za-z_$][\w$]*$/u.test(name) ? name : JSON.stringify(name)
 }
 
 function findFree(base: string, i: number, used: ReadonlySet<string>): string {
@@ -307,9 +325,7 @@ function emitGroup(
     const ident = `${pascalCase(name)}Schema`
     const refs = collectSchemaRefs(schema)
     const inner = typebox(schema)
-    const expr = refs.has(name)
-      ? `t.Recursive((Self)=>${inner.replaceAll(new RegExp(`\\b${ident}\\b`, 'gu'), 'Self')})`
-      : inner
+    const expr = refs.has(name) ? `t.Recursive((Self)=>${sub(inner, ident, 'Self')})` : inner
     const decl = `${exportKw}const ${ident}=${readonly(expr, readonlyMode)}`
     return exportTypes ? `${decl}\n\nexport type ${pascalCase(name)}=Static<typeof ${ident}>` : decl
   }
@@ -319,18 +335,18 @@ function emitGroup(
   const moduleEntries = group
     .map(({ name, schema }) => {
       const inner = typebox(schema)
-      const rewritten = [...memberNames].reduce((acc, m) => {
-        const ident = `${pascalCase(m)}Schema`
-        return acc.replaceAll(new RegExp(`\\b${ident}\\b`, 'gu'), `t.Ref('${m}')`)
-      }, inner)
-      return `${name}:${rewritten}`
+      const rewritten = [...memberNames].reduce(
+        (acc, m) => sub(acc, `${pascalCase(m)}Schema`, `t.Ref(${JSON.stringify(m)})`),
+        inner,
+      )
+      return `${moduleKey(name)}:${rewritten}`
     })
     .join(',')
   const moduleId = head ? `${pascalCase(head.name)}Module` : 'Module'
   const decls = group
     .map(({ name }) => {
       const ident = `${pascalCase(name)}Schema`
-      const expr = `${moduleId}.Import('${name}')`
+      const expr = `${moduleId}.Import(${JSON.stringify(name)})`
       const decl = `${exportKw}const ${ident}=${readonly(expr, readonlyMode)}`
       return exportTypes
         ? `${decl}\n\nexport type ${pascalCase(name)}=Static<typeof ${ident}>`

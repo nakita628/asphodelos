@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 
 import { Type as t } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
+import { parseSync } from 'oxc-parser'
 
 import type { OpenAPI, Schema } from '../../openapi/index.js'
 import { schemaConstNames, schemasCode, uniqueSchemaKeys, uniqueSchemas } from './schemas.js'
@@ -111,8 +112,102 @@ describe('schemasCode — mutually recursive (SCC size > 1)', () => {
         C: { type: 'object', properties: { a: { $ref: '#/components/schemas/A' } } },
       }),
     ).toBe(
-      "const CModule=t.Module({C:t.Object({\"a\":t.Optional(t.Ref('A'))}),B:t.Object({\"c\":t.Optional(t.Ref('C'))}),A:t.Object({\"b\":t.Optional(t.Ref('B'))})})\n\nexport const CSchema=CModule.Import('C')\n\nexport const BSchema=CModule.Import('B')\n\nexport const ASchema=CModule.Import('A')",
+      'const CModule=t.Module({C:t.Object({"a":t.Optional(t.Ref("A"))}),B:t.Object({"c":t.Optional(t.Ref("C"))}),A:t.Object({"b":t.Optional(t.Ref("B"))})})\n\nexport const CSchema=CModule.Import("C")\n\nexport const BSchema=CModule.Import("B")\n\nexport const ASchema=CModule.Import("A")',
     )
+  })
+
+  // A key that is not an identifier (`x.y`, as in the Stripe document) is quoted as a module key.
+  it('quotes a member key that is not an identifier, so the module parses', () => {
+    const code = schemasCode({
+      a: { type: 'object', properties: { b: { $ref: '#/components/schemas/x.y' } } },
+      'x.y': { type: 'object', properties: { c: { $ref: '#/components/schemas/c' } } },
+      c: { type: 'object', properties: { a: { $ref: '#/components/schemas/a' } } },
+    })
+    expect(code).toContain('"x.y":t.Object({"c":t.Optional(t.Ref("c"))})')
+    expect(code).toContain('t.Optional(t.Ref("x.y"))')
+    expect(code).toContain('=CModule.Import("x.y")')
+    expect(parseSync('schemas.ts', code).errors).toStrictEqual([])
+  })
+
+  it('leaves a string literal that spells a member const as the document wrote it', () => {
+    const description = 'see ASchema and \'BSchema\' or "CSchema"'
+    const module = schemasCode({
+      A: {
+        type: 'object',
+        description,
+        properties: { b: { $ref: '#/components/schemas/B' } },
+      },
+      B: { type: 'object', properties: { c: { $ref: '#/components/schemas/C' } } },
+      C: {
+        type: 'object',
+        properties: {
+          a: { $ref: '#/components/schemas/A' },
+          kind: { type: 'string', enum: ['ASchema'], default: 'BSchema' },
+        },
+      },
+    })
+    expect(module).toContain('t.Module(')
+    expect(module).toContain(JSON.stringify(description))
+    expect(module).toContain('t.Literal("ASchema",{default:"BSchema"})')
+    const star = schemasCode({
+      Node: {
+        type: 'object',
+        description: 'a NodeSchema or a LeafSchema',
+        properties: { leaf: { $ref: '#/components/schemas/Leaf' } },
+      },
+      Leaf: {
+        type: 'object',
+        description: 'back to NodeSchema',
+        properties: { node: { $ref: '#/components/schemas/Node' } },
+      },
+    })
+    expect(star).toContain('"a NodeSchema or a LeafSchema"')
+    expect(star).toContain('"back to NodeSchema"')
+    const self = schemasCode({
+      Tree: {
+        type: 'object',
+        description: 'a TreeSchema',
+        properties: { child: { $ref: '#/components/schemas/Tree' } },
+      },
+    })
+    expect(self).toContain('"a TreeSchema"')
+    expect(self).toContain('t.Optional(Self)')
+  })
+
+  it('writes a `__proto__` key as a computed module key, so it stays an entry', () => {
+    const schemas = JSON.parse(
+      '{"__proto__":{"type":"object","properties":{"b":{"$ref":"#/components/schemas/b"}}},"b":{"type":"object","properties":{"c":{"$ref":"#/components/schemas/c"}}},"c":{"type":"object","properties":{"p":{"$ref":"#/components/schemas/__proto__"}}}}',
+    ) as { readonly [k: string]: Schema }
+    const code = schemasCode(schemas)
+    expect(code).toContain('["__proto__"]:t.Object(')
+    expect(parseSync('schemas.ts', code).errors).toStrictEqual([])
+  })
+
+  it('escapes a quote in a brand, so the refs after it are still replaced', () => {
+    const code = schemasCode({
+      a: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', 'x-brand': "B'x" },
+          b: { $ref: '#/components/schemas/b' },
+        },
+      },
+      b: { type: 'object', properties: { c: { $ref: '#/components/schemas/c' } } },
+      c: { type: 'object', properties: { a: { $ref: '#/components/schemas/a' } } },
+    } as unknown as { readonly [k: string]: Schema })
+    expect(code).toContain("__brand: 'B\\'x'")
+    expect(code).toContain('"b":t.Optional(t.Ref("b"))')
+    expect(parseSync('schemas.ts', code).errors).toStrictEqual([])
+  })
+
+  it('quotes a module key and a ref with a quote in it', () => {
+    const code = schemasCode({
+      "it's": { type: 'object', properties: { b: { $ref: '#/components/schemas/b' } } },
+      b: { type: 'object', properties: { c: { $ref: '#/components/schemas/c' } } },
+      c: { type: 'object', properties: { a: { $ref: "#/components/schemas/it's" } } },
+    })
+    expect(parseSync('schemas.ts', code).errors).toStrictEqual([])
+    expect(code).toContain('"it\'s":t.Object(')
   })
 })
 
