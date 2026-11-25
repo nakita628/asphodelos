@@ -3558,6 +3558,7 @@ describe('fetch fallback', () => {
     const { readResponse } = await importHelpers()
     expect(await readResponse(new Response(null, { status: 204 }))).toBeNull()
     expect(await readResponse(new Response('', { status: 200 }))).toBeNull()
+    expect(await readResponse(new Response('\n', { status: 200 }))).toBeNull()
   })
 
   it('a JSON response resolves with its dates revived', async () => {
