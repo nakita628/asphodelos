@@ -86,29 +86,44 @@ export function renameOperationParams(operation: Operation, renames: ReadonlyMap
 
 /**
  * A path key as the app registers it with Elysia: `/users/{userId}` is `/users/:userId`. Elysia
- * reads a parameter from its `:` to the end of the segment, so `/{Sid}.json` is the parameter
- * `Sid.json`; the Eden chain is read off this spelling too, so a hook calls what the app routes.
+ * reads a parameter from its `:` to the end of the segment, so a key with static text after a
+ * parameter (`/{Sid}.json`) is left out beforehand ({@link isElysiaRoutePath}); the Eden chain is
+ * read off this spelling too, so a hook calls what the app routes.
  */
 export function elysiaPath(pathKey: string) {
   return pathKey.replaceAll(/\{([^}]+)\}/gu, ':$1')
 }
 
-const warnedQueryKeys = new Set<string>()
+const warnedKeys = new Set<string>()
+
+function routeProblem(pathKey: string) {
+  if (/\{[^/{}]+\}\?/u.test(pathKey)) {
+    return 'has a query string after a path parameter, which Elysia reads as an optional parameter'
+  }
+  if (/\{[^/{}]+\}[^/?]/u.test(pathKey)) {
+    return 'has static text after a path parameter in its segment, which Elysia reads as part of the parameter name'
+  }
+  return null
+}
 
 /**
  * Whether a path key can become an Elysia route path.
  *
  * A key with a query string right after a `{param}` segment, such as `/jobs/{id}?beta=true`, cannot:
  * Elysia reads `:id?` as an optional parameter, so the route tree Eden types would lose the routes
- * beside it (`/jobs/{id}/cancel`). Such a key is left out of the app, its types, the mock, the
- * Eden wrappers and the hooks, with a warning once per key.
+ * beside it (`/jobs/{id}/cancel`). Nor can a key with static text after a `{param}` in its segment,
+ * such as `/Accounts/{Sid}.json`: Elysia reads `:Sid.json` as the parameter `Sid.json`, so the
+ * params model rejects every request, and a route that names the same position with another
+ * parameter (`/Accounts/{AccountSid}/Calls.json`) keeps the app from starting. Such a key is left
+ * out of the app, its types, the mock, the Eden wrappers and the hooks, with a warning once per key.
  */
 export function isElysiaRoutePath(pathKey: string) {
-  if (!/\{[^/{}]+\}\?/u.test(pathKey)) return true
-  if (!warnedQueryKeys.has(pathKey)) {
-    warnedQueryKeys.add(pathKey)
+  const reason = routeProblem(pathKey)
+  if (reason === null) return true
+  if (!warnedKeys.has(pathKey)) {
+    warnedKeys.add(pathKey)
     console.warn(
-      `[asphodelos] path '${pathKey}' has a query string after a path parameter, which Elysia reads as an optional parameter; it is left out of the app, its types, the mock, the Eden wrappers and the hooks`,
+      `[asphodelos] path '${pathKey}' ${reason}; it is left out of the app, its types, the mock, the Eden wrappers and the hooks`,
     )
   }
   return false

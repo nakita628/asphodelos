@@ -150,6 +150,35 @@ describe('operationsByResource', () => {
     }
   })
 
+  // Twilio's shape: Elysia reads `/:Sid.json` as the parameter `Sid.json`, which rejects every
+  // request and, beside `/:AccountSid/Calls.json`, keeps the app from starting.
+  it('leaves out a path key with static text after a path parameter in its segment', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const result = operationsByResource({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/Accounts/{Sid}.json': {
+            get: { operationId: 'fetchAccount', responses: { '200': { description: 'ok' } } },
+          },
+          '/Accounts/{AccountSid}/Calls.json': {
+            get: { operationId: 'listCalls', responses: { '200': { description: 'ok' } } },
+          },
+          '/v{version}/items': {
+            get: { operationId: 'listItems', responses: { '200': { description: 'ok' } } },
+          },
+        },
+      })
+      expect([...result.values()].flat().map(({ route }) => route.path)).toStrictEqual([
+        '/Accounts/{AccountSid}/Calls.json',
+        '/v{version}/items',
+      ])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('keeps canonicalizing the parameter names beside a left-out path key', () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     const response = { responses: { '204': { description: 'ok' } } }

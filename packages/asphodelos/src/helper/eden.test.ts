@@ -99,16 +99,6 @@ describe('edenChain', () => {
     })
   })
 
-  // Treaty keys a route on the path as Elysia registers it: a parameter runs from its `:` to the
-  // end of the segment, so static text after it is part of the parameter's name.
-  it('calls a parameter with static text after it as the parameter Elysia names', () => {
-    expect(edenChain('/Accounts/{Sid}.json', 'app', 'get')).toStrictEqual({
-      callExpr: 'app.Accounts(params).get',
-      methodHostTypeExpr: "ReturnType<typeof app.Accounts>['get']",
-      paramArgs: [{ name: 'params', typeExpr: 'Parameters<typeof app.Accounts>[0]' }],
-    })
-  })
-
   // A segment that starts with static text is a property, however much of it is a parameter.
   it('reads a segment with a parameter after its start as a property of its Elysia spelling', () => {
     expect(edenChain('/v{version}/items', 'app', 'get')).toStrictEqual({
