@@ -297,7 +297,8 @@ charset=shift_jis`, with its bytes as an `ArrayBuffer`. A response with a JSON m
 range such as `*/*` among them is parsed as JSON. Every `2xx` entry counts, or `default` when it is
 the only response declared: the data is the union of what each resolves with (`string | Static<typeof JobSchema>`),
 and where the entries are read differently each response is read by the entry of its status — the
-exact code (`206`), then its range (`2XX`), then JSON. An event stream (`text/event-stream`) is not
+exact code (`206`), then its range (`2XX`), and a status none of them lists the widest way they
+are read (JSON, then bytes, then text). An event stream (`text/event-stream`) is not
 supported: a hook whose successful responses declare nothing else rejects with an `Error` that
 says so without sending the request, and is typed `unknown`.
 

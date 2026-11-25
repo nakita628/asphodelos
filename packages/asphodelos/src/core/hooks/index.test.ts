@@ -3703,7 +3703,10 @@ describe('fetch fallback', () => {
     expect(await readResponse(new Response('a,b', { status: 203 }), as)).toBe('a,b')
     expect(
       await readResponse(new Response('{"id":1}', { status: 202 }), { '200': 'text' }),
-    ).toStrictEqual({ id: 1 })
+    ).toStrictEqual({ id: 1 }) // A status no entry lists is read the widest way they are, given as `default`.
+    const fallback = { '200': 'text', '206': 'bytes', default: 'bytes' }
+    const other = await readResponse(new Response('a,b', { status: 203 }), fallback)
+    expect(new TextDecoder().decode(other as ArrayBuffer)).toBe('a,b')
   })
 
   it('an event stream rejects with an Error that says it is not supported', async () => {
@@ -3743,13 +3746,22 @@ describe('fetch fallback', () => {
         '206': { description: 'Partial', content: { 'application/octet-stream': {} } },
       },
       dataT: 'void | ArrayBuffer',
-      read: "readResponse(res, { '200': 'json', '206': 'bytes' })",
+      read: "readResponse(res, { '200': 'json', '206': 'bytes', default: 'bytes' })",
     },
     {
       name: 'text on default alone',
       responses: { default: { description: 'Any', content: { 'text/plain': {} } } },
       dataT: 'string',
       read: "readResponse(res, 'text')",
+    },
+    {
+      name: 'text beside bytes on another status',
+      responses: {
+        '200': { description: 'OK', content: { 'text/csv': {} } },
+        '206': { description: 'Partial', content: { 'application/octet-stream': {} } },
+      },
+      dataT: 'string | ArrayBuffer',
+      read: "readResponse(res, { '200': 'text', '206': 'bytes', default: 'bytes' })",
     },
     {
       name: 'an exact JSON code beside a range of text',
@@ -3873,6 +3885,8 @@ describe('fetch fallback', () => {
         "throw new Error('A text/event-stream response is not supported by a fetch hook')",
       )
       expect(code).not.toContain('await fetch(')
+      expect(code).not.toContain('clientOrigin')
+      expect(code).not.toContain('readResponse')
     }
   })
 

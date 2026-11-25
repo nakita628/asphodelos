@@ -129,7 +129,7 @@ type Target = {
     bodyExpr: string,
     optionsExpr: string,
   ) => string
-  /** The schema const of the response component a `fetch` fallback types its data by, to import. */
+  /** The schema consts of the response components a `fetch` fallback types its data by, to import. */
   readonly fetchTypes?: readonly string[]
   /** Whether the requests are a `fetch` fallback's, whose URL starts at the client's origin. */
   readonly usesFetch: boolean
@@ -207,7 +207,7 @@ function entryRead(
 // is none. The data is the union of what each entry resolves with. Where the entries are read the
 // same way, the hook reads every response that way; where they differ (a `200` of `text/csv`
 // beside a `202` of JSON), it reads each response by the entry of its status, the exact code
-// before its range (`206` before `2XX`), and as JSON where none matches.
+// before its range (`206` before `2XX`), and the widest way they are read where none matches.
 function successType(
   operation: Operation,
   schemaNames: ReadonlyMap<string, string> | undefined,
@@ -245,8 +245,17 @@ function successType(
       ? { dataT, importNames }
       : { dataT, importNames, reads: only }
   }
-  // Every entry is listed, JSON too, so an exact code is read by its own entry, not its range's.
-  const byStatus = Object.fromEntries(entries.map((entry) => [entry.status, entry.read] as const))
+  // Every entry is listed, JSON too, so an exact code is read by its own entry, not its range's. A
+  // status the document does not list is read the widest way its entries with a body are: JSON
+  // when one of them is, bytes when one of them is, text otherwise.
+  const bodies = new Set(
+    entries.filter((entry) => entry.dataT !== 'void').map((entry) => entry.read),
+  )
+  const fallback: Read = bodies.has('json') ? 'json' : bodies.has('bytes') ? 'bytes' : 'text'
+  const byStatus = Object.fromEntries([
+    ...entries.map((entry) => [entry.status, entry.read] as const),
+    ...(fallback === 'json' ? [] : [['default', fallback] as const]),
+  ])
   return { dataT, importNames, reads: byStatus }
 }
 
@@ -336,12 +345,13 @@ const READER = 'readResponse'
 // type is not JSON — a path with a `.txt` or `.pdf` segment is the kind that falls back — and is
 // read as declared (`as`): its text as it is, or its bytes, empty or not, so it is what the
 // hook's `string` or `ArrayBuffer` says. Where the statuses are declared as different media types,
-// `as` maps a status (`206`) or its range (`2XX`) to its read, and any other status is JSON. An
+// `as` maps a status (`206`) or its range (`2XX`) to its read, and any other status to `default`,
+// or JSON. An
 // event stream is not supported: the hook rejects with an `Error` that says so, without reading
 // the stream to its end. A failed response rejects with its body parsed as JSON, dates revived;
 // one that is not JSON (a proxy's HTML `502`, an empty `404`) rejects with an `Error` carrying the
 // `status` and the text as `value`, the two members of Eden's error.
-const READER_CODE = `async function ${READER}(res:Response,as:Read|{readonly[status:string]:Read}='json'){const read=typeof as==='string'?as:(as[res.status]??as[\`\${String(res.status)[0]}XX\`]??'json');if(res.ok&&read==='stream'){await res.body?.cancel();throw Object.assign(new Error('A text/event-stream response is not supported by a fetch hook'),{status:res.status})}if(res.ok&&read==='bytes')return res.arrayBuffer();const text=await res.text();if(res.ok){if(read==='text')return text;return text===''?undefined:JSON.parse(text,${REVIVER})}let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
+const READER_CODE = `async function ${READER}(res:Response,as:Read|{readonly[status:string]:Read}='json'){const read=typeof as==='string'?as:(as[res.status]??as[\`\${String(res.status)[0]}XX\`]??as.default??'json');if(res.ok&&read==='stream'){await res.body?.cancel().catch(()=>{});throw Object.assign(new Error('A text/event-stream response is not supported by a fetch hook'),{status:res.status})}if(res.ok&&read==='bytes')return res.arrayBuffer();const text=await res.text();if(res.ok){if(read==='text')return text;return text===''?undefined:JSON.parse(text,${REVIVER})}let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
 
 /** How the reader reads a successful response, declared beside it. */
 const READ_TYPE_CODE = `type Read='json'|'text'|'bytes'|'stream'`
@@ -416,8 +426,9 @@ function fetchTarget(
         ? unsupported
         : `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});${read}`,
     fetchTypes: importNames,
-    usesFetch: true,
-    usesSearch: hasQuery,
+    // A hook that sends no request needs neither the client's origin nor the helpers.
+    usesFetch: !streamOnly,
+    usesSearch: hasQuery && !streamOnly,
   }
 }
 
