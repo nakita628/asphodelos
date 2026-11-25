@@ -86,8 +86,9 @@ export function renameOperationParams(operation: Operation, renames: ReadonlyMap
 
 /**
  * A path key as the app registers it with Elysia: `/users/{userId}` is `/users/:userId`. Elysia
- * reads a parameter from its `:` to the end of the segment, so `/{Sid}.json` is the parameter
- * `Sid.json`; the Eden chain is read off this spelling too, so a hook calls what the app routes.
+ * reads a parameter from its `:` to the end of the segment, so a key with static text after a
+ * parameter (`/{Sid}.json`) is left out beforehand ({@link isElysiaRoutePath}); the Eden chain is
+ * read off this spelling too, so a hook calls what the app routes.
  */
 export function elysiaPath(pathKey: string) {
   return pathKey.replaceAll(/\{([^}]+)\}/gu, ':$1')

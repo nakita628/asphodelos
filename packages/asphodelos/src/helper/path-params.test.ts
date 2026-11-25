@@ -138,7 +138,7 @@ describe('isElysiaRoutePath', () => {
     }
   })
 
-  // Elysia routes a parameter after static text, `/v:version`, as the document means it.
+  // The app routes a parameter after static text, `/v:version`, as the document means it.
   it('accepts static text before a path parameter in its segment', () => {
     expect(isElysiaRoutePath('/v{version}/items')).toBe(true)
     expect(isElysiaRoutePath('/Accounts/{AccountSid}/Calls.json')).toBe(true)

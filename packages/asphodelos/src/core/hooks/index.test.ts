@@ -3506,8 +3506,6 @@ describe('the Eden client for every path', () => {
     },
   )
 
-  // Elysia reads `/Accounts/:Sid.json` as the parameter `Sid.json`, and treaty is called with it:
-  // the hook takes the parameter as treaty types it, and its value is the whole segment.
   // The data, the error and the request options are treaty's, so the hooks file needs nothing but
   // the library and the client: no request of its own, no reader, no helper.
   it.each(libraries)(
