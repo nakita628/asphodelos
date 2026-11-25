@@ -7,7 +7,7 @@ import { Effect } from 'effect'
 
 import { fileSystemLayer } from '../../fsp/index.js'
 import { makeQueryHooks } from '../../helper/query.js'
-import type { Content, OpenAPI } from '../../openapi/index.js'
+import type { Content, OpenAPI, Operation } from '../../openapi/index.js'
 import { HOOK_CONFIGS, hooks } from './index.js'
 
 describe('swr generator', () => {
@@ -3531,7 +3531,10 @@ describe('fetch fallback', () => {
     writeFileSync(file, `${source}\nexport { readResponse, toSearch }\n`)
     try {
       return (await import(file)) as {
-        readonly readResponse: (res: Response, as?: 'json' | 'text' | 'bytes') => Promise<unknown>
+        readonly readResponse: (
+          res: Response,
+          as?: 'json' | 'text' | 'bytes' | 'stream' | { readonly [status: string]: string },
+        ) => Promise<unknown>
         readonly toSearch: (query: { [key: string]: unknown } | undefined) => URLSearchParams
       }
     } finally {
@@ -3666,6 +3669,12 @@ describe('fetch fallback', () => {
       name: 'an event stream',
       content: { 'text/event-stream': {} },
       dataT: 'unknown',
+      read: "readResponse(res, 'stream')",
+    },
+    {
+      name: 'an event stream beside JSON',
+      content: { 'text/event-stream': {}, 'application/json': {} },
+      dataT: 'unknown',
       read: 'readResponse(res)',
     },
   ]
@@ -3689,6 +3698,88 @@ describe('fetch fallback', () => {
       }
     },
   )
+
+  // Where the statuses are declared as different media types, each response is read by its own.
+  it('a response read by status follows the exact code, then its range, then JSON', async () => {
+    const { readResponse } = await importHelpers()
+    const as = { '200': 'text', '206': 'bytes', '2XX': 'text' }
+    expect(await readResponse(new Response('{"id":1}'), as)).toBe('{"id":1}')
+    const partial = await readResponse(new Response(new Uint8Array([1, 2]), { status: 206 }), as)
+    expect([...new Uint8Array(partial as ArrayBuffer)]).toStrictEqual([1, 2])
+    expect(await readResponse(new Response('a,b', { status: 203 }), as)).toBe('a,b')
+    expect(
+      await readResponse(new Response('{"id":1}', { status: 202 }), { '200': 'text' }),
+    ).toStrictEqual({ id: 1 })
+  })
+
+  it('an event stream rejects with an Error that says it is not supported', async () => {
+    const { readResponse } = await importHelpers()
+    const error = await readResponse(new Response('data: 1\n\n'), 'stream').catch(
+      (error_: unknown) => error_,
+    )
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toMatchObject({
+      status: 200,
+      message: 'A text/event-stream response is not supported by a fetch hook',
+    })
+  })
+
+  const statuses: readonly {
+    name: string
+    responses: Operation['responses']
+    dataT: string
+    read: string
+  }[] = [
+    {
+      name: 'text beside a JSON schema on another status',
+      responses: {
+        '200': { description: 'OK', content: { 'text/csv': {} } },
+        '202': {
+          description: 'Accepted',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
+        },
+      },
+      dataT: 'string | Static<typeof JobSchema>',
+      read: "readResponse(res, { '200': 'text' })",
+    },
+    {
+      name: 'no content beside bytes on another status',
+      responses: {
+        '200': { description: 'OK' },
+        '206': { description: 'Partial', content: { 'application/octet-stream': {} } },
+      },
+      dataT: 'void | ArrayBuffer',
+      read: "readResponse(res, { '206': 'bytes' })",
+    },
+    {
+      name: 'text on default alone',
+      responses: { default: { description: 'Any', content: { 'text/plain': {} } } },
+      dataT: 'string',
+      read: "readResponse(res, 'text')",
+    },
+    {
+      name: 'text on every status',
+      responses: {
+        '200': { description: 'OK', content: { 'text/plain': {} } },
+        '2xx': { description: 'Other', content: { 'text/csv': {} } },
+      },
+      dataT: 'string',
+      read: "readResponse(res, 'text')",
+    },
+  ]
+  it.each(statuses)('a response with $name is typed $dataT', async ({ responses, dataT, read }) => {
+    for (const library of ['tanstack-query', 'swr'] as const) {
+      const code = await generateAndRead(library, {
+        ...api,
+        paths: { '/report.txt': { get: { operationId: 'getReport', responses } } },
+        components: {
+          schemas: { Job: { type: 'object', properties: { id: { type: 'string' } } } },
+        },
+      })
+      expect(code).toContain(`return ${read}\n`)
+      expect(code).toContain(library === 'swr' ? `useSWR<${dataT}, TError>` : `TData = ${dataT},`)
+    }
+  })
 
   // A JSON schema beside another media type is read as JSON, as it was.
   it('a response with a JSON schema is parsed as JSON whatever else it declares', async () => {
