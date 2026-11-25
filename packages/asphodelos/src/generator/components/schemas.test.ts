@@ -621,4 +621,24 @@ describe('schemasCode — a dependent schema inside its own recursive group', ()
     expect(code).toContain('t.Recursive(')
     expect(code).toContain('const depSubs={"k":LeafSchema}')
   })
+
+  // A raw transform's regex can hold a lone paren; it does not stop the refs after it.
+  it('still replaces the refs after a raw transform with a lone paren', () => {
+    const code = schemasCode({
+      A: {
+        type: 'object',
+        properties: {
+          s: {
+            type: 'string',
+            'x-transform':
+              't.Transform(t.String()).Decode((v)=>v.replace(/\\(\\(\\(/g,"")).Encode((v)=>v)',
+          },
+          b: { $ref: '#/components/schemas/B' },
+        },
+      },
+      B: { type: 'object', properties: { c: { $ref: '#/components/schemas/C' } } },
+      C: { type: 'object', properties: { a: { $ref: '#/components/schemas/A' } } },
+    } as unknown as { readonly [k: string]: Schema })
+    expect(code).toContain('"b":t.Optional(t.Ref("B"))')
+  })
 })
