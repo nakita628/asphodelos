@@ -726,4 +726,17 @@ describe('makeAppType — a segment that mixes a parameter with static text', ()
     expect(appType).toContain('{ "v:version": { "items": { get: ')
     expect(appType).not.toContain('v{version}')
   })
+
+  // The app is built with `new Elysia({ prefix })`, so the prefix is keyed exactly as written.
+  it('keys the prefix as written', () => {
+    const { appType } = makeAppType(
+      {
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: { '/items': { get: { responses: { '204': { description: 'ok' } } } } },
+      },
+      '/api/v{n}',
+    )
+    expect(appType).toContain('{ "api": { "v{n}": { "items": { get: ')
+  })
 })

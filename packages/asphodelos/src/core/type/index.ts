@@ -235,7 +235,9 @@ function nestRoute(keys: readonly string[], method: string, opTs: string) {
 
 function makeRoutes(openAPI: OpenAPI, prefix?: string) {
   const out: string[] = []
-  const prefixKeys: readonly string[] = prefix && prefix !== '/' ? pathToKeys(prefix) : []
+  // The app is built with `new Elysia({ prefix })`, which registers the prefix as written.
+  const prefixKeys: readonly string[] =
+    prefix && prefix !== '/' ? prefix.split('/').filter((s) => s.length > 0) : []
   for (const [pathStr, pathItem] of Object.entries(openAPI.paths ?? {})) {
     if (!pathItem || !isElysiaRoutePath(pathStr)) continue
     const keys = [...prefixKeys, ...pathToKeys(pathStr)]
