@@ -55,7 +55,9 @@ export function schemaConstNames(
 }
 
 // What a schema carries as data rather than as schemas: a `$ref` member in there is a value.
-const DATA_KEYS = new Set(['example', 'examples', 'default', 'enum', 'const'])
+// A link's `parameters` and `requestBody` are runtime expressions or literal values, and an `x-`
+// extension is the user's own data.
+const DATA_KEYS = new Set(['example', 'examples', 'default', 'enum', 'const', 'links'])
 
 // The members that map a name to an object — a schema's (`properties`), an operation's
 // (`responses`, `content`), the document's (`paths`, the sections of `components`): their keys are
@@ -74,7 +76,6 @@ const NAMED_KEYS = new Set([
   'content',
   'encoding',
   'headers',
-  'links',
   'schemas',
   'parameters',
   'requestBodies',
@@ -84,22 +85,25 @@ const NAMED_KEYS = new Set([
   'mediaTypes',
 ])
 
-// The key a `$ref` names in `components.schemas`. A `$ref` that does not decode names none.
-function refKey($ref: string) {
-  const m = /^#\/components\/schemas\/([^/]+)$/u.exec($ref)
-  if (!m?.[1]) return undefined
+// The key a `$ref` names in `components.schemas` (the empty key too), and the pointer past it
+// (`/properties/x`). A `$ref` that does not decode names none.
+function refTarget($ref: string) {
+  const m = /^#\/components\/schemas\/([^/]*)(\/.*)?$/u.exec($ref)
+  if (m?.[1] === undefined) return undefined
   try {
-    return decodeURIComponent(m[1])
+    return { key: decodeURIComponent(m[1]), rest: m[2] ?? '' }
   } catch {
     return undefined
   }
 }
 
-// A `$ref` string named after a renamed key, pointed at its new key.
+// A `$ref` string into a renamed key, pointed at its new key.
 function renameRef($ref: string, renamed: ReadonlyMap<string, string>) {
-  const key = refKey($ref)
-  const to = key === undefined ? undefined : renamed.get(key)
-  return to === undefined ? undefined : `#/components/schemas/${to}`
+  const target = refTarget($ref)
+  const to = target === undefined ? undefined : renamed.get(target.key)
+  return to === undefined || target === undefined
+    ? undefined
+    : `#/components/schemas/${encodeURIComponent(to)}${target.rest}`
 }
 
 // A discriminator's `mapping` value or `defaultMapping` names a schema by a `$ref` or its bare key.
@@ -134,7 +138,7 @@ function renameRefs(value: unknown, renamed: ReadonlyMap<string, string>, named 
   return Object.fromEntries(
     Object.entries(value).map(([key, member]: readonly [string, unknown]) => {
       if (named) return [key, renameRefs(member, renamed)]
-      if (DATA_KEYS.has(key)) return [key, member]
+      if (DATA_KEYS.has(key) || key.startsWith('x-')) return [key, member]
       if (
         key === 'discriminator' &&
         typeof member === 'object' &&

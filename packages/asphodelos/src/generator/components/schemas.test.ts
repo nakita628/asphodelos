@@ -393,6 +393,56 @@ describe('uniqueSchemaKeys', () => {
     })
   })
 
+  it('points a $ref to the renamed empty key, and a pointer into a renamed key, at the new key', () => {
+    const unique = uniqueSchemas({
+      Schema: { type: 'string' },
+      '': { type: 'number' },
+      user: { type: 'object', properties: { x: { type: 'string' } } },
+      User: { type: 'string' },
+      Holder: {
+        type: 'object',
+        properties: {
+          empty: { $ref: '#/components/schemas/' },
+          deep: { $ref: '#/components/schemas/User/properties/x' },
+          deeper: { $ref: '#/components/schemas/Schema' },
+        },
+      },
+    })
+    expect(Object.keys(unique)).toStrictEqual(['Schema', 'Schema2', 'user', 'User2', 'Holder'])
+    expect(unique.Holder).toStrictEqual({
+      type: 'object',
+      properties: {
+        empty: { $ref: '#/components/schemas/Schema2' },
+        deep: { $ref: '#/components/schemas/User2/properties/x' },
+        deeper: { $ref: '#/components/schemas/Schema' },
+      },
+    })
+  })
+
+  it('leaves the values of a link and of an extension as the data they are', () => {
+    const doc = {
+      openapi: '3.1.0',
+      info: { title: 'Links', version: '1' },
+      paths: {
+        '/users': {
+          get: {
+            'x-sample': ref,
+            responses: {
+              '200': { description: 'ok', links: { Next: { operationId: 'n', requestBody: ref } } },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: { User: { type: 'string' }, user: { type: 'number' } },
+        links: { Self: { operationId: 's', parameters: { id: ref } } },
+      },
+    } as unknown as OpenAPI
+    const renamed = uniqueSchemaKeys(doc)
+    expect(renamed.paths).toStrictEqual(doc.paths)
+    expect(renamed.components?.links).toStrictEqual(doc.components?.links)
+  })
+
   it('returns a document without colliding keys, or without schemas, as it is', () => {
     const plain = {
       openapi: '3.1.0',
