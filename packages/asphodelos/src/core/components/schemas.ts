@@ -13,8 +13,26 @@ import { pascalCase, uncapitalize } from '../../utils/index.js'
 // The rename every generator's document goes through before its jobs are made.
 export { uniqueSchemaKeys } from '../../generator/components/index.js'
 
-function fileNameOf(group: readonly { name: string; schema: Schema }[]) {
+function baseFileNameOf(group: readonly { name: string; schema: Schema }[]) {
   return uncapitalize(group.map((member) => member.name).toSorted()[0] ?? 'schema')
+}
+
+function freeFileName(base: string, i: number, taken: ReadonlySet<string>): string {
+  const candidate = `${base}${i}`
+  return taken.has(candidate.toLowerCase()) ? freeFileName(base, i + 1, taken) : candidate
+}
+
+// Each group's file name. `index` is the barrel's, on a case-insensitive file system too, so a
+// group named like it (`Index`, `index`) takes the first `index<n>` no other file has.
+function fileNamesOf(groups: readonly (readonly { name: string; schema: Schema }[])[]) {
+  const bases = groups.map(baseFileNameOf)
+  const taken = new Set(['index', ...bases.map((base) => base.toLowerCase())])
+  return bases.map((base) => {
+    if (base.toLowerCase() !== 'index') return base
+    const free = freeFileName(base, 2, taken)
+    taken.add(free.toLowerCase())
+    return free
+  })
 }
 
 function splitSchemaFiles(
@@ -27,11 +45,12 @@ function splitSchemaFiles(
   const groups = sccSchemas(
     Object.entries(uniqueSchemas(section)).map(([name, schema]) => ({ name, schema })),
   )
+  const fileNames = fileNamesOf(groups)
   const nameToFile = new Map(
-    groups.flatMap((group) => group.map((s) => [s.name, fileNameOf(group)] as const)),
+    groups.flatMap((group, i) => group.map((s) => [s.name, fileNames[i] ?? ''] as const)),
   )
-  return groups.map((group) => {
-    const fileName = fileNameOf(group)
+  return groups.map((group, i) => {
+    const fileName = fileNames[i] ?? ''
     const subSection = Object.fromEntries(group.map((member) => [member.name, member.schema]))
     const body = schemasCode(subSection, readonly, exportTypes)
     if (body === '') return { fileName, code: '', refKinds: new Map<string, string>() }

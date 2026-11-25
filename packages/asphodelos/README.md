@@ -483,6 +483,7 @@ you type — and the CLI checks the rest when it runs:
 - `components.output` (one file) and the per-type `components.*` sections are mutually exclusive.
 - A component section with `split: true` writes one file per entry plus an `index.ts` barrel into a
   directory; otherwise `output` is a single `.ts` file (a directory stands for its `index.ts`).
+  A schema whose file would be the barrel's (`Index`) is written to `index2.ts` instead.
 - Schema keys that differ only in case (`User`, `user`) would share a const: the first keeps
   `UserSchema`, the next is written as `User2Schema` — in `user2.ts` when split — and every
   generator names it so: a `$ref` to it, its model, its type (`User2`) and its mock.

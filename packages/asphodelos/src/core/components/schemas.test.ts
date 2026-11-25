@@ -194,3 +194,48 @@ describe('schemas — split mode, keys that differ only in case', () => {
     expect(files['pet.ts']).toContain('account: t.Optional(User2Schema)')
   })
 })
+
+// `index.ts` is the barrel's: a schema whose file would be named `index` is written beside it.
+describe('schemas — split mode, a schema keyed like the barrel', () => {
+  const generate = async (sample: Parameters<typeof schemas>[0]) => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asphodelos-schemas-'))
+    await Effect.runPromise(
+      schemas(sample, path.join(tmpDir, 'schemas.ts'), true, false).pipe(
+        Effect.provide(fileSystemLayer),
+      ),
+    )
+    const dir = path.join(tmpDir, 'schemas')
+    return Object.fromEntries(
+      fs
+        .readdirSync(dir)
+        .toSorted()
+        .map((file) => [file, fs.readFileSync(path.join(dir, file), 'utf8')] as const),
+    )
+  }
+
+  it('writes a schema keyed `Index` to a file of its own and re-exports it', async () => {
+    const files = await generate({
+      Index: { type: 'string' },
+      Pet: { type: 'object', properties: { index: { $ref: '#/components/schemas/Index' } } },
+    })
+    expect(Object.keys(files)).toStrictEqual(['index.ts', 'index2.ts', 'pet.ts'])
+    expect(files['index.ts']).toBe("export * from './index2'\nexport * from './pet'\n")
+    expect(files['index2.ts']).toContain('export const IndexSchema = t.String()')
+    expect(files['pet.ts']).toContain("import { IndexSchema } from './index2'")
+  })
+
+  it('names `Index`, `index`, `INDEX` and `Index3` files no other one has', async () => {
+    const files = await generate({
+      Index: { type: 'string' },
+      index: { type: 'number' },
+      INDEX: { type: 'boolean' },
+      Index3: { type: 'integer' },
+    })
+    expect(
+      Object.keys(files)
+        .map((file) => file.toLowerCase())
+        .toSorted(),
+    ).toStrictEqual(['index.ts', 'index2.ts', 'index3.ts', 'index4.ts', 'index5.ts'])
+    expect(files['index.ts']?.split('\n').filter(Boolean)).toHaveLength(4)
+  })
+})
