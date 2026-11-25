@@ -718,8 +718,9 @@ function headerCode(config: QueryHookConfig, client: string, importPath: string,
 
 /**
  * Generates one library's hooks: every request goes through the Eden treaty client, typed by it.
- * A path key Elysia cannot route (a query string after a path parameter) is not in the app, so
- * the client cannot reach it either, and it has no hook.
+ * A path key Elysia cannot route ({@link isElysiaRoutePath}) is not in the app, so the client cannot
+ * reach it either, and it has no hook; nor has a key whose parameters treaty cannot fill
+ * ({@link isTreatyPath}), such as `/v{version}/items`.
  */
 export function makeQueryHooks(
   openAPI: OpenAPI,

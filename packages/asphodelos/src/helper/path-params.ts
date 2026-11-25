@@ -88,7 +88,8 @@ export function renameOperationParams(operation: Operation, renames: ReadonlyMap
  * A path key as the app registers it with Elysia: `/users/{userId}` is `/users/:userId`. Elysia
  * reads a parameter from its `:` to the end of the segment, so a key with static text after a
  * parameter (`/{Sid}.json`) is left out beforehand ({@link isElysiaRoutePath}); the Eden chain is
- * read off this spelling too, so a hook calls what the app routes.
+ * read off this spelling too, so a hook calls what the app routes. A key with static text before a
+ * parameter (`/v{version}`) is routed, but gets no Eden wrapper or hook ({@link isTreatyPath}).
  */
 export function elysiaPath(pathKey: string) {
   return pathKey.replaceAll(/\{([^}]+)\}/gu, ':$1')
@@ -131,21 +132,35 @@ export function isElysiaRoutePath(pathKey: string) {
 
 const warnedTreatyKeys = new Set<string>()
 
+function treatyProblem(pathKey: string) {
+  const queryStart = pathKey.indexOf('?')
+  const pathPart = queryStart === -1 ? pathKey : pathKey.slice(0, queryStart)
+  if (/[^/]\{[^/{}]+\}/u.test(pathPart)) {
+    return 'has static text before a path parameter in its segment'
+  }
+  if (queryStart !== -1 && /\{[^{}]+\}/u.test(pathKey.slice(queryStart))) {
+    return 'has a path parameter in its query string'
+  }
+  return null
+}
+
 /**
  * Whether Eden treaty can call a route path with its parameters filled.
  *
  * Treaty calls a segment as a parameter only when it starts with `:`, so a key with static text
  * before a `{param}` in its segment, such as `/v{version}/items`, is the property `v:version`: a
- * call sends the literal `/v:version/items`, and there is no argument to pass the version with. The
+ * call sends the literal `/v:version/items`, and there is no argument to pass the version with. A
+ * parameter in a query string inside the key (`/search?q={term}`) is likewise sent literally. The
  * app routes such a key, but it is left out of the Eden wrappers and the hooks, with a warning once
  * per key.
  */
 export function isTreatyPath(pathKey: string) {
-  if (!/[^/]\{[^/{}]+\}/u.test(pathKey)) return true
+  const reason = treatyProblem(pathKey)
+  if (reason === null) return true
   if (!warnedTreatyKeys.has(pathKey)) {
     warnedTreatyKeys.add(pathKey)
     console.warn(
-      `[asphodelos] path '${pathKey}' has static text before a path parameter in its segment, which Eden treaty cannot fill; it is left out of the Eden wrappers and the hooks`,
+      `[asphodelos] path '${pathKey}' ${reason}, which Eden treaty cannot fill; it is left out of the Eden wrappers and the hooks`,
     )
   }
   return false

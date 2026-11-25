@@ -648,7 +648,8 @@ export function useDeleteItemsId<
   })
 
   // Elysia reads `/:Sid.json` as the parameter `Sid.json`, so the app leaves the key out, and with it
-  // the hook; a parameter with static text before it, `/v{version}`, stays.
+  // the hook; a parameter with static text before it, `/v{version}`, stays in the app but has no
+  // hook either (see `isTreatyPath`).
   it('leaves out a parameter with static text after it', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     try {
@@ -3521,8 +3522,6 @@ describe('the Eden client for every path', () => {
     },
   )
 
-  // A path key with a query string after a path parameter is not in the app, so treaty has no
-  // route for it: it has no hook, and no prefix key that only it would name.
   // Treaty keys `/v{version}` as the property `v:version`, so a hook would send `/v:version/items`
   // with no way to pass the version: the app routes the key, but it has no hook.
   it.each(libraries)(
@@ -3556,6 +3555,8 @@ describe('the Eden client for every path', () => {
     },
   )
 
+  // A path key with a query string after a path parameter is not in the app, so treaty has no
+  // route for it: it has no hook, and no prefix key that only it would name.
   it('leaves out a path key with a query string after a path parameter', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     try {

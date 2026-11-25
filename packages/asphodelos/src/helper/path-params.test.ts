@@ -181,4 +181,19 @@ describe('isTreatyPath', () => {
       warn.mockRestore()
     }
   })
+
+  it('refuses a path parameter in a query string inside the key, with its own warning', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(isTreatyPath('/search?q={term}')).toBe(false)
+      expect(isTreatyPath('/jobs/{id}/cancel?beta=true')).toBe(true)
+      expect(warn.mock.calls).toStrictEqual([
+        [
+          "[asphodelos] path '/search?q={term}' has a path parameter in its query string, which Eden treaty cannot fill; it is left out of the Eden wrappers and the hooks",
+        ],
+      ])
+    } finally {
+      warn.mockRestore()
+    }
+  })
 })
