@@ -294,8 +294,13 @@ what is read: `text/*` alone, in UTF-8 — the `text/csv` of an `/export.csv` �
 text as a `string`, which unlike treaty's is not read further (`42` stays a string), and any other
 media type, such as `application/octet-stream`, `application/pdf` or a `text/csv;
 charset=shift_jis`, with its bytes as an `ArrayBuffer`. A response with a JSON media type or a
-range such as `*/*` among them is parsed as JSON. An event stream (`text/event-stream`) is not
-supported: it is not streamed, and its hook is typed `unknown`.
+range such as `*/*` among them is parsed as JSON. Every `2xx` entry counts, or `default` when it is
+the only response declared: the data is the union of what each resolves with (`string | Static<typeof JobSchema>`),
+and where the entries are read differently each response is read by the entry of its status — the
+exact code (`206`), then its range (`2XX`), and a status none of them lists the widest way they
+are read (JSON, then bytes, then text). An event stream (`text/event-stream`) is not
+supported: a hook whose successful responses declare nothing else rejects with an `Error` that
+says so without sending the request, and is typed `unknown`.
 
 A JSON response without a body — a `204`, an empty `200` — resolves with `undefined`. TanStack Query
 does not take `undefined` as a query's data, so there a query hook, unlike a mutation hook, reports

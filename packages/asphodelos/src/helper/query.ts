@@ -3,7 +3,7 @@ import path from 'node:path'
 import { Effect } from 'effect'
 
 import { emit } from '../emit/index.js'
-import type { OpenAPI, Operation } from '../openapi/index.js'
+import type { OpenAPI, Operation, Responses } from '../openapi/index.js'
 import {
   capitalize,
   filterDefined,
@@ -129,8 +129,8 @@ type Target = {
     bodyExpr: string,
     optionsExpr: string,
   ) => string
-  /** The schema const of the response component a `fetch` fallback types its data by, to import. */
-  readonly fetchType?: string
+  /** The schema consts of the response components a `fetch` fallback types its data by, to import. */
+  readonly fetchTypes?: readonly string[]
   /** Whether the requests are a `fetch` fallback's, whose URL starts at the client's origin. */
   readonly usesFetch: boolean
   /** Whether a `fetch` fallback builds a search string from the options' query. */
@@ -153,53 +153,110 @@ function pathParamNames(pathStr: string): readonly string[] {
   return [...pathStr.matchAll(/\{([^}]+)\}/gu)].map((m) => m[1] ?? '')
 }
 
+/** How a `fetch` fallback reads a successful response. */
+type Read = 'json' | 'text' | 'bytes' | 'stream'
+
 // How a `fetch` fallback reads a response declared under this media type key. JSON is anything
 // that says so (`application/json`, `+json`, `text/json`) and anything that does not say what it
 // is: a range such as the `*/*` of a controller without `produces`, which was parsed as JSON
-// before the hooks told media types apart. An event stream is left to the JSON reader as well,
-// since a single read does not fit it. Text is `text/*` in UTF-8, the one charset `res.text()`
-// decodes: a `text/csv; charset=shift_jis` is handed over as the bytes it is.
-function mediaRead(key: string): 'json' | 'text' | 'bytes' {
+// before the hooks told media types apart. An event stream is not read at all: a single read does
+// not fit it. Text is `text/*` in UTF-8, the one charset `res.text()` decodes: a `text/csv;
+// charset=shift_jis` is handed over as the bytes it is.
+function mediaRead(key: string): Read {
   const [head = '', ...parameters] = key.split(';').map((part) => part.trim().toLowerCase())
-  if (head.includes('json') || head.includes('*') || head === 'text/event-stream') return 'json'
+  if (head === 'text/event-stream') return 'stream'
+  if (head.includes('json') || head.includes('*')) return 'json'
   const charset = parameters.find((parameter) => parameter.startsWith('charset='))?.slice(8)
   const utf8 = charset === undefined || /^["']?utf-?8["']?$/u.test(charset)
   return head.startsWith('text/') && utf8 ? 'text' : 'bytes'
 }
 
-// The data type for a fetch fallback comes from its 2xx response schema — the Eden chain that
-// normally yields it is untypeable here. A component `$ref` resolves to `Static` of its schema const,
-// which the schemas module always exports — its type alias (`Account`) only with `exportTypes`;
-// inline and empty responses degrade to a safe wide type. The const is named the way the schemas
-// generator named it (`schemaNames`): keys that differ only in case (`User`, `user`) share a
-// pascal-cased name, and all but the first are written under a suffixed one (`User2Schema`).
+// One response entry's data type and how it is read. A component `$ref` resolves to `Static` of
+// its schema const, which the schemas module always exports — its type alias (`Account`) only
+// with `exportTypes`; inline and empty responses degrade to a safe wide type. The const is named
+// the way the schemas generator named it (`schemaNames`): keys that differ only in case (`User`,
+// `user`) share a pascal-cased name, and all but the first are written under a suffixed one
+// (`User2Schema`). An entry that declares only an event stream has no data: it is not supported.
+function entryRead(
+  response: Responses,
+  schemaNames: ReadonlyMap<string, string> | undefined,
+): { readonly dataT?: string; readonly importName?: string; readonly read: Read } {
+  const info = responseInfo(response)
+  if (info.ref) {
+    const ident = schemaNames?.get(info.ref) ?? `${pascalCase(info.ref)}Schema`
+    return { dataT: `Static<typeof ${ident}>`, importName: ident, read: 'json' }
+  }
+  if (!info.void) return { dataT: 'unknown', read: 'json' }
+  // No JSON schema: the response is read as what it declares, and typed as what is read — text
+  // for text alone, bytes once any other media type is among them (a `text/csv` beside an
+  // `application/pdf` is bytes too: text read from bytes can be decoded, bytes read as text are
+  // lost). With a JSON media type among them it is parsed as before. An event stream beside
+  // another media type is left to the other one.
+  const all = new Set(Object.keys(response.content ?? {}).map(mediaRead))
+  if (all.size === 0) return { dataT: 'void', read: 'json' }
+  const reads = new Set([...all].filter((read) => read !== 'stream'))
+  if (reads.size === 0) return { read: 'stream' }
+  if (reads.has('json')) return { dataT: 'unknown', read: 'json' }
+  return reads.has('bytes')
+    ? { dataT: 'ArrayBuffer', read: 'bytes' }
+    : { dataT: 'string', read: 'text' }
+}
+
+// The data type for a fetch fallback comes from its successful responses — the Eden chain that
+// normally yields it is untypeable here: every `2xx` entry (`200`, `2XX`), or `default` when there
+// is none. The data is the union of what each entry resolves with. Where the entries are read the
+// same way, the hook reads every response that way; where they differ (a `200` of `text/csv`
+// beside a `202` of JSON), it reads each response by the entry of its status, the exact code
+// before its range (`206` before `2XX`), and the widest way they are read where none matches.
 function successType(
   operation: Operation,
   schemaNames: ReadonlyMap<string, string> | undefined,
 ): {
   readonly dataT: string
-  readonly importName?: string
+  readonly importNames: readonly string[]
   /** How the body is read; left out for JSON, which is what `readResponse` reads by default. */
-  readonly reads?: 'text' | 'bytes'
+  readonly reads?: Exclude<Read, 'json'> | { readonly [status: string]: Read }
 } {
-  const ok = Object.entries(operation.responses ?? {}).find(([status]) => status.startsWith('2'))
-  if (!ok) return { dataT: 'void' }
-  const info = responseInfo(ok[1])
-  if (info.ref) {
-    const ident = schemaNames?.get(info.ref) ?? `${pascalCase(info.ref)}Schema`
-    return { dataT: `Static<typeof ${ident}>`, importName: ident }
+  const responses = Object.entries(operation.responses ?? {})
+  const success = responses.filter(([status]) => status.startsWith('2'))
+  // `default` stands for every status not listed, an error body more often than not: it is the
+  // success only of an operation that declares nothing else.
+  const declared =
+    success.length > 0
+      ? success
+      : responses.length === 1
+        ? responses.filter(([status]) => status === 'default')
+        : []
+  if (declared.length === 0) return { dataT: 'void', importNames: [] }
+  const entries = declared.map(([status, response]) =>
+    Object.assign(entryRead(response, schemaNames), { status: status.toUpperCase() }),
+  )
+  const types = [...new Set(entries.flatMap((entry) => (entry.dataT ? [entry.dataT] : [])))]
+  const dataT = types.length === 0 || types.includes('unknown') ? 'unknown' : types.join(' | ')
+  // A schema const is imported only when its type is spelled out: `unknown` takes in the rest.
+  const importNames =
+    dataT === 'unknown'
+      ? []
+      : [...new Set(entries.flatMap((entry) => (entry.importName ? [entry.importName] : [])))]
+  const kinds = new Set(entries.map((entry) => entry.read))
+  const [only] = kinds
+  if (kinds.size === 1) {
+    return only === undefined || only === 'json'
+      ? { dataT, importNames }
+      : { dataT, importNames, reads: only }
   }
-  if (!info.void) return { dataT: 'unknown' }
-  // No JSON schema: the response is read as what it declares, and typed as what is read — text
-  // for text alone, bytes once any other media type is among them (a `text/csv` beside an
-  // `application/pdf` is bytes too: text read from bytes can be decoded, bytes read as text are
-  // lost). With a JSON media type among them it is parsed as before.
-  const reads = new Set(Object.keys(ok[1].content ?? {}).map(mediaRead))
-  if (reads.size === 0) return { dataT: 'void' }
-  if (reads.has('json')) return { dataT: 'unknown' }
-  return reads.has('bytes')
-    ? { dataT: 'ArrayBuffer', reads: 'bytes' }
-    : { dataT: 'string', reads: 'text' }
+  // Every entry is listed, JSON too, so an exact code is read by its own entry, not its range's. A
+  // status the document does not list is read the widest way its entries with a body are: JSON
+  // when one of them is, bytes when one of them is, text otherwise.
+  const bodies = new Set(
+    entries.filter((entry) => entry.dataT !== 'void').map((entry) => entry.read),
+  )
+  const fallback: Read = bodies.has('json') ? 'json' : bodies.has('bytes') ? 'bytes' : 'text'
+  const byStatus = Object.fromEntries([
+    ...entries.map((entry) => [entry.status, entry.read] as const),
+    ...(fallback === 'json' ? [] : [['default', fallback] as const]),
+  ])
+  return { dataT, importNames, reads: byStatus }
 }
 
 function isBodyMethod(method: string) {
@@ -287,10 +344,17 @@ const READER = 'readResponse'
 // so it resolves with `undefined`. A response the document declares as text or as another media
 // type is not JSON — a path with a `.txt` or `.pdf` segment is the kind that falls back — and is
 // read as declared (`as`): its text as it is, or its bytes, empty or not, so it is what the
-// hook's `string` or `ArrayBuffer` says. A failed response rejects with its body parsed as JSON,
-// dates revived; one that is not JSON (a proxy's HTML `502`, an empty `404`) rejects with an
-// `Error` carrying the `status` and the text as `value`, the two members of Eden's error.
-const READER_CODE = `async function ${READER}(res:Response,as:'json'|'text'|'bytes'='json'){if(res.ok&&as==='bytes')return res.arrayBuffer();const text=await res.text();if(res.ok){if(as==='text')return text;return text===''?undefined:JSON.parse(text,${REVIVER})}let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
+// hook's `string` or `ArrayBuffer` says. Where the statuses are declared as different media types,
+// `as` maps a status (`206`) or its range (`2XX`) to its read, and any other status to `default`,
+// or JSON. An
+// event stream is not supported: the hook rejects with an `Error` that says so, without reading
+// the stream to its end. A failed response rejects with its body parsed as JSON, dates revived;
+// one that is not JSON (a proxy's HTML `502`, an empty `404`) rejects with an `Error` carrying the
+// `status` and the text as `value`, the two members of Eden's error.
+const READER_CODE = `async function ${READER}(res:Response,as:Read|{readonly[status:string]:Read}='json'){const read=typeof as==='string'?as:(as[res.status]??as[\`\${String(res.status)[0]}XX\`]??as.default??'json');if(res.ok&&read==='stream'){await res.body?.cancel().catch(()=>{});throw Object.assign(new Error('A text/event-stream response is not supported by a fetch hook'),{status:res.status})}if(res.ok&&read==='bytes')return res.arrayBuffer();const text=await res.text();if(res.ok){if(read==='text')return text;return text===''?undefined:JSON.parse(text,${REVIVER})}let error:unknown;try{error=JSON.parse(text,${REVIVER})}catch{error=Object.assign(new Error(\`\${res.status} \${res.statusText}\`.trim()),{status:res.status,value:text})}throw error}`
+
+/** How the reader reads a successful response, declared beside it. */
+const READ_TYPE_CODE = `type Read='json'|'text'|'bytes'|'stream'`
 
 /** What builds a `fetch` fallback's search string from the options' query. */
 const SEARCH = 'toSearch'
@@ -319,8 +383,18 @@ function fetchTarget(
     ? '{ headers?: Record<string, string>; query?: Record<string, unknown> }'
     : '{ headers?: Record<string, string> }'
   const withBody = isBodyMethod(method)
-  const { dataT, importName, reads } = successType(operation, schemaNames)
-  const read = `return ${READER}(res${reads ? `,'${reads}'` : ''})`
+  const { dataT, importNames, reads } = successType(operation, schemaNames)
+  const as =
+    reads === undefined
+      ? ''
+      : typeof reads === 'string'
+        ? `,'${reads}'`
+        : `,${JSON.stringify(reads)}`
+  const read = `return ${READER}(res${as})`
+  // An operation that answers with nothing but an event stream cannot be read: the hook rejects
+  // without opening the stream, so a library's retries do not open it again and again.
+  const streamOnly = reads === 'stream'
+  const unsupported = `throw new Error('A text/event-stream response is not supported by a fetch hook')`
   const url = (exprs: readonly string[]) => {
     const inner = fullPath.replaceAll(/\{([^}]+)\}/gu, (_, n: string) => {
       const index = names.indexOf(n)
@@ -344,12 +418,17 @@ function fetchTarget(
     ...(withBody ? { bodyType: 'unknown' } : {}),
     bodyRequired: false,
     queryBody: (exprs, options, signal) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{${method === 'head' ? "method:'HEAD'," : ''}headers:${options}?.headers${signal ? ',signal' : ''}});${read}`,
+      streamOnly
+        ? unsupported
+        : `${search(options)}const res=await fetch(${url(exprs)},{${method === 'head' ? "method:'HEAD'," : ''}headers:${options}?.headers${signal ? ',signal' : ''}});${read}`,
     mutationBody: (exprs, body, options) =>
-      `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});${read}`,
-    ...(importName ? { fetchType: importName } : {}),
-    usesFetch: true,
-    usesSearch: hasQuery,
+      streamOnly
+        ? unsupported
+        : `${search(options)}const res=await fetch(${url(exprs)},{method:'${method.toUpperCase()}',headers:{'content-type':'application/json',...${options}?.headers},body:${body}===undefined?undefined:JSON.stringify(${body})});${read}`,
+    fetchTypes: importNames,
+    // A hook that sends no request needs neither the client's origin nor the helpers.
+    usesFetch: !streamOnly,
+    usesSearch: hasQuery && !streamOnly,
   }
 }
 
@@ -826,7 +905,7 @@ function operationCode(
       : mutationCode(config, method, pathStr, target, prefix, fullPath)
   return {
     code: code.join('\n\n'),
-    fetchType: target.fetchType,
+    fetchTypes: target.fetchTypes,
     usesFetch: target.usesFetch,
     usesSearch: target.usesSearch,
   }
@@ -957,14 +1036,14 @@ export function makeQueryHooks(
     if (operations.length === 0) return 'No operations found'
     const usesFetch = operations.some((op) => op.usesFetch)
     const body = `${[
-      ...(usesFetch ? [REVIVER_CODE, READER_CODE] : []),
+      ...(usesFetch ? [REVIVER_CODE, READ_TYPE_CODE, READER_CODE] : []),
       ...(operations.some((op) => op.usesSearch) ? [SEARCH_CODE] : []),
       ...makePrefixKeyCodes(openAPI, prefix),
       ...operations.map((op) => op.code),
     ].join('\n\n')}\n`
     // A fetch hook types its data by the component the response names, which lives in the
     // generated schemas module rather than behind the Eden client.
-    const fetchTypes = [...new Set(filterDefined(operations.map((op) => op.fetchType)))].toSorted()
+    const fetchTypes = [...new Set(operations.flatMap((op) => op.fetchTypes ?? []))].toSorted()
     const header = headerCode(
       config,
       client,
