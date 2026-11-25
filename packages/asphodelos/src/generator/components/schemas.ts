@@ -20,10 +20,15 @@ function findFree(base: string, i: number, used: ReadonlySet<string>): string {
  * name (`User`, `User2`, …) so every declaration is unique.
  */
 function resolveUniqueNames(keys: readonly string[]): ReadonlyMap<string, string> {
+  // Every key's own name is reserved before any suffix is chosen, so a key that already is the
+  // suffixed name of another (`User2` beside `User`, `user`) keeps it.
+  const reserved = new Set(keys.map(pascalCase))
   return keys.reduce<{ readonly used: Set<string>; readonly map: Map<string, string> }>(
     (acc, key) => {
       const base = pascalCase(key)
-      const unique = acc.used.has(base) ? findFree(base, 2, acc.used) : base
+      const unique = acc.used.has(base)
+        ? findFree(base, 2, new Set([...acc.used, ...reserved]))
+        : base
       acc.used.add(unique)
       acc.map.set(key, unique)
       return acc
@@ -59,6 +64,7 @@ const NAMED_KEYS = new Set([
   'properties',
   'patternProperties',
   'dependentSchemas',
+  'dependencies',
   '$defs',
   'definitions',
   'paths',
@@ -74,6 +80,7 @@ const NAMED_KEYS = new Set([
   'requestBodies',
   'securitySchemes',
   'pathItems',
+  'additionalOperations',
   'mediaTypes',
 ])
 
@@ -88,13 +95,34 @@ function refKey($ref: string) {
   }
 }
 
-// A discriminator's `mapping` names a schema by a `$ref` string or by its bare key.
-function renameMapping(mapping: object, renamed: ReadonlyMap<string, string>) {
+// A `$ref` string named after a renamed key, pointed at its new key.
+function renameRef($ref: string, renamed: ReadonlyMap<string, string>) {
+  const key = refKey($ref)
+  const to = key === undefined ? undefined : renamed.get(key)
+  return to === undefined ? undefined : `#/components/schemas/${to}`
+}
+
+// A discriminator's `mapping` value or `defaultMapping` names a schema by a `$ref` or its bare key.
+function renameTarget(target: unknown, renamed: ReadonlyMap<string, string>) {
+  if (typeof target !== 'string') return target
+  return renameRef(target, renamed) ?? renamed.get(target) ?? target
+}
+
+function renameDiscriminator(discriminator: object, renamed: ReadonlyMap<string, string>) {
   return Object.fromEntries(
-    Object.entries(mapping).map(([value, target]: readonly [string, unknown]) => {
-      if (typeof target !== 'string') return [value, target]
-      const to = renamed.get(refKey(target) ?? '')
-      return [value, to ? `#/components/schemas/${to}` : (renamed.get(target) ?? target)]
+    Object.entries(discriminator).map(([key, member]: readonly [string, unknown]) => {
+      if (key === 'defaultMapping') return [key, renameTarget(member, renamed)]
+      if (key !== 'mapping' || typeof member !== 'object' || member === null) return [key, member]
+      if (Array.isArray(member)) return [key, member]
+      return [
+        key,
+        Object.fromEntries(
+          Object.entries(member).map(([value, target]: readonly [string, unknown]) => [
+            value,
+            renameTarget(target, renamed),
+          ]),
+        ),
+      ]
     }),
   )
 }
@@ -107,14 +135,18 @@ function renameRefs(value: unknown, renamed: ReadonlyMap<string, string>, named 
     Object.entries(value).map(([key, member]: readonly [string, unknown]) => {
       if (named) return [key, renameRefs(member, renamed)]
       if (DATA_KEYS.has(key)) return [key, member]
-      if (key === 'mapping' && typeof member === 'object' && member !== null) {
-        return [key, renameMapping(member, renamed)]
+      if (
+        key === 'discriminator' &&
+        typeof member === 'object' &&
+        member !== null &&
+        !Array.isArray(member)
+      ) {
+        return [key, renameDiscriminator(member, renamed)]
       }
       if (key !== '$ref' || typeof member !== 'string') {
         return [key, renameRefs(member, renamed, NAMED_KEYS.has(key))]
       }
-      const to = renamed.get(refKey(member) ?? '')
-      return [key, to ? `#/components/schemas/${to}` : member]
+      return [key, renameRef(member, renamed) ?? member]
     }),
   )
 }

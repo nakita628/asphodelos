@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import { Type as t } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
 
-import type { OpenAPI } from '../../openapi/index.js'
+import type { OpenAPI, Schema } from '../../openapi/index.js'
 import { schemaConstNames, schemasCode, uniqueSchemaKeys, uniqueSchemas } from './schemas.js'
 
 describe('schemasCode — empty / single', () => {
@@ -322,6 +322,74 @@ describe('uniqueSchemaKeys', () => {
           },
         },
       },
+    })
+  })
+
+  // `mapping` is a discriminator's only inside a discriminator: a property, a `dependentRequired`
+  // entry or a security requirement called `mapping` is left as it is.
+  it('renames a mapping and a defaultMapping only inside a discriminator', () => {
+    const doc = {
+      openapi: '3.2.0',
+      info: { title: 'Mapping', version: '1' },
+      paths: {},
+      security: [{ mapping: ['read'] }],
+      servers: [{ url: '/', variables: { mapping: { default: 'user' } } }],
+      components: {
+        schemas: {
+          User: { type: 'string' },
+          user: { type: 'number' },
+          Form: {
+            type: 'object',
+            properties: { mapping: { type: 'string' } },
+            dependentRequired: { mapping: ['target'] },
+            discriminator: { propertyName: 'kind', defaultMapping: '#/components/schemas/user' },
+          },
+        },
+      },
+    } as unknown as OpenAPI
+    const renamed = uniqueSchemaKeys(doc)
+    expect(renamed.security).toStrictEqual([{ mapping: ['read'] }])
+    expect(renamed.servers).toStrictEqual(doc.servers)
+    expect(renamed.components?.schemas?.Form).toStrictEqual({
+      type: 'object',
+      properties: { mapping: { type: 'string' } },
+      dependentRequired: { mapping: ['target'] },
+      discriminator: { propertyName: 'kind', defaultMapping: '#/components/schemas/User2' },
+    })
+  })
+
+  it('keeps a key that already is the suffixed name of another', () => {
+    expect([
+      ...schemaConstNames({
+        User: { type: 'string' },
+        user: { type: 'number' },
+        User2: { type: 'boolean' },
+      }),
+    ]).toStrictEqual([
+      ['User', 'UserSchema'],
+      ['user', 'User3Schema'],
+      ['User2', 'User2Schema'],
+    ])
+  })
+
+  it('leaves a non-schema $ref alone when the empty key is renamed', () => {
+    const missing = { $ref: '#/components/responses/Missing' } as const
+    const unique = uniqueSchemas({
+      Schema: { type: 'string' },
+      '': { type: 'number' },
+      Holder: { type: 'object', properties: { x: missing } },
+    })
+    expect(unique.Holder).toStrictEqual({ type: 'object', properties: { x: missing } })
+  })
+
+  it('follows a $ref under a dependencies entry named like a data keyword', () => {
+    const unique = uniqueSchemas({
+      User: { type: 'string' },
+      user: { type: 'number' },
+      Dep: { dependencies: { default: { $ref: '#/components/schemas/user' } } },
+    } as unknown as { readonly [k: string]: Schema })
+    expect(unique.Dep as unknown).toStrictEqual({
+      dependencies: { default: { $ref: '#/components/schemas/User2' } },
     })
   })
 
