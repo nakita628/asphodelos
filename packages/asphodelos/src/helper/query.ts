@@ -7,7 +7,7 @@ import type { OpenAPI, Operation } from '../openapi/index.js'
 import { capitalize, filterDefined, methodPath, resourcePrefix } from '../utils/index.js'
 import { edenChain } from './eden.js'
 import { HTTP_METHODS, makePrefixKeyCodes, resolveOperation } from './openapi.js'
-import { isElysiaRoutePath } from './path-params.js'
+import { isElysiaRoutePath, isTreatyPath } from './path-params.js'
 
 /**
  * The trailing argument a library's hooks take after their options: a `QueryClient` (an accessor
@@ -718,8 +718,9 @@ function headerCode(config: QueryHookConfig, client: string, importPath: string,
 
 /**
  * Generates one library's hooks: every request goes through the Eden treaty client, typed by it.
- * A path key Elysia cannot route (a query string after a path parameter) is not in the app, so
- * the client cannot reach it either, and it has no hook.
+ * A path key Elysia cannot route ({@link isElysiaRoutePath}) is not in the app, so the client cannot
+ * reach it either, and it has no hook; nor has a key whose parameters treaty cannot fill
+ * ({@link isTreatyPath}), such as `/v{version}/items`.
  */
 export function makeQueryHooks(
   openAPI: OpenAPI,
@@ -732,7 +733,7 @@ export function makeQueryHooks(
   return Effect.gen(function* () {
     const prefix = basePath && basePath !== '/' ? basePath : ''
     const operations = Object.entries(openAPI.paths ?? {}).flatMap(([pathStr, pathItem]) =>
-      pathItem && isElysiaRoutePath(pathStr)
+      pathItem && isElysiaRoutePath(pathStr) && isTreatyPath(pathStr)
         ? HTTP_METHODS.flatMap((method) => {
             const rawOperation = pathItem[method]
             if (!rawOperation) return []

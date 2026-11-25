@@ -289,3 +289,29 @@ describe('eden generator — a query string after a path parameter', () => {
     }
   })
 })
+
+// Treaty keys `/v{version}` as the property `v:version`, so a wrapper would send `/v:version/items`.
+describe('eden generator — static text before a path parameter', () => {
+  it('leaves the path key out', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const code = await generateAndRead({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '0' },
+        paths: {
+          '/v{version}/items': {
+            get: { operationId: 'listItems', responses: { '204': { description: 'ok' } } },
+          },
+          '/items/{id}': {
+            get: { operationId: 'getItem', responses: { '204': { description: 'ok' } } },
+          },
+        },
+      })
+      expect(code).toContain('export async function getItem(')
+      expect(code).not.toContain('listItems')
+      expect(code).not.toContain('version')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})

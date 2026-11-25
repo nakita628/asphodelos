@@ -5,6 +5,7 @@ import {
   canonicalParamNames,
   elysiaPath,
   isElysiaRoutePath,
+  isTreatyPath,
   normalizePath,
   renameOperationParams,
 } from './path-params.js'
@@ -156,5 +157,43 @@ describe('elysiaPath', () => {
     expect(elysiaPath('/Accounts/{Sid}.json')).toBe('/Accounts/:Sid.json')
     expect(elysiaPath('/v{version}/items')).toBe('/v:version/items')
     expect(elysiaPath('/widget.json')).toBe('/widget.json')
+  })
+})
+
+// Treaty calls a segment as a parameter only when it starts with `:`, so `/v:version` is a property.
+describe('isTreatyPath', () => {
+  it('accepts a path key whose parameters fill whole segments', () => {
+    expect(isTreatyPath('/users/{id}/posts')).toBe(true)
+    expect(isTreatyPath('/widget.json')).toBe(true)
+  })
+
+  it('refuses static text before a path parameter in its segment, warning once per key', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(isTreatyPath('/v{version}/items')).toBe(false)
+      expect(isTreatyPath('/v{version}/items')).toBe(false)
+      expect(warn.mock.calls).toStrictEqual([
+        [
+          "[asphodelos] path '/v{version}/items' has static text before a path parameter in its segment, which Eden treaty cannot fill; it is left out of the Eden wrappers and the hooks",
+        ],
+      ])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('refuses a path parameter in a query string inside the key, with its own warning', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(isTreatyPath('/search?q={term}')).toBe(false)
+      expect(isTreatyPath('/jobs/{id}/cancel?beta=true')).toBe(true)
+      expect(warn.mock.calls).toStrictEqual([
+        [
+          "[asphodelos] path '/search?q={term}' has a path parameter in its query string, which Eden treaty cannot fill; it is left out of the Eden wrappers and the hooks",
+        ],
+      ])
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

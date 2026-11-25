@@ -284,9 +284,12 @@ left out of the app, its types, the mock, the Eden wrappers and the hooks, with 
 reads `:id?` as an optional parameter, which would hide the routes beside it (`/jobs/{id}/cancel`)
 from the client. So is a path key with static text after a path parameter in its segment, such as
 `/Accounts/{Sid}.json`: Elysia reads `:Sid.json` as the parameter `Sid.json`, so the route would
-reject every request, and beside `/Accounts/{AccountSid}/Calls.json` the app would not start. Static
-text before a parameter, as in `/v{version}/items`, is routed by the app. A module generated before keeps its
-handlers on regeneration, so remove such a route from it by hand.
+reject every request, and beside `/Accounts/{AccountSid}/Calls.json` the app would not start. A
+module generated before keeps its handlers on regeneration, so remove such a route from it by hand.
+
+Static text before a path parameter in its segment, as in `/v{version}/items`, is routed by the app,
+but the key is left out of the Eden wrappers and the hooks, with a warning: treaty calls a segment
+as a parameter only when it starts with `:`, so the call would send the literal `/v:version/items`.
 
 ### Imports Between Generated Files
 
@@ -347,8 +350,8 @@ The hooks are written into one file and import the generated client, so a `clien
 with them. Every hook calls that client and nothing else: its data, its error and its request
 options are treaty's, and a response is parsed, and rejected, the way treaty does it. A path
 segment with a `.` is a property of the client, `client['widget.json']`. A path key with static
-text after a path parameter, such as `/accounts/{sid}.json`, has no hook: the app leaves it out, as
-described under the client above.
+text beside a path parameter, such as `/accounts/{sid}.json` or `/v{version}/items`, has no hook,
+as described under the client above.
 
 Every operation is named by its method and path: a GET on `/users/{id}` becomes `useUsersId`, with
 `getUsersIdQueryKey` and `getUsersIdQueryOptions` beside it; a POST on `/users` becomes

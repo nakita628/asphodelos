@@ -648,7 +648,8 @@ export function useDeleteItemsId<
   })
 
   // Elysia reads `/:Sid.json` as the parameter `Sid.json`, so the app leaves the key out, and with it
-  // the hook; a parameter with static text before it, `/v{version}`, stays.
+  // the hook; a parameter with static text before it, `/v{version}`, stays in the app but has no
+  // hook either (see `isTreatyPath`).
   it('leaves out a parameter with static text after it', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     try {
@@ -3518,6 +3519,39 @@ describe('the Eden client for every path', () => {
       expect(code).not.toContain('JSON.parse')
       expect(code).not.toContain("from 'elysia'")
       expect(code).not.toMatch(/^(?:async\s+)?function\s|^(?:const|let|type|class)\s/mu)
+    },
+  )
+
+  // Treaty keys `/v{version}` as the property `v:version`, so a hook would send `/v:version/items`
+  // with no way to pass the version: the app routes the key, but it has no hook.
+  it.each(libraries)(
+    '%s: leaves out a path key with static text before a path parameter',
+    async (library) => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const code = await generateAndRead(library, {
+          ...api,
+          paths: {
+            '/v{version}/items': {
+              get: {
+                operationId: 'listVersionItems',
+                parameters: [
+                  { name: 'version', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                responses: { '200': { description: 'OK' } },
+              },
+            },
+            '/reports': {
+              get: { operationId: 'listReports', responses: { '200': { description: 'OK' } } },
+            },
+          },
+        })
+        expect(code).toContain('Reports')
+        expect(code).not.toContain('version')
+        expect(code).not.toContain('Version')
+      } finally {
+        warn.mockRestore()
+      }
     },
   )
 

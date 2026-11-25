@@ -16,9 +16,9 @@ function accessSegment(seg: string) {
  * The Eden treaty call of one route, and the types it is read by. Treaty walks the route tree
  * Elysia keys on the path as the app registers it ({@link elysiaPath}), one key per segment: a
  * segment that starts with `:` is a parameter, called as a function, and any other is a property
- * of that spelling. So a segment with a parameter after its start, `/v{version}`, is the property
- * `v:version`. A key with static text after a parameter (`/{Sid}.json`) never reaches it: the app
- * leaves such a key out.
+ * of that spelling. So a segment with a parameter after its start, `/v{version}`, would be the
+ * property `v:version`; such a key gets no wrapper or hook ({@link isTreatyPath}). A key with static
+ * text after a parameter (`/{Sid}.json`) never reaches it either: the app leaves such a key out.
  */
 export function edenChain(pathStr: string, client: string, method: string) {
   const segments = elysiaPath(pathStr).split('/').filter(Boolean)
