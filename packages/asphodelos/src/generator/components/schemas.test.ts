@@ -174,6 +174,32 @@ describe('schemasCode — mutually recursive (SCC size > 1)', () => {
     expect(self).toContain('t.Optional(Self)')
   })
 
+  it('writes a `__proto__` key as a computed module key, so it stays an entry', () => {
+    const schemas = JSON.parse(
+      '{"__proto__":{"type":"object","properties":{"b":{"$ref":"#/components/schemas/b"}}},"b":{"type":"object","properties":{"c":{"$ref":"#/components/schemas/c"}}},"c":{"type":"object","properties":{"p":{"$ref":"#/components/schemas/__proto__"}}}}',
+    ) as { readonly [k: string]: Schema }
+    const code = schemasCode(schemas)
+    expect(code).toContain('["__proto__"]:t.Object(')
+    expect(parseSync('schemas.ts', code).errors).toStrictEqual([])
+  })
+
+  it('escapes a quote in a brand, so the refs after it are still replaced', () => {
+    const code = schemasCode({
+      a: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', 'x-brand': "B'x" },
+          b: { $ref: '#/components/schemas/b' },
+        },
+      },
+      b: { type: 'object', properties: { c: { $ref: '#/components/schemas/c' } } },
+      c: { type: 'object', properties: { a: { $ref: '#/components/schemas/a' } } },
+    } as unknown as { readonly [k: string]: Schema })
+    expect(code).toContain("__brand: 'B\\'x'")
+    expect(code).toContain('"b":t.Optional(t.Ref("b"))')
+    expect(parseSync('schemas.ts', code).errors).toStrictEqual([])
+  })
+
   it('quotes a module key and a ref with a quote in it', () => {
     const code = schemasCode({
       "it's": { type: 'object', properties: { b: { $ref: '#/components/schemas/b' } } },
@@ -522,14 +548,5 @@ describe('uniqueSchemaKeys', () => {
     expect(uniqueSchemaKeys(plain)).toBe(plain)
     const bare = { openapi: '3.1.0', info: { title: 'Bare', version: '1' }, paths: {} } as OpenAPI
     expect(uniqueSchemaKeys(bare)).toBe(bare)
-  })
-
-  it('writes a `__proto__` key as a computed module key, so it stays an entry', () => {
-    const schemas = JSON.parse(
-      '{"__proto__":{"type":"object","properties":{"b":{"$ref":"#/components/schemas/b"}}},"b":{"type":"object","properties":{"c":{"$ref":"#/components/schemas/c"}}},"c":{"type":"object","properties":{"p":{"$ref":"#/components/schemas/__proto__"}}}}',
-    ) as { readonly [k: string]: Schema }
-    const code = schemasCode(schemas)
-    expect(code).toContain('["__proto__"]:t.Object(')
-    expect(parseSync('schemas.ts', code).errors).toStrictEqual([])
   })
 })
