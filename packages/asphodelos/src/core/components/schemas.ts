@@ -13,8 +13,55 @@ import { pascalCase, uncapitalize } from '../../utils/index.js'
 // The rename every generator's document goes through before its jobs are made.
 export { uniqueSchemaKeys } from '../../generator/components/index.js'
 
-function fileNameOf(group: readonly { name: string; schema: Schema }[]) {
+function baseFileNameOf(group: readonly { name: string; schema: Schema }[]) {
   return uncapitalize(group.map((member) => member.name).toSorted()[0] ?? 'schema')
+}
+
+// `<name><n>`, with the number before the first dot: `con.Pet` takes `con2.Pet`, which Windows
+// no longer reads as its device `con`.
+function freeFileName(base: string, i: number, taken: ReadonlySet<string>): string {
+  const dot = base.indexOf('.')
+  const candidate = dot === -1 ? `${base}${i}` : `${base.slice(0, dot)}${i}${base.slice(dot)}`
+  return taken.has(candidate.toLowerCase()) ? freeFileName(base, i + 1, taken) : candidate
+}
+
+// The names Windows keeps for its devices, whatever extension follows them (`con.Pet.ts`).
+const DEVICE_NAMES = new Set([
+  'con',
+  'prn',
+  'aux',
+  'nul',
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((n) => [`com${n}`, `lpt${n}`]),
+])
+
+// Each group's file name, unique on a case-insensitive file system too. A group whose name is
+// the barrel's (`Index`), a Windows device's (`con`, `con.Pet`) or one an earlier group has in
+// another case (`aB` after `ab`) takes the first `<name><n>` no other file has. Earlier is the
+// keys' order in the document, so which one keeps the plain name does not move with its `$ref`s.
+function fileNamesOf(
+  groups: readonly (readonly { name: string; schema: Schema }[])[],
+  keys: readonly string[],
+) {
+  const bases = groups.map(baseFileNameOf)
+  const position = new Map(keys.map((key, i) => [key, i] as const))
+  const rank = (group: readonly { name: string }[]) =>
+    Math.min(...group.map((member) => position.get(member.name) ?? keys.length))
+  const order = groups
+    .map((_, i) => i)
+    .toSorted((a, b) => rank(groups[a] ?? []) - rank(groups[b] ?? []))
+  const taken = new Set(['index', ...bases.map((base) => base.toLowerCase())])
+  const claimed = new Set(['index'])
+  const names = new Map<number, string>()
+  for (const i of order) {
+    const base = bases[i] ?? ''
+    const lower = base.toLowerCase()
+    const reserved = claimed.has(lower) || DEVICE_NAMES.has(lower.split('.')[0] ?? '')
+    const name = reserved ? freeFileName(base, 2, taken) : base
+    taken.add(name.toLowerCase())
+    claimed.add(name.toLowerCase())
+    names.set(i, name)
+  }
+  return groups.map((_, i) => names.get(i) ?? '')
 }
 
 function splitSchemaFiles(
@@ -24,14 +71,14 @@ function splitSchemaFiles(
 ) {
   // Keys that differ only in case are told apart before the split, over the whole document: each
   // file then exports a const no other file does, and is named after a key no other file is.
-  const groups = sccSchemas(
-    Object.entries(uniqueSchemas(section)).map(([name, schema]) => ({ name, schema })),
-  )
+  const unique = uniqueSchemas(section)
+  const groups = sccSchemas(Object.entries(unique).map(([name, schema]) => ({ name, schema })))
+  const fileNames = fileNamesOf(groups, Object.keys(unique))
   const nameToFile = new Map(
-    groups.flatMap((group) => group.map((s) => [s.name, fileNameOf(group)] as const)),
+    groups.flatMap((group, i) => group.map((s) => [s.name, fileNames[i] ?? ''] as const)),
   )
-  return groups.map((group) => {
-    const fileName = fileNameOf(group)
+  return groups.map((group, i) => {
+    const fileName = fileNames[i] ?? ''
     const subSection = Object.fromEntries(group.map((member) => [member.name, member.schema]))
     const body = schemasCode(subSection, readonly, exportTypes)
     if (body === '') return { fileName, code: '', refKinds: new Map<string, string>() }
