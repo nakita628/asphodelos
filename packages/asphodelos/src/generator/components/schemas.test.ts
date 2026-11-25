@@ -138,10 +138,17 @@ describe('schemasCode — mutually recursive (SCC size > 1)', () => {
         properties: { b: { $ref: '#/components/schemas/B' } },
       },
       B: { type: 'object', properties: { c: { $ref: '#/components/schemas/C' } } },
-      C: { type: 'string', enum: ['ASchema'], default: 'ASchema' },
-      D: { type: 'object', properties: { a: { $ref: '#/components/schemas/A' } } },
+      C: {
+        type: 'object',
+        properties: {
+          a: { $ref: '#/components/schemas/A' },
+          kind: { type: 'string', enum: ['ASchema'], default: 'BSchema' },
+        },
+      },
     })
+    expect(module).toContain('t.Module(')
     expect(module).toContain(JSON.stringify(description))
+    expect(module).toContain('t.Literal("ASchema",{default:"BSchema"})')
     const star = schemasCode({
       Node: {
         type: 'object',
@@ -515,5 +522,14 @@ describe('uniqueSchemaKeys', () => {
     expect(uniqueSchemaKeys(plain)).toBe(plain)
     const bare = { openapi: '3.1.0', info: { title: 'Bare', version: '1' }, paths: {} } as OpenAPI
     expect(uniqueSchemaKeys(bare)).toBe(bare)
+  })
+
+  it('writes a `__proto__` key as a computed module key, so it stays an entry', () => {
+    const schemas = JSON.parse(
+      '{"__proto__":{"type":"object","properties":{"b":{"$ref":"#/components/schemas/b"}}},"b":{"type":"object","properties":{"c":{"$ref":"#/components/schemas/c"}}},"c":{"type":"object","properties":{"p":{"$ref":"#/components/schemas/__proto__"}}}}',
+    ) as { readonly [k: string]: Schema }
+    const code = schemasCode(schemas)
+    expect(code).toContain('["__proto__"]:t.Object(')
+    expect(parseSync('schemas.ts', code).errors).toStrictEqual([])
   })
 })

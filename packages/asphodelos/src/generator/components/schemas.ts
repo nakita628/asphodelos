@@ -19,8 +19,10 @@ function sub(code: string, from: string, to: string) {
     .join('')
 }
 
-// A `t.Module` entry's key: bare when it is an identifier, quoted otherwise (`"x.y"`).
+// A `t.Module` entry's key: bare when it is an identifier, quoted otherwise (`"x.y"`), and
+// computed for `__proto__`, which as a plain key sets the literal's prototype instead.
 function moduleKey(name: string) {
+  if (name === '__proto__') return '["__proto__"]'
   return /^[A-Za-z_$][\w$]*$/u.test(name) ? name : JSON.stringify(name)
 }
 
