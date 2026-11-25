@@ -7,7 +7,7 @@ import type { OpenAPI, Operation } from '../openapi/index.js'
 import { capitalize, filterDefined, methodPath, resourcePrefix } from '../utils/index.js'
 import { edenChain } from './eden.js'
 import { HTTP_METHODS, makePrefixKeyCodes, resolveOperation } from './openapi.js'
-import { isElysiaRoutePath } from './path-params.js'
+import { isElysiaRoutePath, isTreatyPath } from './path-params.js'
 
 /**
  * The trailing argument a library's hooks take after their options: a `QueryClient` (an accessor
@@ -732,7 +732,7 @@ export function makeQueryHooks(
   return Effect.gen(function* () {
     const prefix = basePath && basePath !== '/' ? basePath : ''
     const operations = Object.entries(openAPI.paths ?? {}).flatMap(([pathStr, pathItem]) =>
-      pathItem && isElysiaRoutePath(pathStr)
+      pathItem && isElysiaRoutePath(pathStr) && isTreatyPath(pathStr)
         ? HTTP_METHODS.flatMap((method) => {
             const rawOperation = pathItem[method]
             if (!rawOperation) return []

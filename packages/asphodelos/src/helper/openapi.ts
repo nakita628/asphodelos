@@ -15,6 +15,7 @@ import { pascalCase, resourcePrefix, toSafeIdentifier } from '../utils/index.js'
 import {
   canonicalParamNames,
   isElysiaRoutePath,
+  isTreatyPath,
   normalizePath,
   renameOperationParams,
 } from './path-params.js'
@@ -32,7 +33,10 @@ function makePrefixKeyCode(prefix: string): string {
 // Only the path keys the app routes have hooks, so only theirs name a prefix.
 export function makePrefixKeyCodes(openAPI: OpenAPI, basePath: string): readonly string[] {
   const prefixes = new Set<string>()
-  for (const pathStr of Object.keys(openAPI.paths ?? {}).filter(isElysiaRoutePath)) {
+  const hookPaths = Object.keys(openAPI.paths ?? {}).filter(
+    (pathStr) => isElysiaRoutePath(pathStr) && isTreatyPath(pathStr),
+  )
+  for (const pathStr of hookPaths) {
     const seg = resourcePrefix(`${basePath}${pathStr}`)
     if (seg) prefixes.add(seg)
   }

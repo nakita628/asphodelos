@@ -128,3 +128,25 @@ export function isElysiaRoutePath(pathKey: string) {
   }
   return false
 }
+
+const warnedTreatyKeys = new Set<string>()
+
+/**
+ * Whether Eden treaty can call a route path with its parameters filled.
+ *
+ * Treaty calls a segment as a parameter only when it starts with `:`, so a key with static text
+ * before a `{param}` in its segment, such as `/v{version}/items`, is the property `v:version`: a
+ * call sends the literal `/v:version/items`, and there is no argument to pass the version with. The
+ * app routes such a key, but it is left out of the Eden wrappers and the hooks, with a warning once
+ * per key.
+ */
+export function isTreatyPath(pathKey: string) {
+  if (!/[^/]\{[^/{}]+\}/u.test(pathKey)) return true
+  if (!warnedTreatyKeys.has(pathKey)) {
+    warnedTreatyKeys.add(pathKey)
+    console.warn(
+      `[asphodelos] path '${pathKey}' has static text before a path parameter in its segment, which Eden treaty cannot fill; it is left out of the Eden wrappers and the hooks`,
+    )
+  }
+  return false
+}

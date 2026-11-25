@@ -3523,6 +3523,39 @@ describe('the Eden client for every path', () => {
 
   // A path key with a query string after a path parameter is not in the app, so treaty has no
   // route for it: it has no hook, and no prefix key that only it would name.
+  // Treaty keys `/v{version}` as the property `v:version`, so a hook would send `/v:version/items`
+  // with no way to pass the version: the app routes the key, but it has no hook.
+  it.each(libraries)(
+    '%s: leaves out a path key with static text before a path parameter',
+    async (library) => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const code = await generateAndRead(library, {
+          ...api,
+          paths: {
+            '/v{version}/items': {
+              get: {
+                operationId: 'listVersionItems',
+                parameters: [
+                  { name: 'version', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                responses: { '200': { description: 'OK' } },
+              },
+            },
+            '/reports': {
+              get: { operationId: 'listReports', responses: { '200': { description: 'OK' } } },
+            },
+          },
+        })
+        expect(code).toContain('Reports')
+        expect(code).not.toContain('version')
+        expect(code).not.toContain('Version')
+      } finally {
+        warn.mockRestore()
+      }
+    },
+  )
+
   it('leaves out a path key with a query string after a path parameter', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     try {
