@@ -11,9 +11,10 @@ const STRING_LITERAL = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/
 // by `transformWrap`) open and close in the code between the string literals. The closure runs
 // when a value is decoded, after every const of the module exists, so a const named there
 // (`{"k":BSchema}`) is left as it is: a `t.Ref` or `Self` there is checked outside the module or
-// the recursion, where it resolves to nothing. Only that literal is kept, counted by its braces,
-// so a raw `x-transform` elsewhere in the closure (a regex with a lone `(`) cannot widen it, and
-// one left open at the end is dropped.
+// the recursion, where it resolves to nothing. Only that literal is kept, bounded by counting its
+// braces, so nothing else in a closure is left out of the rewrite, and a literal left open at the
+// end is dropped. Like the split on string literals, the count reads the code as text: a raw
+// `x-transform` with a lone brace or quote in a regex literal can still throw it off.
 const DEPENDENT = 'const depSubs={'
 
 function closures(parts: readonly string[]): readonly (readonly [number, number])[] {
