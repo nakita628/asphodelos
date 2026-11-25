@@ -282,8 +282,11 @@ needs `@elysiajs/eden`, with `elysia` resolving to one copy.
 A path key with a query string right after a path parameter, such as `/jobs/{id}?beta=true`, is
 left out of the app, its types, the mock, the Eden wrappers and the hooks, with a warning: Elysia
 reads `:id?` as an optional parameter, which would hide the routes beside it (`/jobs/{id}/cancel`)
-from the client. A module generated before keeps its handlers on regeneration, so remove such a
-route from it by hand.
+from the client. So is a path key with static text after a path parameter in its segment, such as
+`/Accounts/{Sid}.json`: Elysia reads `:Sid.json` as the parameter `Sid.json`, so the route would
+reject every request, and beside `/Accounts/{AccountSid}/Calls.json` the app would not start. Static
+text before a parameter, as in `/v{version}/items`, is routed. A module generated before keeps its
+handlers on regeneration, so remove such a route from it by hand.
 
 ### Imports Between Generated Files
 
