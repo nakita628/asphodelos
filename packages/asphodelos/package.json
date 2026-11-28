@@ -43,11 +43,11 @@
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^13.1.0",
-    "@effect/platform-node": "4.0.6",
-    "@effect/platform-node-shared": "4.0.6",
+    "@effect/platform-node": "4.1.5",
+    "@effect/platform-node-shared": "4.1.5",
     "@typespec/compiler": "^1.17.0",
     "@typespec/openapi3": "^1.17.0",
-    "effect": "4.0.6",
+    "effect": "4.1.5",
     "oxc-parser": "^0.155.0",
     "oxfmt": "^0.74.0"
   },
