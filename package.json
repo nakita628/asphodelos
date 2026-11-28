@@ -36,5 +36,5 @@
     "textlint-rule-terminology": "5.2.16",
     "typescript": "^7.0.2"
   },
-  "packageManager": "bun@1.4.4"
+  "packageManager": "bun@1.4.5"
 }
