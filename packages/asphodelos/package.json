@@ -48,7 +48,7 @@
     "@typespec/compiler": "^1.17.0",
     "@typespec/openapi3": "^1.17.0",
     "effect": "4.0.6",
-    "oxc-parser": "^0.155.0",
+    "oxc-parser": "^0.159.0",
     "oxfmt": "^0.74.0"
   },
   "devDependencies": {
